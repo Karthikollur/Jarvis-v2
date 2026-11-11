@@ -49,7 +49,7 @@ Never in the prompt.
 **Processes**
 
 - `ollama` — Windows native (already installed).
-- `core` — OpenJarvis agent. Runs in WSL2 or natively on Windows; decided in P0.
+- `core` — OpenJarvis agent. Runs natively on Windows (decided in P0.5).
 - `bridge` — Python FastAPI service on Windows, bound to `127.0.0.1` only, requires a random
   per-install token header. Uses pywinauto / pywin32. Hosts the policy engine.
 - `voice` — Python process: openWakeWord, whisper, Piper.
@@ -116,7 +116,7 @@ Do not start a phase until the previous phase's "Done when" passes and is record
       reach Windows Ollama and a dummy HTTP server on Windows localhost.
 - [x] P0.4 From OpenJarvis docs/source, find how to register a custom tool that calls an HTTP
       endpoint. Build a hello-world tool.
-- [ ] P0.5 Decide core placement (WSL2 vs native). Record decision and reason.
+- [x] P0.5 Decide core placement (WSL2 vs native). Record decision and reason.
 - [ ] P0.6 Fill in the Commands section of AGENTS.md.
 
 **Done when:** a typed request in OpenJarvis triggers the custom tool, which hits a Windows

@@ -6,8 +6,8 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.4
-- Next task: P0.5
+- Last completed task: P0.5
+- Next task: P0.6
 - Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -81,8 +81,14 @@ Format: `YYYY-MM-DD — decision — reason — who`
 - 2026-11-11 — Config turns off the PyPI update check (`[updates] auto_update = false`) and
   PostHog analytics (`[analytics] enabled = false`); `context_from_memory = false` — offline
   rule; our own memory path owns memory — Claude Code
-- 2026-11-11 — Core runs natively on Windows, so the WSL2 half of P0.3 was skipped (P0.5 will
-  record the placement decision formally) — Claude Code
+- 2026-11-11 — P0.5: core runs natively on Windows, same Python venv as the bridge; WSL2 is not
+  used. Reasons: (1) OpenJarvis installs and runs natively (P0.2–P0.4 all passed on Windows);
+  (2) WSL2's default NAT cannot reach services bound to Windows `127.0.0.1`, so WSL2 would
+  force either mirrored networking (`.wslconfig`, outside the repo) or binding Ollama and the
+  bridge to `0.0.0.0`, which breaks the localhost-only rule; (3) one venv, one process model.
+  Known cost: OpenJarvis's Rust extension is not built, and upstream has open Windows issues
+  (#1062 server start, #1211 audio) in parts we do not use. The WSL2 half of P0.3 was skipped
+  for this reason. — Claude Code, approved by Karthik
 - 2026-11-11 — P0.4: how OpenJarvis tools work (from source, `OpenJarvis/src/openjarvis`):
   a tool is a `BaseTool` subclass (`tools/_stubs.py`) with a `spec` property (`ToolSpec`: name,
   description, JSON-schema parameters) and `execute(**params) -> ToolResult`, registered with
