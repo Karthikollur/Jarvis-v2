@@ -16,7 +16,8 @@ Newest session entry goes at the top of the Session log.
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
 - Last completed task: P2.2 (policy engine), done together with audit points 1, 2, 7, 8 from
   the P1 review. The bridge now has three routes: `GET /health`, `POST /task`, `POST /tool`.
-- Next task: P2.3 (confirm queue). Its approve/deny routes must be `{"ui"}` only in
+- Next task: P2.3 (confirm queue). Plan approved by Karthik and saved at `docs/plans/P2.3.md`
+  (two commits, A then B); implement it as written, not started. Its approve/deny routes must be `{"ui"}` only in
   `bridge.app.ROUTE_ROLES`, and must be added to `test_route_table_is_exact`. Today a
   `confirm` decision returns 409 and nothing runs. Plan mode first (touches `bridge/`).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
