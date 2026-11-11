@@ -3,4 +3,14 @@ name = "jarvis"
 version = "0.1.0"
 description = "Local-first, voice-first desktop assistant for Windows"
 requires-python = ">=3.12,<3.14"
-dependencies = []
+dependencies = [
+    "openjarvis",
+]
+
+[tool.uv.workspace]
+members = [
+    "OpenJarvis",
+]
+
+[tool.uv.sources]
+openjarvis = { workspace = true, editable = true }

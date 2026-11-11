@@ -6,18 +6,22 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.1
-- Next task: P0.2
+- Last completed task: P0.2
+- Next task: P0.3
 - Tests: not set up yet (pytest not added; adding a dependency needs Karthik's OK)
 - Uncommitted work: none
-- Blockers: P0.2 needs Karthik to approve the install method (see Open questions)
+- Blockers: none
+- Run OpenJarvis with (PowerShell, from repo root):
+  `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; uv run python -m openjarvis.cli <args>`
 
 ## Open questions for Karthik
 
-- P0.2 install method. Upstream's Windows installer (`irm .../install.ps1 | iex`) downloads and
-  runs code and installs outside the repo, which breaks "no global installs". Proposal: install
-  project-locally with `uv` (pinned version, or editable from the `OpenJarvis/` clone) and set
-  `OPENJARVIS_HOME` inside the repo. Untested on Windows.
+- An older OpenJarvis install exists at `%USERPROFILE%\.openjarvis` (created 2026-09-19, has
+  `config.toml`, memory and agent DBs). Not touched. If `OPENJARVIS_HOME` is ever unset, this
+  repo's OpenJarvis will silently use that folder and its config. Keep, or remove it yourself?
+- OpenJarvis core dependencies include `posthog`, `python-telegram-bot`, `ddgs`, `openai`,
+  `datasets`. They cannot be dropped without forking. Offline check must prove none of them
+  connect out.
 - OpenJarvis ships built-in tools that bypass the bridge (`shell_exec`, `file_write`,
   `apply_patch`, `browser`, `web_search`, `http_request`, `channel_tools`) and a CodeAct agent
   that runs model-written Python. Proposal: add to P0.4 a check that only our tool is callable
@@ -48,6 +52,19 @@ Format: `YYYY-MM-DD — decision — reason — who`
   offline for P0.4 — Karthik
 - 2026-11-11 — `requires-python = ">=3.12,<3.14"`; uv picked CPython 3.13.13 — OpenJarvis
   requires <3.14 — Claude Code
+- 2026-11-11 — P0.2: OpenJarvis installed project-local, editable, from the `OpenJarvis/` clone
+  (version `1.0.5.dev180+ge6b71376`), base dependencies only, no extras, no Rust extension —
+  upstream `iex` installer writes outside the repo — Karthik. Exact steps:
+  1. `& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv`
+  2. `uv add --editable ./OpenJarvis` (uv registered it as a workspace member in `pyproject.toml`)
+  3. Run with `OPENJARVIS_HOME` set to `<repo>\.openjarvis` (gitignored).
+  A fresh checkout needs the clone at `OpenJarvis/` (commit e6b7137) before `uv sync`.
+- 2026-11-11 — The venv MUST be created by the signed python.org interpreter (step 1), not by
+  `uv venv` / a bare `uv sync` — Windows Smart App Control is On and blocks uv's unsigned venv
+  `python.exe` and every generated script launcher (`jarvis.exe`, later `pytest.exe`) with
+  "An Application Control policy has blocked this file". So always call tools as
+  `uv run python -m <module>`, never by `.exe` name. Do not disable Smart App Control. If
+  `.venv` is deleted, redo step 1 before `uv sync` — Claude Code
 - 2026-11-11 — No dependencies added in P0.1, not even pytest — rule: ask before adding — Claude Code
 - 2026-11-11 — PLAN.md + PROGRESS.md are the only planning files; no separate task_plan.md —
   avoid two sources of truth — Claude Code (Karthik can overrule)
@@ -69,10 +86,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   git, uv, Node 24, WSL2 Ubuntu present.
 - Files changed: `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/PROGRESS.md`, `pyproject.toml`,
   `uv.lock`, `.gitignore`, `.gitkeep` in each layout folder.
+- P0.2: installed OpenJarvis into `.venv` (see Decisions for steps and the Smart App Control
+  workaround). `uv run python -m openjarvis.cli --version` prints `1.0.5.dev180+ge6b71376`;
+  config/data/cache paths resolve under `<repo>\.openjarvis`. Only `--version` has been run;
+  no `jarvis init`, no model calls yet.
 - Tests run + result: none exist. `uv sync` succeeds.
 - Unfinished work stopped at (exact point): nothing in progress.
-- Next concrete step: P0.2, after Karthik approves the install method. Before that, read
-  `OpenJarvis/src` for how tools are registered and restricted (read-only, no approval needed).
+- Next concrete step: P0.3. Read `OpenJarvis/src/openjarvis/core/config.py` and
+  `cli/_version_check.py` first (the latter may call out on startup), write a minimal
+  `.openjarvis/config.toml` by hand pointing at `http://localhost:11434` with `qwen3.5:4b`
+  rather than running `jarvis init` (which may download things), then one `ask` round trip.
 
 <!-- Copy this template for each session, newest on top.
 

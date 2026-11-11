@@ -13,6 +13,9 @@ ui/src-tauri/target/
 .env
 .env.*
 
+# OpenJarvis runtime data (OPENJARVIS_HOME)
+.openjarvis/
+
 # Reference clone of upstream OpenJarvis (its own git repo, not ours)
 OpenJarvis/
 

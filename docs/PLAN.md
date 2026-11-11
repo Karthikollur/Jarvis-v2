@@ -110,7 +110,7 @@ Do not start a phase until the previous phase's "Done when" passes and is record
 ### P0 — Spike and decisions (~1 day)
 
 - [x] P0.1 Initialise repo: folder layout from AGENTS.md, `uv` project, `.gitignore`, docs in place.
-- [ ] P0.2 Install OpenJarvis following its current Windows docs (WSL2 or desktop build). Record
+- [x] P0.2 Install OpenJarvis following its current Windows docs (WSL2 or desktop build). Record
       exact steps in PROGRESS.md Decisions.
 - [ ] P0.3 Connect OpenJarvis to the existing Windows Ollama. If core runs in WSL2, confirm it can
       reach Windows Ollama and a dummy HTTP server on Windows localhost.
