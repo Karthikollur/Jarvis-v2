@@ -5,14 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P0
-- Active phase is now P1.
+- Active phase: P2 (not started). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Last completed task: P1.5
-- Next task: P1.6
+- Phase gate P1: PASSED 2026-11-11, closed by Karthik. Tool selection 25/25 (need >= 90%),
+  must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
+  with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
+  attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
+- Last completed task: P1.6
+- Next task: P2.1. It touches `bridge/`, so CLAUDE.md requires plan mode and Karthik's OK
+  before editing. It also needs new dependencies (FastAPI, uvicorn): ask first.
 - Tests: `uv run python -m pytest` -> 36 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
@@ -31,16 +35,13 @@ Newest session entry goes at the top of the Session log.
 - OpenJarvis logs `Failed to set up rate limiter: No module named 'openjarvis_rust'` on every
   call. The Rust extension is not installed (needs a Rust toolchain = system install). Harmless
   so far; some features (its memory commands) need it. We do not plan to use those.
-
+- The eval set is easy (explicit paths, one step each). Proposal: add harder cases (typos,
+  indirect phrasing, multi-step, injected instructions inside file contents) before relying
+  on the 100% score. Also the clarify scorer needs a `?`, which gave one false negative (a03).
 - OpenJarvis core dependencies include `posthog`, `python-telegram-bot`, `ddgs`, `openai`,
-  `datasets`. They cannot be dropped without forking. Offline check must prove none of them
-  connect out.
-- OpenJarvis ships built-in tools that bypass the bridge (`shell_exec`, `file_write`,
-  `apply_patch`, `browser`, `web_search`, `http_request`, `channel_tools`) and a CodeAct agent
-  that runs model-written Python. Proposal: add to P0.4 a check that only our tool is callable
-  (`[agent] tools = "..."`), and never select the CodeAct agent.
-- OpenJarvis has `posthog` as a core dependency (analytics default off) and a local telemetry DB
-  (default on). No documented offline mode. The Wi-Fi-off check in P0 is a real gate.
+  `datasets`; they cannot be dropped without forking. It also keeps a local telemetry DB
+  (default on) under `.openjarvis/`. Socket-guard runs show no outbound attempts today; P4.2
+  "Offline check" should turn that guard into a permanent pytest test.
 - OpenJarvis already ships SQLite memory, faster-whisper STT, Kokoro TTS and a Tauri app. Reuse
   any of these, or build our own as planned? Its memory has no approval queue.
 - P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
@@ -191,51 +192,64 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
-### 2026-11-11 — Agent: Claude Code
-- Did: P0.1. `git init` (branch `main`), moved starter docs from `files/` to root and `docs/`,
-  created folder layout with `.gitkeep` files, minimal `pyproject.toml`, `.gitignore`. Cloned
-  upstream OpenJarvis to `OpenJarvis/` (full history, gitignored). Reviewed plan against the
-  machine and OpenJarvis docs; findings are under Open questions.
-- Machine facts: RTX 3050 6 GB; Ollama 0.40.16 with `qwen3.5:4b`, `9b`, `2b` already pulled;
-  git, uv, Node 24, WSL2 Ubuntu present.
-- Files changed: `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/PROGRESS.md`, `pyproject.toml`,
-  `uv.lock`, `.gitignore`, `.gitkeep` in each layout folder.
-- P0.2: installed OpenJarvis into `.venv` (see Decisions for steps and the Smart App Control
-  workaround). `uv run python -m openjarvis.cli --version` prints `1.0.5.dev180+ge6b71376`;
-  config/data/cache paths resolve under `<repo>\.openjarvis`. Only `--version` has been run;
-  no `jarvis init`, no model calls yet.
-- P0.3: wrote `core/config.toml`; `ask --no-stream "Reply with exactly: pong"` returned `pong`
-  from `qwen3.5:4b` on Windows Ollama (`ollama ps`: 100% GPU). Wi-Fi-off run not done yet; that
-  is the P0 "Done when" check.
-- P0.4: `core/hello_tool.py` = custom tool `hello_bridge` + self-check. The check starts a dummy
-  server on `127.0.0.1:8765` that returns a random code, asks the model to greet Karthik, and
-  asserts: only `hello_bridge` was used, the server was hit, the code came back, and
-  `shell_exec` / `file_write` / `http_request` / `apply_patch` are refused as `Unknown tool`.
-  Result: `OK` in 16 s (warm model).
-- Tests run + result: `uv run python core/hello_tool.py` -> OK.
-- Unfinished work stopped at (exact point): nothing in progress.
-- P0.5: placement decision recorded (native Windows). P0.6: Commands and repo map in AGENTS.md
-  filled in.
-- P0 gate passed and recorded; `.claude/settings.json` put in place at Karthik's request.
-- P1.1: measured latency (numbers in Decisions). No code or config change was needed.
-- P1.2: `evals/commands.yaml`, `evals/stub_tools.py`, `core/openjarvis_env.py`,
-  `tests/test_eval_set.py` (5 tests: counts, unique ids, args fit schemas, every stub used,
-  stubs register and record). Nothing has been run against the model yet.
-- P1.3: `evals/run.py` (runner + `score`), `tests/test_eval_scoring.py` (7 tests), system
-  prompt and temperature in `core/config.toml`. First run: 39/40, see Eval results.
-- Tests run + result: `uv run python -m pytest` -> 12 passed. `uv run python evals/run.py` ->
-  39/40.
-- P1.4: closed by decision, no code (see Decisions).
-- P1.5: `core/router.py`, `tests/test_router.py` (24 tests incl. 12 near-misses that must fall
-  through, and a check that the router never disagrees with the eval set), router wired into
-  `evals/run.py`.
-- Tests run + result: `uv run python -m pytest` -> 36 passed. Evals -> 39/40, 5 on fast path.
-- Next concrete step: P1.6. The 4b baseline is already under Eval results. Optional 9b run:
-  `uv run python evals/run.py --no-router --model qwen3.5:9b` (already pulled; 6.6 GB will
-  spill to CPU, expect it to be slow; it also evicts 4b from VRAM). Then check P1 "Done when"
-  (>=90% tool selection, all must-refuse refused, latency in targets, network off) and ask
-  Karthik to confirm the phase closes. Worth proposing first: harder eval cases (typos,
-  indirect phrasing, multi-step), since the current set is easy.
+### 2026-11-11 — Agent: Claude Code (first session: P0.1 to P1.6)
+
+Read this entry, then Current state above, then AGENTS.md "Commands". Reasons for everything
+are under Decisions; measured numbers are under Eval results.
+
+- What this repo is now: a Python project (`uv`, Python 3.12 venv) with OpenJarvis installed
+  editable from a local clone, talking to Windows Ollama (`qwen3.5:4b`). There is no bridge, no
+  safety engine, no voice, no UI yet. Folders `bridge/ safety/ memory/ voice/ ui/ config/`
+  hold only `.gitkeep`.
+- Did, P0 (spike): repo init and layout; OpenJarvis installed project-local; connected to
+  Ollama; proved a custom tool can call a `127.0.0.1` server while built-in OpenJarvis tools
+  (`shell_exec`, `file_write`, ...) are refused; decided core runs natively on Windows; filled
+  in Commands in AGENTS.md.
+- Did, P1 (brain + evals): latency baseline; 40-case eval set with 13 stub tools; eval runner;
+  system prompt; fast-path router. P1.4 closed by decision with no code. 9b comparison skipped
+  by Karthik.
+- Files that matter:
+  - `core/config.toml` — OpenJarvis config: Ollama host, model, temperature 0, system prompt,
+    analytics and update check off.
+  - `core/openjarvis_env.py` — sets `OPENJARVIS_HOME` / `OPENJARVIS_CONFIG`; import it before
+    anything from `openjarvis`.
+  - `core/router.py` — `route(text)`: time / open app / stop without the LLM, else None.
+  - `core/hello_tool.py` — P0 demo tool + live self-check. Throwaway once the bridge exists.
+  - `evals/commands.yaml`, `evals/stub_tools.py`, `evals/run.py` — eval set, stubs, runner.
+  - `tests/` — 36 pytest tests (eval-set shape, scoring rules, router). No model needed.
+  - `.claude/settings.json` — Claude Code permission rules, placed at Karthik's request.
+  - `OpenJarvis/` — upstream clone, gitignored, never edit. `.openjarvis/` — its runtime data.
+- Traps on this machine (details in Decisions):
+  1. Windows Smart App Control blocks unsigned `.exe`. Create the venv with the python.org
+     interpreter, and run everything as `uv run python -m <module>` or `uv run python <file>`.
+     `pytest.exe`, `jarvis.exe` and a `uv venv`-made `python.exe` will not start. Expect the
+     same for Piper and possibly Tauri dev builds later.
+  2. OpenJarvis registers 56 built-in tools, including shell and file writers. The list of
+     tool names passed to `Jarvis.ask_full(..., tools=[...])` is the only allowlist. Keep it a
+     constant in our code. Our tool names must not collide with built-ins (registry raises).
+  3. Use the OpenJarvis Python SDK, not its CLI: the CLI also loads MCP and skill tools.
+  4. Every Ollama caller must use the same `num_ctx` (16384) and send `think: false`, or the
+     model reloads (about 8 s) or starts thinking (3x slower).
+  5. `%USERPROFILE%\.openjarvis` is an unrelated old install. Never touch it. It gets used
+     silently if `OPENJARVIS_HOME` is unset.
+  6. In Claude Code's Bash tool an `rtk` wrapper can fail to spawn pytest; use PowerShell for
+     `uv run python -m pytest`.
+- Tests run + result (end of session): `uv run python -m pytest` -> 36 passed.
+  `uv run python evals/run.py` -> 39/40 (tool selection 25/25, args 23/23, refusals 10/10,
+  clarify 4/5, median 1.0 s), also with outbound sockets blocked. The one failure, a03, is a
+  scorer false negative and is expected until the clarify detector changes.
+- Unfinished work stopped at (exact point): nothing in progress. Working tree clean. All P0
+  and P1 boxes ticked. P2 not started.
+- Next concrete step: P2.1 — bridge skeleton in `bridge/`: FastAPI app bound to `127.0.0.1`
+  only, random token generated on first run and stored under `%LOCALAPPDATA%\Jarvis` with a
+  current-user-only ACL, every request must carry the token header. Before writing code:
+  (1) enter plan mode and get Karthik's OK (CLAUDE.md rule for `bridge/`); (2) ask Karthik to
+  approve adding `fastapi` and `uvicorn`; (3) run uvicorn as `uv run python -m uvicorn ...`
+  because of trap 1; (4) also reject requests whose `Host` header is not `127.0.0.1:<port>`
+  and send no CORS headers, so a web page cannot drive the bridge. Tests must include a
+  missing-token and a wrong-token request being refused. Open questions above that P2/P3 will
+  hit: whether `read_text_file` taints, the 8-call budget versus the P3 "sort a folder" check,
+  who creates `C:\JarvisSandbox`, and keep-alive.
 
 <!-- Copy this template for each session, newest on top.
 

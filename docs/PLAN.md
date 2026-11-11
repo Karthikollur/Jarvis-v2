@@ -134,7 +134,7 @@ localhost server, with Wi-Fi off.
       (Satisfied by native function calling; no code. See PROGRESS.md Decisions 2026-11-11.)
 - [x] P1.5 Deterministic fast-path router for the most common commands (open app, time, stop)
       before the LLM.
-- [ ] P1.6 Record 4B baseline in PROGRESS.md. Optionally compare 9B.
+- [x] P1.6 Record 4B baseline in PROGRESS.md. Optionally compare 9B. (9B skipped by Karthik.)
 
 **Done when:** at least 90% correct tool selection, all must-refuse cases refused, latency within
 targets, network off.
