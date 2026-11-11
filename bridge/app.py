@@ -9,6 +9,7 @@ import re
 import secrets
 import subprocess
 import tempfile
+import time
 from typing import Any
 import uuid
 
@@ -17,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
+from safety.confirm import ConfirmQueue, QueueRefused
 from safety.policy import Policy, Task, load_roots
 
 
@@ -78,11 +80,15 @@ def load_token(storage: Path, name: str = "bridge.token") -> str:
 
 
 # Which token role may call which path. "core" sends tool requests; "ui" is the only role
-# that will be allowed to approve them (P2.3). Every route needs an entry here.
+# that may see, approve or deny actions waiting for confirmation. Every route needs an entry.
 ROUTE_ROLES: dict[str, set[str]] = {
     "/health": {"core", "ui"},
     "/task": {"core"},
     "/tool": {"core"},
+    "/outcome": {"core"},
+    "/pending": {"ui"},
+    "/approve": {"ui"},
+    "/deny": {"ui"},
 }
 
 
@@ -138,10 +144,15 @@ class ToolRequest(BaseModel):
     args: dict[str, Any] = {}
 
 
+class PendingRequest(BaseModel):
+    pending_id: str
+
+
 def create_app(
     storage: Path | None = None,
     roots: list[Path] | None = None,
     handlers: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> FastAPI:
     """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it."""
     if storage is None:
@@ -149,11 +160,27 @@ def create_app(
     if roots is None:
         roots = load_roots(Path(__file__).resolve().parent.parent / "config" / "allowed_roots.toml")
     tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
-    policy = Policy(roots)
+    policy = Policy(roots, clock)
+    queue = ConfirmQueue(clock)
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
+    outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(Authenticate, tokens=tokens)
+
+    def execute(task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]):
+        """The only place a tool handler is called. Reached from /tool and /approve only,
+        always after the policy said yes. Returns (response, outcome)."""
+        handler = handlers.get(tool)
+        if handler is None:
+            return JSONResponse({"detail": "Tool not implemented"}, status_code=501), {"status": "failed"}
+        try:
+            result = handler({**args, **paths})  # resolved paths win
+        except Exception:
+            policy.record(task, tool, ok=False)
+            return JSONResponse({"detail": "Tool failed"}, status_code=500), {"status": "failed"}
+        policy.record(task, tool, ok=True)
+        return {"result": result}, {"status": "done", "result": result}
 
     @app.post("/task")
     def new_task():
@@ -163,26 +190,73 @@ def create_app(
 
     @app.post("/tool")
     def run_tool(request: ToolRequest):
-        """The only place a tool handler is called. Do not call handlers anywhere else."""
         task = tasks.get(request.task_id)
         if task is None:
             return JSONResponse({"detail": "Unknown task"}, status_code=404)
+        # Checked first so a call made while an action waits still spends budget.
         decision = policy.check(task, request.tool, request.args)
         if decision.action == "deny":
             return JSONResponse({"detail": decision.reason}, status_code=403)
-        if decision.action != "allow":
-            # No confirm queue yet (P2.3): anything needing confirmation does not run.
-            return JSONResponse({"detail": "Needs confirmation"}, status_code=409)
-        handler = handlers.get(request.tool)
-        if handler is None:
-            return JSONResponse({"detail": "Tool not implemented"}, status_code=501)
-        try:
-            result = handler({**request.args, **decision.paths})  # resolved paths win
-        except Exception:
-            policy.record(task, request.tool, ok=False)
-            return JSONResponse({"detail": "Tool failed"}, status_code=500)
-        policy.record(task, request.tool, ok=True)
-        return {"result": result}
+        if queue.for_task(request.task_id) is not None:
+            return JSONResponse({"detail": "awaiting confirmation"}, status_code=409)
+        if decision.action == "confirm":
+            try:
+                pending = queue.add(
+                    request.task_id, request.tool, request.args, decision.paths, decision.reason
+                )
+            except QueueRefused as refused:
+                return JSONResponse({"detail": str(refused)}, status_code=403)
+            return JSONResponse({"pending_id": pending.id}, status_code=202)
+        return execute(task, request.tool, request.args, decision.paths)[0]
+
+    @app.get("/pending")
+    def list_pending():
+        now = clock()
+        return {
+            "pending": [
+                {
+                    "id": p.id,
+                    "task_id": p.task_id,
+                    "tool": p.tool,
+                    "args": p.args,
+                    "paths": {name: str(path) for name, path in p.paths.items()},
+                    "reason": p.reason,
+                    "age": now - p.created,
+                }
+                for p in queue.list()
+            ]
+        }
+
+    @app.post("/approve")
+    def approve(request: PendingRequest):
+        """Runs exactly the stored action, once, after re-validating it."""
+        pending = queue.take(request.pending_id)
+        if pending is None:
+            return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+        task = tasks[pending.task_id]
+        refused = policy.recheck(task, pending.tool, pending.args, pending.paths)
+        if refused is not None:
+            expired = refused.startswith("time budget")
+            outcomes[pending.id] = {"status": "expired" if expired else "denied"}
+            return JSONResponse({"detail": refused}, status_code=410 if expired else 403)
+        response, outcomes[pending.id] = execute(task, pending.tool, pending.args, pending.paths)
+        return response
+
+    @app.post("/deny")
+    def deny(request: PendingRequest):
+        pending = queue.take(request.pending_id)
+        if pending is None:
+            return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+        outcomes[pending.id] = {"status": "denied"}
+        return {"status": "denied"}
+
+    @app.post("/outcome")
+    def outcome(request: PendingRequest):
+        if request.pending_id in outcomes:
+            return outcomes[request.pending_id]
+        if any(p.id == request.pending_id for p in queue.list()):
+            return {"status": "pending"}
+        return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
 
     @app.get("/health")
     async def health():

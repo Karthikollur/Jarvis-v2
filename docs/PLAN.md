@@ -144,7 +144,7 @@ targets, network off.
 - [x] P2.1 `bridge/`: FastAPI on `127.0.0.1`, token generated on first run, user-only file ACL.
 - [x] P2.2 `safety/policy.py`: tier table, allowed-roots check with full path resolution, per-task
       taint flag, budgets.
-- [ ] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
+- [x] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
 - [ ] P2.4 Audit log (JSONL).
 - [ ] P2.5 Kill switch endpoint + global hotkey listener.
 - [ ] P2.6 Quarantine + undo records.

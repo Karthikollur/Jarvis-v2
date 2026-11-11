@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 and P2.2 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1, P2.2, P2.3 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,16 +14,13 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.2 (policy engine), done together with audit points 1, 2, 7, 8 from
-  the P1 review. The bridge now has three routes: `GET /health`, `POST /task`, `POST /tool`.
-- In progress: P2.3 (confirm queue), plan at `docs/plans/P2.3.md`. Commit A done
-  (`safety/confirm.py`: `ConfirmQueue`, `Pending`, `QueueRefused`; `Policy.recheck`; confirm
-  reasons are now `T2` / `tainted T1`; shared test fixtures moved to `tests/conftest.py`).
-  Next: commit B (bridge routes), not started, waiting for Karthik's review of A. The approve/deny routes must be `{"ui"}` only in
-  `bridge.app.ROUTE_ROLES`, and must be added to `test_route_table_is_exact`. Today a
-  `confirm` decision returns 409 and nothing runs. Plan mode first (touches `bridge/`).
+- Last completed task: P2.3 (confirm queue, plan `docs/plans/P2.3.md`, implemented). The
+  bridge has seven routes: `GET /health`; core: `POST /task`, `POST /tool`, `POST /outcome`;
+  ui only: `GET /pending`, `POST /approve`, `POST /deny`. A `confirm` decision now answers
+  202 with a `pending_id`; it runs only after a ui-token approve passes `Policy.recheck`.
+- Next task: P2.4 (audit log, JSONL). Plan mode first (touches `safety/`).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
-- Tests: `uv run python -m pytest` -> 114 passed, 1 skipped (2026-11-11, after P2.3 commit A). The skip is the
+- Tests: `uv run python -m pytest` -> 123 passed, 1 skipped (2026-11-11, after P2.3). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -36,8 +33,13 @@ Newest session entry goes at the top of the Session log.
 ## Open questions for Karthik
 
 - P2.3: the queue never evicts. An action whose task ran out of time stays listed (and
-  holds one of the 16 slots) until the UI approves (-> 410) or denies it. Fine while the UI
-  shows them; if stale entries pile up, drop expired ones in `list`/`add`. No action yet.
+  holds one of the 16 slots) until the UI approves (-> 410) or denies it, and `/outcome`
+  keeps answering `pending` for it until then, so core needs its own timeout. Fine while the
+  UI shows them; if stale entries pile up, drop expired ones in `list`/`add`. `outcomes`
+  is never evicted either. No action yet.
+- P2.3: if the task was already stopped for time by another call while the action waited,
+  approve reports outcome `denied` (reason `task stopped`), not `expired`. Nothing runs
+  either way; only the label differs. Fix only if the UI needs the distinction.
 
 - P1 review and bridge bypass audit (2026-11-11, newest Session log entry): which of the nine
   points get fixed, and in which task? Also still owed: a real Wi-Fi-off eval run for P1.
@@ -67,6 +69,20 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-11 — P2.3 confirm queue. Flow: core `POST /tool` -> `confirm` -> 202
+  `{pending_id}`, nothing runs; ui `GET /pending` lists id, task, tool, raw args, resolved
+  paths, reason (`T2` / `tainted T1`), age; ui `POST /approve` or `/deny`; core polls
+  `POST /outcome` -> `pending | done | failed | denied | expired` (+ `result` when done).
+  Approve takes the action out of the queue first (one-shot, second approve 404), then
+  `Policy.recheck` (task not stopped, time budget, every path resolves to the same place),
+  then the same `execute()` that `/tool` uses, so handlers still have one call site and
+  `Policy.record` counts failures. Waiting counts against the task's 120 s: too late ->
+  410, outcome `expired`. Other recheck refusals -> 403, outcome `denied`. One pending
+  action per task (other `/tool` calls for it -> 409 `awaiting confirmation`, after
+  `Policy.check`, so they still spend budget); 16 pending overall, the 17th -> 403. Queue
+  and outcomes are in memory: a restart drops them (fails closed). — Claude Code, plan
+  approved by Karthik
 
 - 2026-11-11 — Two bridge tokens (audit point 8): `bridge.token` is role `core` (tool
   requests), `ui.token` is role `ui` (will be the only role allowed to approve T2 in P2.3).
@@ -244,6 +260,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P2.3 confirm queue)
+
+- Did: P2.3 in two commits, as planned in `docs/plans/P2.3.md`.
+  A. `P2.3: confirm queue (safety)` (`46b88d8`) — `safety/confirm.py`, `Policy.recheck`,
+     confirm reasons `T2` / `tainted T1`, shared fixtures moved to `tests/conftest.py`.
+  B. `P2.3: approve and deny routes` — `/pending`, `/approve`, `/deny` (ui),
+     `/outcome` (core), `/tool` answers 202 on confirm, shared `execute()`,
+     `create_app(clock=...)`. P2.3 ticked in PLAN.md, plan marked Implemented.
+- Files changed: `safety/confirm.py`, `safety/policy.py`, `bridge/app.py`,
+  `tests/conftest.py`, `tests/test_confirm.py`, `tests/test_policy.py`,
+  `tests/test_bridge.py`, `docs/PLAN.md`, `docs/plans/P2.3.md`, `docs/PROGRESS.md`.
+  No new dependencies.
+- Tests: `rtk proxy uv run python -m pytest` -> 123 passed, 1 skipped (symlink privilege).
+  Mutation check: with `recheck` disabled in `/approve`, the junction-swap and expiry
+  tests fail. Evals not rerun; core untouched. No real uvicorn start.
+- Unfinished: none. Two small open questions logged (no eviction; `denied` vs `expired`
+  label when the task was stopped by another call).
+- Next concrete step: plan P2.4 (audit log, JSONL) in plan mode and get Karthik's OK.
 
 ### 2026-11-11 — Agent: Claude Code (P2.3 planned, not implemented; handoff)
 
