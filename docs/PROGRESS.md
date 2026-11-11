@@ -11,8 +11,8 @@ Newest session entry goes at the top of the Session log.
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Last completed task: P1.3
-- Next task: P1.4
+- Last completed task: P1.4 (closed without code)
+- Next task: P1.5
 - Tests: `uv run python -m pytest` -> 12 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
@@ -119,6 +119,12 @@ Format: `YYYY-MM-DD — decision — reason — who`
   Shrinking saves 0.5 GB and risks truncating tool schemas plus an 8-call history. RULE: every
   caller must use the same `num_ctx`; a different value makes Ollama reload the model (7.8 s
   measured). — Claude Code
+- 2026-11-11 — P1.4 marked satisfied with no code change. OpenJarvis's orchestrator already
+  sends each tool's JSON schema to Ollama as native function-calling `tools`, and the first
+  eval run got 23/23 arguments right. True schema-constrained output is not available through
+  OpenJarvis (`response_format` maps only to `format: "json"` in `engine/ollama.py`); getting
+  it would mean patching or bypassing its engine. Revisit only if harder evals show argument
+  errors. Arguments are validated again at the bridge anyway (P2). — Karthik
 - 2026-11-11 — P1.3: system prompt lives in `core/config.toml` as
   `[agent] default_system_prompt` (the SDK feeds that into the orchestrator's prompt builder).
   It states the sandbox root, the forbidden categories and "ask when unclear". It shapes
@@ -206,13 +212,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   prompt and temperature in `core/config.toml`. First run: 39/40, see Eval results.
 - Tests run + result: `uv run python -m pytest` -> 12 passed. `uv run python evals/run.py` ->
   39/40.
-- Next concrete step: P1.4, structured output for tool calls "where OpenJarvis allows it".
-  Finding so far: the orchestrator already uses Ollama native function calling (tool schemas
-  sent as `tools`), and arguments were 23/23 correct, so check first whether anything is left
-  to do: read `engine/ollama.py` (`response_format` only maps to `format: "json"`, not a
-  schema) and decide with Karthik whether P1.4 is "already satisfied by native tool calling"
-  or needs schema-constrained output. Then P1.5 (fast-path router for open app / time / stop)
-  and P1.6 (record baseline, optional 9b run: `uv run python evals/run.py --model qwen3.5:9b`).
+- P1.4: closed by decision, no code (see Decisions).
+- Next concrete step: P1.5, deterministic fast-path router before the LLM for the most common
+  commands (open app, time, stop). Suggested shape: one pure function in `core/`, e.g.
+  `route(text) -> (tool_name, args) | None`, exact/regex matches only ("open <app in APPS>",
+  "what time is it", "stop"), returning None for anything else so the LLM handles it. It must
+  only ever return tools from the same allowlist the LLM gets, and its output goes through the
+  bridge/policy like any other tool call. Test with pytest, including near-misses that must
+  NOT match ("open the pod bay doors", "stop the dev server script"). Then P1.6: record
+  baseline, optional `uv run python evals/run.py --model qwen3.5:9b`, and look into the two
+  latency outliers (t01, t03).
 
 <!-- Copy this template for each session, newest on top.
 
