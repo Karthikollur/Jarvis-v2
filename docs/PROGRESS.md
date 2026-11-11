@@ -6,13 +6,13 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.6 (all P0 tasks ticked)
 - Active phase is now P1.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Next task: P1.1 (includes the latency fixes; Karthik approved)
+- Last completed task: P1.1
+- Next task: P1.2 (first add pytest: `uv add --dev pytest`, approved)
 - Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -22,11 +22,11 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- Latency (measured in P0.3, `qwen3.5:4b`, 100% GPU, "reply pong"): cold 90 s, warm 16 s through
-  the OpenJarvis CLI, 10 s direct to Ollama, 4 s is bare CLI start-up. The model thinks before
-  answering (104 tokens generated for a one-word reply) and Ollama loads it with a 16384 context.
-  The 3 s target needs, in P1: thinking off, smaller context, model kept loaded, and core as a
-  long-running process instead of a CLI call per request. Not fixed yet.
+- Keep-alive. Ollama unloads the model after 5 idle minutes; the next request then pays a
+  reload (about 8 s warm disk, up to 90 s after boot). OpenJarvis's Ollama engine cannot send
+  `keep_alive`. Options: (a) Karthik sets the user environment variable `OLLAMA_KEEP_ALIVE=-1`
+  (holds ~3.6 GB VRAM permanently, affects all his Ollama use); (b) the long-running core
+  process pings Ollama every few minutes (decide when that process exists, P2+). No action yet.
 - OpenJarvis logs `Failed to set up rate limiter: No module named 'openjarvis_rust'` on every
   call. The Rust extension is not installed (needs a Rust toolchain = system install). Harmless
   so far; some features (its memory commands) need it. We do not plan to use those.
@@ -103,6 +103,21 @@ Format: `YYYY-MM-DD — decision — reason — who`
   in our code, never model- or user-supplied. — Claude Code
 - 2026-11-11 — `OPENJARVIS_HOME` and `OPENJARVIS_CONFIG` must be set before `import openjarvis`
   (paths resolve at import time). `core/hello_tool.py` shows the pattern. — Claude Code
+- 2026-11-11 — P1.1: `qwen3.5:4b` is the default model (`core/config.toml`, already pulled). No
+  latency config change was needed. Measured warm, in one Python process, "What is the capital
+  of France?": direct Ollama 1.7 s for a full 70-token answer, first token after ~0.3 s,
+  47 tokens/s; OpenJarvis SDK `ask` 1.6 s; `orchestrator` agent 2.9 s; `import openjarvis`
+  1.2 s. The 16 s seen in P0.3 was a measurement artefact: 4 s CLI start-up per call, plus a
+  model reload caused by my own direct call using a different context size, plus thinking left
+  on in that direct call. — Claude Code
+- 2026-11-11 — Thinking: OpenJarvis's Ollama engine already sends `think: false` by default
+  (`engine/ollama.py`). Leave it. With thinking on the same answer took 4.7 s and 208 tokens.
+  Anything that calls Ollama directly must send `"think": false` itself. — Claude Code
+- 2026-11-11 — Context stays at OpenJarvis's default `num_ctx = 16384` (env `JARVIS_NUM_CTX`,
+  unset). Measured: 16384 = 3.6 GB VRAM, 4096 = 3.1 GB, same 47 tokens/s, both 100% GPU.
+  Shrinking saves 0.5 GB and risks truncating tool schemas plus an 8-call history. RULE: every
+  caller must use the same `num_ctx`; a different value makes Ollama reload the model (7.8 s
+  measured). — Claude Code
 - 2026-11-11 — pytest approved as a dev dependency, to be added at P1.2; run it as
   `uv run python -m pytest` — safety/ and evals need real tests — Karthik
 - 2026-11-11 — Latency fixes (thinking off, smaller context, model kept loaded) are part of
@@ -149,11 +164,14 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 - Unfinished work stopped at (exact point): nothing in progress.
 - P0.5: placement decision recorded (native Windows). P0.6: Commands and repo map in AGENTS.md
   filled in.
-- Next concrete step: get the Wi-Fi-off result from Karthik and record it under Current state.
-  If it fails, find which call went out (candidates: PyPI update check, PostHog, HuggingFace
-  via `datasets`) and fix before P1. Then P1.1 (`qwen3.5:4b` is already pulled, so it is
-  config only). Before P1.2, ask Karthik to approve adding pytest and resolve the latency
-  open question (thinking off, context size, keep-alive).
+- P0 gate passed and recorded; `.claude/settings.json` put in place at Karthik's request.
+- P1.1: measured latency (numbers in Decisions). No code or config change was needed.
+- Next concrete step: P1.2. Run `uv add --dev pytest` (approved), then write
+  `evals/commands.yaml`: 40 typed commands with expected tool + arguments, 10 must-refuse,
+  5 ambiguous, against stub tools. Stub tool names should match the P3 tool list in PLAN.md
+  (`list_windows`, `system_stats`, `list_dir`, `read_text_file`, `open_app`, `focus_window`,
+  `create_folder`, `move_file`, `rename_file`, `delete_file`, `run_named_script`). Needs a YAML
+  parser: check whether `pyyaml` (already installed transitively) is acceptable or ask.
 
 <!-- Copy this template for each session, newest on top.
 

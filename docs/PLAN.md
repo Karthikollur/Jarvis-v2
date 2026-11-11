@@ -124,7 +124,7 @@ localhost server, with Wi-Fi off.
 
 ### P1 — Offline brain + eval harness (~2–3 days)
 
-- [ ] P1.1 Pull `qwen3.5:4b`; set as default model.
+- [x] P1.1 Pull `qwen3.5:4b`; set as default model.
 - [ ] P1.2 `evals/commands.yaml`: 40 typed commands with expected tool + arguments, including
       10 that must be refused and 5 ambiguous ones that must trigger a clarifying question.
       Use stub tools.
