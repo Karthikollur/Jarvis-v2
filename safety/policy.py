@@ -137,6 +137,9 @@ class Policy:
     def new_task(self) -> Task:
         return Task(started=self.clock())
 
+    def _out_of_time(self, task: Task) -> bool:
+        return self.clock() - task.started > MAX_SECONDS
+
     def _stop(self, task: Task, reason: str) -> Decision:
         task.stopped = True
         return Decision("deny", reason)
@@ -145,7 +148,7 @@ class Policy:
         """Decide one tool request. Every request counts against the budget, refused or not."""
         if task.stopped:
             return Decision("deny", "task stopped")
-        if self.clock() - task.started > MAX_SECONDS:
+        if self._out_of_time(task):
             return self._stop(task, f"time budget exceeded ({MAX_SECONDS} s)")
         if task.calls >= MAX_CALLS:
             return self._stop(task, f"call budget exceeded ({MAX_CALLS} tool calls)")
@@ -175,8 +178,35 @@ class Policy:
                 return Decision("deny", f"{name}: must be a plain file name")
         tier = Tier.T2 if rule.tier is Tier.T1 and task.tainted else rule.tier
         if tier is Tier.T2:
-            return Decision("confirm", "needs confirmation", tier, paths)
+            reason = "T2" if rule.tier is Tier.T2 else "tainted T1"
+            return Decision("confirm", reason, tier, paths)
         return Decision("allow", "", tier, paths)
+
+    def recheck(
+        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]
+    ) -> str | None:
+        """Re-validate a confirmed action at approve time. None means it may run.
+
+        Does not count against the call budget: the request was counted when it was made.
+        Waiting for the click counts against the time budget. Every path argument must
+        still resolve to exactly the path shown when it was queued, so a junction swapped
+        in while it waited is refused.
+        """
+        if task.stopped:
+            return "task stopped"
+        if self._out_of_time(task):
+            return self._stop(task, f"time budget exceeded ({MAX_SECONDS} s)").reason
+        rule = TOOLS.get(tool)
+        if rule is None:
+            return "unknown tool"
+        for name in rule.path_params:
+            try:
+                now = resolve_inside(args.get(name), self.roots)
+            except PathRefused as refused:
+                return f"{name}: {refused}"
+            if now != paths.get(name):
+                return f"{name}: changed since the request"
+        return None
 
     def record(self, task: Task, tool: str, ok: bool) -> None:
         """Report the outcome of a tool that ran."""

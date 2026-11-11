@@ -16,12 +16,14 @@ Newest session entry goes at the top of the Session log.
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
 - Last completed task: P2.2 (policy engine), done together with audit points 1, 2, 7, 8 from
   the P1 review. The bridge now has three routes: `GET /health`, `POST /task`, `POST /tool`.
-- Next task: P2.3 (confirm queue). Plan approved by Karthik and saved at `docs/plans/P2.3.md`
-  (two commits, A then B); implement it as written, not started. Its approve/deny routes must be `{"ui"}` only in
+- In progress: P2.3 (confirm queue), plan at `docs/plans/P2.3.md`. Commit A done
+  (`safety/confirm.py`: `ConfirmQueue`, `Pending`, `QueueRefused`; `Policy.recheck`; confirm
+  reasons are now `T2` / `tainted T1`; shared test fixtures moved to `tests/conftest.py`).
+  Next: commit B (bridge routes), not started, waiting for Karthik's review of A. The approve/deny routes must be `{"ui"}` only in
   `bridge.app.ROUTE_ROLES`, and must be added to `test_route_table_is_exact`. Today a
   `confirm` decision returns 409 and nothing runs. Plan mode first (touches `bridge/`).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
-- Tests: `uv run python -m pytest` -> 100 passed, 1 skipped (2026-11-11). The skip is the
+- Tests: `uv run python -m pytest` -> 114 passed, 1 skipped (2026-11-11, after P2.3 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -32,6 +34,10 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- P2.3: the queue never evicts. An action whose task ran out of time stays listed (and
+  holds one of the 16 slots) until the UI approves (-> 410) or denies it. Fine while the UI
+  shows them; if stale entries pile up, drop expired ones in `list`/`add`. No action yet.
 
 - P1 review and bridge bypass audit (2026-11-11, newest Session log entry): which of the nine
   points get fixed, and in which task? Also still owed: a real Wi-Fi-off eval run for P1.

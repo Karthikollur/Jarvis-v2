@@ -1,6 +1,5 @@
 import _winapi
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -11,42 +10,12 @@ from safety.policy import (
     MAX_SECONDS,
     TOOLS,
     PathRefused,
-    Policy,
     Tier,
     load_roots,
     resolve_inside,
 )
 
 REPO = Path(__file__).resolve().parents[1]
-
-
-@pytest.fixture
-def dirs():
-    """(root, outside): an allowed root and a sibling folder that is not allowed."""
-    storage = REPO / ".test-storage"
-    storage.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=storage) as directory:
-        root, outside = Path(directory) / "root", Path(directory) / "outside"
-        root.mkdir()
-        outside.mkdir()
-        yield root, outside
-
-
-class Clock:
-    now = 0.0
-
-    def __call__(self) -> float:
-        return self.now
-
-
-@pytest.fixture
-def clock():
-    return Clock()
-
-
-@pytest.fixture
-def policy(dirs, clock):
-    return Policy([dirs[0]], clock)
 
 
 # --- allowed roots ----------------------------------------------------------
@@ -161,7 +130,8 @@ def test_tiers(policy, dirs):
     decision = policy.check(policy.new_task(), "create_folder", inside)
     assert (decision.action, decision.tier) == ("allow", Tier.T1)
     assert decision.paths["path"] == Path(os.path.realpath(root / "a.txt"))
-    assert policy.check(policy.new_task(), "delete_file", inside).action == "confirm"
+    decision = policy.check(policy.new_task(), "delete_file", inside)
+    assert (decision.action, decision.reason) == ("confirm", "T2")
     assert policy.check(policy.new_task(), "run_named_script", {"name": "x"}).action == "confirm"
 
 
@@ -197,7 +167,7 @@ def test_taint_upgrades_t1_to_confirm(policy, dirs):
     policy.record(task, "read_text_file", ok=True)
     assert task.tainted
     decision = policy.check(task, "create_folder", folder)
-    assert (decision.action, decision.tier) == ("confirm", Tier.T2)
+    assert (decision.action, decision.tier, decision.reason) == ("confirm", Tier.T2, "tainted T1")
     assert policy.check(task, "open_app", {"app": "notepad"}).action == "confirm"
     assert policy.check(task, "get_time", {}).action == "allow"  # T0 stays automatic
 
