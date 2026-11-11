@@ -31,7 +31,7 @@ Newest session entry goes at the top of the Session log.
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
-- Uncommitted work: none
+- Uncommitted work: untracked `.claude/settings.local.json` (local agent permissions; preserved untouched and excluded from commits).
 - Blockers: none
 - Run OpenJarvis with (PowerShell, from repo root; both env vars required):
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
@@ -273,6 +273,22 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Codex (P2.4 recovery check)
+
+- Did: read AGENTS.md, PROGRESS.md, active PLAN.md phase and docs/plans/P2.4.md;
+  inspected status, latest ten commits and commit A summary. Commit A completed as
+  3f908b3; no staged or unstaged tracked changes remained to finish or revert.
+- Recovery decision: retain completed commit A. The sole untracked file is
+  .claude/settings.local.json (local permission rules); leave it untouched and uncommitted
+  under AGENTS.md's prohibition on editing agent permissions. No implementation recovery needed.
+- Files changed this session: docs/PROGRESS.md only (current state and this handoff).
+- Tests: uv run python -m pytest -> 127 passed, 1 skipped (symlink privilege),
+  1 existing Starlette/httpx deprecation warning. Cache access required escalation.
+- Stopped at: recovery inspection complete; no safety/ or bridge/ edits. Commit B and C
+  remain unimplemented. Waiting for Karthik's go before B; tests first, one commit, then stop
+  with a diff summary. Next: tests/test_audit.py and safety/audit.py exactly per commit B.
+
 
 ### 2026-11-11 — Agent: Claude Code (P2.3 reviewed, P2.4 planned, not implemented)
 
