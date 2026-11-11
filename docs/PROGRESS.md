@@ -26,6 +26,8 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
+- P1 review and bridge bypass audit (2026-11-11, newest Session log entry): which of the nine
+  points get fixed, and in which task? Also still owed: a real Wi-Fi-off eval run for P1.
 - Keep-alive. Ollama unloads the model after 5 idle minutes; the next request then pays a
   reload (about 8 s warm disk, up to 90 s after boot). OpenJarvis's Ollama engine cannot send
   `keep_alive`. Options: (a) Karthik sets the user environment variable `OLLAMA_KEEP_ALIVE=-1`
@@ -190,6 +192,53 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P1 phase review + bridge bypass audit, read-only)
+
+- Did: start-of-session protocol; P1 "Done when" review against code, tests and fresh eval
+  runs; bypass audit of `safety/` and `bridge/`. No code changed. Karthik reviews before any fix.
+- Runs: `uv run python -m pytest` -> 42 passed. `evals/run.py` -> 39/40, median 1.1 s, max
+  4.8 s. `evals/run.py --no-router` -> 39/40, median 1.3 s, max 4.4 s. Evals with non-loopback
+  connect and DNS blocked in the Python process (scratch wrapper, not in repo) -> 39/40, zero
+  blocked outbound attempts. Only failure in every run: a03, the known scorer false negative.
+- P1 Done-when verdicts:
+  - Tool selection >= 90%: PASS. 25/25 with router and with LLM alone; args 23/23. Only the
+    first tool call is scored; the set is easy.
+  - All must-refuse refused: PASS. 10/10, zero tool calls, all ten replies read and decline.
+    Scorer checks "no tool called" only, not wording.
+  - Latency within targets: PASS, thin margin. Answers 0.5 s and 1.1 s; slowest tool command
+    4.8 s against 5 s (always the first LLM call carrying tool schemas). Stub tools, model
+    pre-warmed: real tool time and cold start are not measured.
+  - Network off: NOT PROVEN. In-process socket guard only; does not cover Ollama's process. No
+    real Wi-Fi-off run for P1. Karthik to do.
+- Bypass audit. `safety/` is empty (`.gitkeep` only): no policy engine, allowed roots, taint,
+  budgets or confirm queue exist. `bridge/` has only `GET /health`, so no action can run today.
+  Points that are open now or open as soon as routes are added:
+  1. `@app.middleware("http")` in `bridge/app.py` does not run for WebSocket routes: a
+     WebSocket endpoint would skip the token and Host checks.
+  2. Loopback is not enforced in code. Bind address comes only from the `--host` flag; the
+     Host check reads a client header and never checks `request.client.host`. Started with
+     `--host 0.0.0.0`, a LAN client sending `Host: 127.0.0.1` passes it; only the token remains.
+  3. `load_token` trusts a pre-existing 64-hex `bridge.token` (fixes ACL, keeps content). No
+     rotation.
+  4. `protect` verifies ACEs but not file ownership; a foreign owner can re-grant access.
+  5. Junction/symlink check covers only the last path component, after `mkdir(parents=True)`.
+  6. The token ACL is per user, not per program: any process running as Karthik can read it.
+  7. No single choke point: routes are plain FastAPI handlers, nothing forces a future tool
+     route through policy, and no test asserts every route is policy-gated.
+  8. If P2.3 approve/deny endpoints use the same token as tool requests, the core process (or
+     anything from point 6) can approve its own T2 actions. Needs a separate UI-only credential.
+  9. `%LOCALAPPDATA%\Jarvis` (token, future quarantine) and this repo's `safety/` and `config/`
+     must be explicitly denied by the allowed-roots check, whatever roots are configured.
+  Outside those folders: core is not wired to the bridge (eval tools are stubs);
+  `core/hello_tool.py` calls `127.0.0.1:8765` with no token and should not survive into P3; the
+  `tools=[...]` list passed to `ask_full` is the only thing keeping OpenJarvis's 56 built-ins
+  from the model and has no dedicated test.
+- Files changed: `docs/PROGRESS.md` only.
+- Unfinished work stopped at: P2.2 planning was started (files read) and parked before any
+  plan was written. Nothing in progress in the tree.
+- Next concrete step: Karthik reviews the nine points and says which to fix and when (1, 2, 7,
+  8 matter most for the P2.2 / P2.3 design). Then P2.2 in plan mode, per CLAUDE.md.
 
 ### 2026-11-11 — Agent: Codex (P2.1 ACL hardening)
 
