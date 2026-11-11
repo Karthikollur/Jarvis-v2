@@ -192,6 +192,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-11 — Agent: Codex (P2.1 planning)
+
+- Did: read AGENTS.md, CLAUDE.md, the handoff, and PLAN.md; inspected git status and the
+  last ten commits. Claude left a clean tree at `10da79a`; no interrupted changes to recover.
+- Files changed: `docs/PROGRESS.md` only, to record this handoff.
+- Tests run + result: `uv run python -m pytest` -> 36 passed. The initial sandbox attempt
+  could not initialize uv's cache; access was approved and the resumed run passed.
+- Unfinished work stopped at (exact point): P2.1 design prepared, awaiting Karthik's approval
+  before bridge edits or adding FastAPI and uvicorn. No dependencies added or bridge code written.
+- Next concrete step: approve P2.1: loopback-only FastAPI service, authenticated health route,
+  strict Host validation and no CORS, persistent random token protected by a current-user-only
+  Windows ACL, with refusal tests for missing/wrong tokens and unsafe hosts and ACL failures.
+  Test token storage in repo-local temporary directories; production storage remains the
+  planned `%LOCALAPPDATA%\Jarvis` location and is not created during this planning session.
+
 ### 2026-11-11 — Agent: Claude Code (first session: P0.1 to P1.6)
 
 Read this entry, then Current state above, then AGENTS.md "Commands". Reasons for everything
