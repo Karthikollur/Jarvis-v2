@@ -5,10 +5,16 @@ import tempfile
 from unittest.mock import patch
 
 import pytest
+from fastapi import WebSocket
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from bridge.app import create_app, load_token
 from bridge import app as bridge_app
+
+BASE = "http://127.0.0.1:8765"
+LOOPBACK = ("127.0.0.1", 50000)
+LAN_PEER = ("192.168.1.5", 50000)
 
 
 @pytest.fixture
@@ -28,7 +34,7 @@ def test_real_acl_and_persistence(storage):
 def test_health_and_refusals(storage):
     app = create_app(storage)
     headers = {"x-jarvis-token": load_token(storage)}
-    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+    with TestClient(app, base_url=BASE, client=LOOPBACK) as client:
         assert client.get("/health").status_code == 401
         assert client.get("/health", headers={"x-jarvis-token": "wrong"}).status_code == 401
         response = client.get("/health", headers=headers)
@@ -38,6 +44,40 @@ def test_health_and_refusals(storage):
             assert client.get("/health", headers={**headers, "host": host}).status_code == 400
         for route in ["/docs", "/openapi.json", "/tools"]:
             assert client.get(route, headers=headers).status_code == 404
+
+
+def test_non_loopback_peer_refused(storage):
+    app = create_app(storage)
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LAN_PEER) as client:
+        assert client.get("/health", headers=headers).status_code == 403
+
+
+def test_websocket_goes_through_auth(storage):
+    app = create_app(storage)
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_text("in")
+        await websocket.close()
+
+    good = {"x-jarvis-token": load_token(storage)}
+    url = "ws://127.0.0.1:8765/ws"  # TestClient ignores base_url for WebSockets
+
+    def refused(client, headers):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(url, headers=headers):
+                pass
+
+    with TestClient(app, base_url=BASE, client=LOOPBACK) as client:
+        with client.websocket_connect(url, headers=good) as connection:
+            assert connection.receive_text() == "in"
+        refused(client, {})
+        refused(client, {"x-jarvis-token": "wrong"})
+        refused(client, {**good, "host": "evil.example"})
+    with TestClient(app, base_url=BASE, client=LAN_PEER) as client:
+        refused(client, good)
 
 
 def test_acl_failure_stops_startup(storage):

@@ -9,8 +9,9 @@ import secrets
 import subprocess
 import tempfile
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from starlette.datastructures import Headers
 
 
 def _run(*args: str) -> str:
@@ -70,21 +71,50 @@ def load_token(storage: Path) -> str:
     return token
 
 
+class Authenticate:
+    """Peer address, Host and token checks for every HTTP and WebSocket request."""
+
+    def __init__(self, app, token: str) -> None:
+        self.app = app
+        self.token = token
+
+    def refusal(self, scope) -> tuple[int, str] | None:
+        # The peer check holds even if the server is wrongly bound to another interface.
+        client = scope.get("client")
+        if not client or client[0] != "127.0.0.1":
+            return 403, "Forbidden"
+        headers = Headers(scope=scope)
+        hosts = headers.getlist("host")
+        if len(hosts) != 1 or not re.fullmatch(r"127\.0\.0\.1(?::[0-9]{1,5})?", hosts[0]):
+            return 400, "Invalid host"
+        tokens = headers.getlist("x-jarvis-token")
+        if len(tokens) != 1 or not hmac.compare_digest(tokens[0].encode(), self.token.encode()):
+            return 401, "Unauthorized"
+        return None
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "lifespan":
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] not in ("http", "websocket"):
+            return  # unknown scope type: fail closed
+        refused = self.refusal(scope)
+        if refused is None:
+            await self.app(scope, receive, send)
+        elif scope["type"] == "websocket":
+            await receive()  # websocket.connect
+            await send({"type": "websocket.close", "code": 1008})
+        else:
+            response = JSONResponse({"detail": refused[1]}, status_code=refused[0])
+            await response(scope, receive, send)
+
+
 def create_app(storage: Path | None = None) -> FastAPI:
     if storage is None:
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
     token = load_token(storage)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-
-    @app.middleware("http")
-    async def authenticate(request: Request, call_next):
-        hosts = request.headers.getlist("host")
-        if len(hosts) != 1 or not re.fullmatch(r"127\.0\.0\.1(?::[0-9]{1,5})?", hosts[0]):
-            return JSONResponse({"detail": "Invalid host"}, status_code=400)
-        tokens = request.headers.getlist("x-jarvis-token")
-        if len(tokens) != 1 or not hmac.compare_digest(tokens[0].encode(), token.encode()):
-            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
-        return await call_next(request)
+    app.add_middleware(Authenticate, token=token)
 
     @app.get("/health")
     async def health():

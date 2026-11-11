@@ -14,9 +14,13 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.1
-- Next task: P2.2 (policy engine).
-- Tests: `uv run python -m pytest` -> 42 passed (2026-11-11). Evals:
+- Last completed task: P2.1, plus its follow-up for audit points 1 and 2 (auth is now one ASGI
+  middleware covering HTTP and WebSocket, and refuses any peer address other than `127.0.0.1`).
+- Next task: P2.2, approved plan in four commits: A auth follow-up (done), B policy engine in
+  `safety/policy.py` + `config/allowed_roots.toml`, C single `POST /tool` dispatch route
+  through policy (audit point 7), D separate UI token and per-route roles (audit point 8).
+  Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
+- Tests: `uv run python -m pytest` -> 44 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
