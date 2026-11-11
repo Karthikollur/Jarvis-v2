@@ -21,7 +21,7 @@ Newest session entry goes at the top of the Session log.
 - Next task: P2.4 (audit log, JSONL). Plan approved by Karthik and saved at
   `docs/plans/P2.4.md`: three commits, A (P2.3 follow-up: expire timed-out pending actions),
   B (`safety/audit.py`), C (bridge writes the log, tick P2.4). Not started. The plan also
-  holds the review of the P2.3 commits and four decisions still open for Karthik.
+  holds the review of the P2.3 commits. Its four decisions are answered (see Decisions).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
 - Tests: `uv run python -m pytest` -> 123 passed, 1 skipped (2026-11-11, after P2.3). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
@@ -35,10 +35,6 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- P2.4 plan, "Decisions needed from Karthik" (`docs/plans/P2.4.md`): (1) confirm waiting time
-  counts against the 120 s; (2) results in the audit log cut to 2000 characters, full, or
-  none; (3) two PLAN.md additions: task lifecycle/eviction in P3, a concurrency test in P2.7
-  (`Policy`/`Task` have no lock); (4) audit point 9 in P2.6 or pulled into P2.4.
 
 - P2.3: the queue never evicts. An action whose task ran out of time stays listed (and
   holds one of the 16 slots) until the UI approves (-> 410) or denies it, and `/outcome`
@@ -77,6 +73,18 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-11 — Waiting for a confirmation click counts against the task's 120 s (confirms the
+  P2.3 default) — a forgotten dialog must not approve a stale action later — Karthik
+- 2026-11-11 — Audit log results are cut to 2000 characters; a cut entry records
+  `truncated: true` and the original length. Args are logged in full — `read_text_file`
+  returns whole files; args are what was approved — Karthik
+- 2026-11-11 — PLAN.md changed: P3.6 added (task lifecycle; evict finished tasks and
+  outcomes); P2.7 gains "concurrent calls cannot exceed a budget" — `tasks`/`outcomes` grow
+  without bound and `Policy`/`Task` have no lock; neither belongs in P2.4 — Karthik
+- 2026-11-11 — Audit point 9 is done in P2.6, not P2.4, and PLAN.md now blocks P3 until it is
+  done and tested — the audit log and quarantine both live in `%LOCALAPPDATA%\Jarvis`, which
+  no tool may reach before real tools exist — Karthik
 
 - 2026-11-11 — P2.3 confirm queue. Flow: core `POST /tool` -> `confirm` -> 202
   `{pending_id}`, nothing runs; ui `GET /pending` lists id, task, tool, raw args, resolved

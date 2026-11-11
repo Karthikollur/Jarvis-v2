@@ -147,16 +147,20 @@ targets, network off.
 - [x] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
 - [ ] P2.4 Audit log (JSONL).
 - [ ] P2.5 Kill switch endpoint + global hotkey listener.
-- [ ] P2.6 Quarantine + undo records.
+- [ ] P2.6 Quarantine + undo records. Includes audit point 9 (PROGRESS.md, P1 review): the
+      allowed-roots check refuses `%LOCALAPPDATA%\Jarvis` (tokens, audit log, quarantine) and
+      this repo's `safety/` and `config/`, whatever roots are configured, with tests.
 - [ ] P2.7 Tests: path traversal (`..\`, absolute, junction, UNC), missing/wrong token, budget
-      breach, tainted T1 upgraded to T2, kill switch mid-task.
+      breach, tainted T1 upgraded to T2, kill switch mid-task, concurrent calls cannot exceed a
+      budget (`Policy`/`Task` need a lock).
 
 **Done when:** all tests pass; a fake tool cannot act outside the sandbox or without a token by
 any tested route. Karthik has reviewed the diff.
 
 ### P3 — Windows control tools (~1 week)
 
-Before starting: restore point created; P2 reviewed.
+Before starting: restore point created; P2 reviewed. P3 cannot start until audit point 9
+(see P2.6) is done and tested.
 
 - [ ] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
       `read_text_file` (size cap).
@@ -166,6 +170,8 @@ Before starting: restore point created; P2 reviewed.
       `config/scripts.toml`).
 - [ ] P3.4 Prefer CLIs and app APIs (e.g. `code <path>`) over UI clicking; pywinauto only where needed.
 - [ ] P3.5 Register tools in core; rerun evals against real tools in the sandbox.
+- [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
+      (history stays in the audit log).
 
 **Done when:** "Open VS Code on my sandbox project and sort the test downloads folder by file
 type" completes, every step appears in the audit log, and undo restores the folder.
