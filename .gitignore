@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# UI
+node_modules/
+ui/dist/
+ui/src-tauri/target/
+
+# Secrets (there should be none)
+.env
+.env.*
+
+# Reference clone of upstream OpenJarvis (its own git repo, not ours)
+OpenJarvis/
+
+# Starter bundle leftovers
+files/
+*.zip
