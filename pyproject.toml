@@ -14,3 +14,12 @@ members = [
 
 [tool.uv.sources]
 openjarvis = { workspace = true, editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pyyaml>=6.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # keep pytest out of the OpenJarvis/ clone

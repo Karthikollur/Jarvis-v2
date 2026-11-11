@@ -11,9 +11,9 @@ Newest session entry goes at the top of the Session log.
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Last completed task: P1.1
-- Next task: P1.2 (first add pytest: `uv add --dev pytest`, approved)
-- Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
+- Last completed task: P1.2
+- Next task: P1.3
+- Tests: `uv run python -m pytest` -> 5 passed (2026-11-11). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
 - Blockers: none
@@ -118,6 +118,20 @@ Format: `YYYY-MM-DD — decision — reason — who`
   Shrinking saves 0.5 GB and risks truncating tool schemas plus an 8-call history. RULE: every
   caller must use the same `num_ctx`; a different value makes Ollama reload the model (7.8 s
   measured). — Claude Code
+- 2026-11-11 — P1.2: eval set is `evals/commands.yaml` (23 tool cases, 2 plain-answer cases,
+  10 must-refuse, 5 must-clarify). Stub tools live in `evals/stub_tools.py`: 13 tools named
+  after the P3 tool list plus `get_time` and `recall_memory`, each recording calls in
+  `stub_tools.CALLS`. `open_app` and `run_named_script` take enum parameters (allowlists), so
+  an unlisted app or script is not even expressible. — Claude Code
+- 2026-11-11 — Our tool names must never collide with OpenJarvis built-ins: its registry raises
+  `ValueError` on a duplicate key and `memory_search`, `file_read`, `file_write`, `shell_exec`,
+  `http_request`, `web_search`, `think`, `calculator` (56 in total) are taken. Hence
+  `recall_memory`. — Claude Code
+- 2026-11-11 — `core/openjarvis_env.py` sets `OPENJARVIS_HOME` / `OPENJARVIS_CONFIG`; import it
+  before anything from `openjarvis`. — Claude Code
+- 2026-11-11 — pytest and PyYAML added as dev dependencies (`[dependency-groups] dev`); PyYAML
+  was already installed transitively. `[tool.pytest.ini_options] testpaths = ["tests"]` keeps
+  pytest out of the `OpenJarvis/` clone. — Karthik approved both
 - 2026-11-11 — pytest approved as a dev dependency, to be added at P1.2; run it as
   `uv run python -m pytest` — safety/ and evals need real tests — Karthik
 - 2026-11-11 — Latency fixes (thinking off, smaller context, model kept loaded) are part of
@@ -166,12 +180,19 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   filled in.
 - P0 gate passed and recorded; `.claude/settings.json` put in place at Karthik's request.
 - P1.1: measured latency (numbers in Decisions). No code or config change was needed.
-- Next concrete step: P1.2. Run `uv add --dev pytest` (approved), then write
-  `evals/commands.yaml`: 40 typed commands with expected tool + arguments, 10 must-refuse,
-  5 ambiguous, against stub tools. Stub tool names should match the P3 tool list in PLAN.md
-  (`list_windows`, `system_stats`, `list_dir`, `read_text_file`, `open_app`, `focus_window`,
-  `create_folder`, `move_file`, `rename_file`, `delete_file`, `run_named_script`). Needs a YAML
-  parser: check whether `pyyaml` (already installed transitively) is acceptable or ask.
+- P1.2: `evals/commands.yaml`, `evals/stub_tools.py`, `core/openjarvis_env.py`,
+  `tests/test_eval_set.py` (5 tests: counts, unique ids, args fit schemas, every stub used,
+  stubs register and record). Nothing has been run against the model yet.
+- Tests run + result: `uv run python -m pytest` -> 5 passed.
+- Next concrete step: P1.3, `evals/run.py`. For each case: clear `stub_tools.CALLS`, call
+  `Jarvis.ask_full(say, agent="orchestrator", tools=list(SPECS), context=False)`, time it, then
+  score. tool: first call's name matches, and args match when `args` is present (compare paths
+  case-insensitively with slashes normalised). answer/refuse/clarify: `CALLS` is empty;
+  clarify additionally needs a `?` in the reply. Telling refuse from clarify from answer by
+  text is fuzzy: keep it simple (no calls = pass for refuse) and report the replies for manual
+  review. Needs a system prompt naming the sandbox (`C:\JarvisSandbox`) and the refusal rules;
+  put it in `core/` and load via `[agent] system_prompt_path` or pass through the SDK. Report
+  tool-selection accuracy, argument accuracy, refusal correctness, median latency.
 
 <!-- Copy this template for each session, newest on top.
 

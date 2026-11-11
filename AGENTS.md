@@ -101,8 +101,8 @@ Commands:
   `& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv; uv sync`
 - Python env, afterwards: `uv sync`
 - Check Ollama and models: `ollama list` (needs `qwen3.5:4b`)
-- Tests (P0): `uv run python core/hello_tool.py` — must print `OK`; needs Ollama running
-- Tests (from P1/P2, once pytest is approved and added): `uv run python -m pytest`
+- Tests: `uv run python -m pytest` (only `tests/`; fast, no model needed)
+- Live smoke test: `uv run python core/hello_tool.py` — must print `OK`; needs Ollama running
 - Evals (from P1): `uv run python evals/run.py`
 - OpenJarvis CLI, for debugging only (core uses the Python SDK):
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
