@@ -35,3 +35,25 @@ def clock():
 @pytest.fixture
 def policy(dirs, clock):
     return Policy([dirs[0]], clock)
+
+
+class FakeListener:
+    def __init__(self, combo, callback):
+        self.combo, self.callback, self.closed = combo, callback, False
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def fake_hotkey(monkeypatch):
+    """The suite never grabs a real global hotkey. Returns the listeners the bridge made.
+    tests/test_hotkey.py imported the real `listen` before this runs."""
+    made = []
+
+    def listen(combo, callback):
+        made.append(FakeListener(combo, callback))
+        return made[-1]
+
+    monkeypatch.setattr("bridge.hotkey.listen", listen)
+    return made

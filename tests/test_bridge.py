@@ -795,6 +795,42 @@ def test_stop_mid_task(storage, clock):
         assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
 
 
+def test_hotkey_from_config_stops_tasks(storage, fake_hotkey):
+    app = create_app(storage, roots=[])  # default: hotkey from config/hotkey.toml
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        (listener,) = fake_hotkey
+        assert listener.combo == "Ctrl+Alt+End"
+        task = new_task(client)
+        assert listener.callback() == {"stopped": 1, "cancelled": 0, "logged": True}
+        assert call(client, task, "get_time").json()["detail"] == "task stopped"
+        assert not listener.closed
+    assert listener.closed  # shutdown releases the hotkey
+    lines = map(json.loads, (storage / "audit.jsonl").read_text(encoding="utf-8").splitlines())
+    assert [line["source"] for line in lines if line["event"] == "stop"] == ["hotkey"]
+
+
+def test_bridge_refuses_to_start_without_hotkey(storage, monkeypatch):
+    def taken(combo, callback):
+        raise RuntimeError(f"hotkey {combo} could not be registered")
+
+    monkeypatch.setattr("bridge.hotkey.listen", taken)
+    app = create_app(storage, roots=[])
+    with pytest.raises(RuntimeError, match="could not be registered"):
+        with TestClient(app, base_url=BASE, client=LOOPBACK):
+            pass
+
+
+def test_bad_hotkey_refused_at_create(storage):
+    with pytest.raises(ValueError):
+        create_app(storage, roots=[], hotkey="End")
+
+
+def test_hotkey_none_starts_no_listener(storage, fake_hotkey):
+    with TestClient(create_app(storage, roots=[], hotkey=None), base_url=BASE, client=LOOPBACK):
+        assert fake_hotkey == []
+
+
 def test_stop_between_recheck_and_handler(sandbox):
     """An approve already past recheck when Stop lands must not run."""
     client, root, outside = sandbox

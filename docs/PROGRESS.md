@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 to P2.4 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 to P2.5 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,23 +14,20 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.4 (audit log, plan `docs/plans/P2.4.md`, implemented in three
-  commits). The bridge (seven routes: `GET /health`; core: `POST /task`, `POST /tool`,
-  `POST /outcome`; ui only: `GET /pending`, `POST /approve`, `POST /deny`) now writes
-  `%LOCALAPPDATA%\Jarvis\audit.jsonl` before every action: events `start`, `task`,
-  `request`, `queued`, `approve`, `deny`, `expired`, `result`, `forbidden`. A failed write
-  before an action -> 500 `Audit log unavailable` and the action does not run. Timed-out
-  pending actions expire on their own (P2.3 follow-up). Details under Decisions.
-- In progress: P2.5 (kill switch), plan `docs/plans/P2.5.md`, two commits.
-  A (`P2.5: kill switch endpoint`) DONE: `POST /stop` (roles core and ui) calls the single
-  inner `stop(source)` in `create_app`: marks every task stopped, `ConfirmQueue.clear()`
-  (now returns what it dropped) and gives each dropped action outcome `cancelled`
-  (approve/deny on it -> 410), then writes a `stop` audit line (`source` = role, `tasks`,
-  `cancelled` ids). Stops before logging; a failed write answers 200 `logged: false`.
-  `execute()` refuses a stopped task right before the handler (403, outcome and `result`
-  line `cancelled`). New tasks are accepted straight after. Next: B (global hotkey, tick P2.5). Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay
-  open; 9 is in P2.6 and blocks P3.
-- Tests: `uv run python -m pytest` -> 154 passed, 1 skipped (2026-11-11, after P2.5 commit A). The skip is the
+- Last completed task: P2.5 (kill switch, plan `docs/plans/P2.5.md`, implemented in two
+  commits). Bridge routes: `GET /health`; core: `POST /task`, `POST /tool`,
+  `POST /outcome`; ui only: `GET /pending`, `POST /approve`, `POST /deny`; both:
+  `POST /stop`. `/stop` and the global hotkey (`config/hotkey.toml`, default
+  `Ctrl+Alt+End`, registered at bridge start; the bridge refuses to start if it cannot be
+  registered) call one `stop()`: every task stopped, every pending action `cancelled`, a
+  `stop` audit line written after stopping. The audit log (P2.4) records every request,
+  decision and result before it happens. Details under Decisions.
+- Next task: P2.6 (quarantine + undo records, includes audit point 9, which blocks P3). Not
+  planned yet; plan mode first (CLAUDE.md). Then P2.7. Audit points 3, 4, 5, 6 (session log,
+  P1 review entry) stay open.
+- Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
+  creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
+- Tests: `uv run python -m pytest` -> 179 passed, 1 skipped (2026-11-11, after P2.5). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -74,6 +71,28 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-11 — P2.5 kill switch. One inner `stop(source)` in `bridge/app.py` is the only
+  stop path, reached by `POST /stop` (roles core and ui; core relays a spoken "stop") and
+  the global hotkey (source `hotkey`). It marks every task stopped, clears the confirm
+  queue (outcome `cancelled`, approve/deny then 410), then writes a `stop` audit line. It
+  stops BEFORE logging: the one exception to write-before-run, because stopping only
+  prevents actions; a failed write answers 200 `logged: false`. No halted state: new tasks
+  are accepted at once. `execute()` refuses a stopped task right before the handler (403,
+  `cancelled`). — Karthik chose the four behaviours; Claude Code, plan approved by Karthik
+- 2026-11-11 — Hotkey: `bridge/hotkey.py`, stdlib `ctypes` (`RegisterHotKey` +
+  `GetMessageW` on a daemon thread, `MOD_NOREPEAT`), no dependency. Combo in
+  `config/hotkey.toml` (`stop = "Ctrl+Alt+End"`), at least one modifier; keys A-Z, 0-9,
+  F1-F24, End, Home, Pause, Insert, Delete, Esc. Registered in the FastAPI lifespan, so the
+  AGENTS.md start command is unchanged and the bridge does not start if the combo is
+  taken. A callback that raises is printed and the listener keeps going. `create_app(...,
+  hotkey=None)` runs without it (tests only); `tests/conftest.py` fakes `listen` for the
+  whole suite so tests never grab a real hotkey. — Claude Code, plan approved by Karthik
+- 2026-11-11 — P2.5 limits: a handler that is already running is not interrupted (Stop
+  prevents everything after it; P3 handlers must be short or killable, P6 wants Stop within
+  1 s). `Policy`/`Task` have no lock yet (P2.7): a `/tool` racing Stop can queue an action
+  on a stopped task, which approve's recheck refuses. Any same-user process can press the
+  hotkey or call `/stop`; that only stops things. — Claude Code
 
 - 2026-11-11 — P2.4 audit log. `safety/audit.py` `AuditLog.write(event, **fields)`
   appends one JSON line `{"ts": UTC ISO, "event", ...}`; no edit/truncate/delete method;
@@ -303,6 +322,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P2.5 kill switch, implemented)
+
+- Did: P2.5 planned (Karthik answered four questions), plan saved as `docs/plans/P2.5.md`
+  (`ebf6901`), then two commits:
+  A. `P2.5: kill switch endpoint` (`5b06f43`) — `POST /stop`, `stop()`, `cancelled`
+     outcome, stopped check in `execute()`, `ConfirmQueue.clear()` returns what it dropped.
+  B. `P2.5: global hotkey listener` — `bridge/hotkey.py`, `config/hotkey.toml`, lifespan
+     wiring, fake listener in `tests/conftest.py`. P2.5 ticked, plan marked Implemented.
+- Files changed: `safety/confirm.py`, `bridge/app.py`, `bridge/hotkey.py`,
+  `config/hotkey.toml`, `tests/conftest.py`, `tests/test_confirm.py`, `tests/test_bridge.py`,
+  `tests/test_hotkey.py`, `docs/PLAN.md`, `docs/plans/P2.5.md`, `docs/PROGRESS.md`.
+  No new dependencies.
+- Tests: `rtk proxy uv run python -m pytest` -> 179 passed, 1 skipped (symlink privilege).
+  `tests/test_hotkey.py` registers a REAL global hotkey (`Ctrl+Alt+Shift+F24`) for a moment
+  and posts `WM_HOTKEY` to its thread; no key is pressed. Mutation checks: A — without
+  `task.stopped` in `stop()` and the `execute()` check, 5 tests fail; B — without the
+  listener in the lifespan and without the callback guard, 3 tests fail. Restored, green.
+- Not done: real bridge start and a real `Ctrl+Alt+End` press (Karthik). Evals not rerun.
+- Unfinished: none.
+- Next concrete step: plan P2.6 (quarantine + undo records + audit point 9) in plan mode.
 
 ### 2026-11-11 — Agent: Claude Code (P2.4 audit log, implemented)
 

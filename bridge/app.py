@@ -1,6 +1,7 @@
 """Run: uv run python -m uvicorn bridge.app:create_app --factory --host 127.0.0.1 --port 8765 --no-access-log"""
 
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 import csv
 import hmac
 import os
@@ -18,6 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
+from bridge import hotkey as hotkeys
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue, QueueRefused
 from safety.policy import Policy, Task, load_roots
@@ -153,17 +155,27 @@ class PendingRequest(BaseModel):
     pending_id: str
 
 
+CONFIG = Path(__file__).resolve().parent.parent / "config"
+FROM_CONFIG: Any = object()  # default for `hotkey`: read config/hotkey.toml
+
+
 def create_app(
     storage: Path | None = None,
     roots: list[Path] | None = None,
     handlers: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    hotkey: str | None = FROM_CONFIG,
 ) -> FastAPI:
-    """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it."""
+    """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it.
+    `hotkey` is the kill-switch combo; None (tests only) runs without one."""
     if storage is None:
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
     if roots is None:
-        roots = load_roots(Path(__file__).resolve().parent.parent / "config" / "allowed_roots.toml")
+        roots = load_roots(CONFIG / "allowed_roots.toml")
+    if hotkey is FROM_CONFIG:
+        hotkey = hotkeys.load(CONFIG / "hotkey.toml")
+    elif hotkey is not None:
+        hotkeys.parse(hotkey)
     tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
     audit_path = storage / "audit.jsonl"
     if audit_path.is_symlink() or audit_path.is_junction():
@@ -177,7 +189,17 @@ def create_app(
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(_app):
+        # A combo that cannot be registered raises here: the bridge does not start.
+        listener = hotkeys.listen(hotkey, lambda: stop("hotkey")) if hotkey else None
+        try:
+            yield
+        finally:
+            if listener:
+                listener.close()
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.add_middleware(Authenticate, tokens=tokens, audit=audit)
 
     def log(event: str, **fields: Any) -> bool:

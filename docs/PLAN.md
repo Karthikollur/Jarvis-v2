@@ -146,7 +146,7 @@ targets, network off.
       taint flag, budgets.
 - [x] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
 - [x] P2.4 Audit log (JSONL).
-- [ ] P2.5 Kill switch endpoint + global hotkey listener.
+- [x] P2.5 Kill switch endpoint + global hotkey listener.
 - [ ] P2.6 Quarantine + undo records. Includes audit point 9 (PROGRESS.md, P1 review): the
       allowed-roots check refuses `%LOCALAPPDATA%\Jarvis` (tokens, audit log, quarantine) and
       this repo's `safety/` and `config/`, whatever roots are configured, with tests.

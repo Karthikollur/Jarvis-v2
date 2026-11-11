@@ -1,0 +1,5 @@
+# Global kill-switch hotkey (P2.5). Pressing it stops every task and cancels every
+# pending confirmation. Format: modifiers + key, e.g. "Ctrl+Alt+End". At least one of
+# Ctrl, Alt, Shift, Win. Keys: A-Z, 0-9, F1-F24, End, Home, Pause, Insert, Delete, Esc.
+# If another program holds the combo, the bridge refuses to start: pick another one here.
+stop = "Ctrl+Alt+End"
