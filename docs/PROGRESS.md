@@ -24,9 +24,12 @@ Newest session entry goes at the top of the Session log.
   every pending action whose task is out of time to outcome `expired` (frees its slot);
   `/approve` labels `expired` (410) by `out_of_time`, not by string match; `/approve` and
   `/deny` on an expired id answer 410; `/outcome` answers `pending` while an approved
-  handler runs. Next: B (`safety/audit.py`), then C (bridge writes the log, tick P2.4).
+  handler runs. B (`P2.4: audit log (safety)`) DONE: `safety/audit.py`, `AuditLog(path,
+  wall).write(event, **fields)` appends one JSON line (`ts` UTC ISO, `event`, fields) under a
+  lock, newline-escaped, OSError propagates; `result` logged as text, cut at 2000 chars with
+  `truncated`/`length`. Not wired into the bridge yet. Next: C (bridge writes the log, tick P2.4).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
-- Tests: `uv run python -m pytest` -> 127 passed, 1 skipped (2026-11-11, after P2.4 commit A). The skip is the
+- Tests: `uv run python -m pytest` -> 136 passed, 1 skipped (2026-11-11, after P2.4 commit B). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
