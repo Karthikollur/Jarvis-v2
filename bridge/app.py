@@ -13,7 +13,7 @@ import time
 from typing import Any
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
@@ -90,6 +90,7 @@ ROUTE_ROLES: dict[str, set[str]] = {
     "/pending": {"ui"},
     "/approve": {"ui"},
     "/deny": {"ui"},
+    "/stop": {"core", "ui"},  # stopping is the safe direction; core relays a spoken "stop"
 }
 
 
@@ -122,6 +123,7 @@ class Authenticate:
         if roles[0] not in ROUTE_ROLES.get(scope["path"], ()):
             self.audit.write("forbidden", role=roles[0], path=scope["path"])
             return 403, "Forbidden"
+        scope.setdefault("state", {})["role"] = roles[0]  # read by /stop for the audit line
         return None
 
     async def __call__(self, scope, receive, send) -> None:
@@ -197,7 +199,10 @@ def create_app(
         always after the policy said yes and that was logged. Logs the result.
         Returns (response, outcome)."""
         handler = handlers.get(tool)
-        if handler is None:
+        if task.stopped:  # Stop landed after the policy check (e.g. an approve past recheck)
+            response = JSONResponse({"detail": "task stopped"}, status_code=403)
+            outcome = logged = {"status": "cancelled"}
+        elif handler is None:
             response = JSONResponse({"detail": "Tool not implemented"}, status_code=501)
             outcome, logged = {"status": "failed"}, {"status": "not_implemented"}
         else:
@@ -231,9 +236,25 @@ def create_app(
         return True
 
     def unknown_pending(pending_id: str) -> JSONResponse:
-        if outcomes.get(pending_id, {}).get("status") == "expired":
-            return JSONResponse({"detail": "Pending action expired"}, status_code=410)
+        status = outcomes.get(pending_id, {}).get("status")
+        if status in ("expired", "cancelled"):
+            return JSONResponse({"detail": f"Pending action {status}"}, status_code=410)
         return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+
+    def stop(source: str) -> dict[str, Any]:
+        """Kill switch: stop every task and cancel every pending action. The only stop path.
+        Stops FIRST, logs after: stopping must never depend on the audit log (the one
+        exception to write-before-run, since it only prevents actions)."""
+        stopped = 0
+        for task in list(tasks.values()):
+            if not task.stopped:
+                task.stopped = True
+                stopped += 1
+        dropped = queue.clear()
+        for pending in dropped:
+            outcomes[pending.id] = {"status": "cancelled"}
+        logged = log("stop", source=source, tasks=stopped, cancelled=[p.id for p in dropped])
+        return {"stopped": stopped, "cancelled": len(dropped), "logged": logged}
 
     @app.post("/task")
     def new_task():
@@ -344,6 +365,10 @@ def create_app(
         if any(p.id == request.pending_id for p in queue.list()):
             return {"status": "pending"}
         return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+
+    @app.post("/stop")
+    def stop_route(request: Request):
+        return stop(request.state.role)
 
     @app.get("/health")
     async def health():

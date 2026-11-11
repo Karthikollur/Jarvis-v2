@@ -16,6 +16,7 @@ import json
 from bridge.app import create_app, load_token
 from bridge import app as bridge_app
 from safety.audit import AuditLog
+from safety.policy import Policy
 
 BASE = "http://127.0.0.1:8765"
 LOOPBACK = ("127.0.0.1", 50000)
@@ -195,6 +196,7 @@ def test_route_table_is_exact(storage):
         ("POST", "/approve"),
         ("POST", "/deny"),
         ("POST", "/outcome"),
+        ("POST", "/stop"),
     }
     assert {path for _, path in table} == set(bridge_app.ROUTE_ROLES)
 
@@ -700,3 +702,116 @@ def test_audit_every_result_was_authorised(sandbox, clock):
             assert before["decision"] == "allow"
         else:
             assert before["recheck"] == "ok" and before["pending_id"] == log[i]["pending_id"]
+
+
+# --- kill switch (P2.5) ------------------------------------------------------
+
+
+def stop(client, headers=None):
+    return client.post("/stop", headers=headers)
+
+
+def test_stop_stops_live_tasks_and_new_tasks_work(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert call(client, task, "get_time").status_code == 200
+    response = stop(client, ui_headers(root))
+    assert response.json() == {"stopped": 1, "cancelled": 0, "logged": True}
+    refused = call(client, task, "create_folder", path=str(root / "new"))
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert not (root / "new").exists()
+    # No halted state: a new task runs straight away.
+    assert call(client, new_task(client), "get_time").json() == {"result": "now"}
+    assert stop(client).json() == {"stopped": 1, "cancelled": 0, "logged": True}
+    assert stop(client).json() == {"stopped": 0, "cancelled": 0, "logged": True}  # harmless
+
+
+def test_stop_cancels_pending_actions(sandbox):
+    client, root, outside = sandbox
+    first, first_id = queue_delete(client, root, "a.txt")
+    second, second_id = queue_delete(client, root, "b.txt")
+    assert stop(client).json() == {"stopped": 2, "cancelled": 2, "logged": True}
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    assert outcome(client, first_id).json() == {"status": "cancelled"}
+    assert approve(client, root, first_id).status_code == 410
+    assert deny(client, root, second_id).status_code == 410
+    assert outcome(client, second_id).json() == {"status": "cancelled"}
+    assert first.exists() and second.exists()
+
+
+def test_stop_open_to_both_roles_only_with_token(sandbox):
+    client, root, outside = sandbox
+    assert stop(client).status_code == 200  # core
+    assert stop(client, ui_headers(root)).status_code == 200
+    assert stop(client, {"x-jarvis-token": "wrong"}).status_code == 401
+    bare = TestClient(client.app, base_url=BASE, client=LOOPBACK)
+    assert bare.post("/stop").status_code == 401
+    assert client.get("/stop").status_code == 405
+
+
+def test_stop_is_audited(sandbox):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    stop(client, ui_headers(root))
+    line = audit(root)[-1]
+    assert (line["event"], line["source"], line["tasks"], line["cancelled"]) == (
+        "stop", "ui", 1, [pending_id],
+    )
+    stop(client)
+    assert (audit(root)[-1]["source"], audit(root)[-1]["tasks"]) == ("core", 0)
+    assert "result" not in kinds(root)
+
+
+def test_stop_works_when_audit_log_fails(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    victim, pending_id = queue_delete(client, root)
+    with failing("stop"):
+        response = stop(client)
+    assert (response.status_code, response.json()) == (
+        200, {"stopped": 2, "cancelled": 1, "logged": False},
+    )
+    assert call(client, task, "get_time").json()["detail"] == "task stopped"
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    assert outcome(client, pending_id).json() == {"status": "cancelled"}
+    assert victim.exists()
+
+
+def test_stop_mid_task(storage, clock):
+    """The handler presses Stop while it runs: it finishes, nothing after it runs."""
+    root = Path(os.path.realpath(storage / "root"))
+    root.mkdir()
+
+    def get_time(args):
+        assert client.post("/stop").json()["stopped"] == 1
+        return "now"
+
+    app = create_app(storage, roots=[root], handlers={"get_time": get_time}, clock=clock)
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        task = new_task(client)
+        assert call(client, task, "get_time").json() == {"result": "now"}
+        refused = call(client, task, "get_time")
+        assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+
+
+def test_stop_between_recheck_and_handler(sandbox):
+    """An approve already past recheck when Stop lands must not run."""
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    original = Policy.recheck
+
+    def recheck_then_stop(self, *args):
+        result = original(self, *args)
+        assert client.post("/stop").status_code == 200
+        return result
+
+    with patch.object(Policy, "recheck", recheck_then_stop):
+        refused = approve(client, root, pending_id)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert victim.exists()
+    assert outcome(client, pending_id).json() == {"status": "cancelled"}
+    assert audit(root)[-1] | {"ts": None} == {
+        "ts": None, "event": "result", "task_id": audit(root)[1]["task_id"],
+        "tool": "delete_file", "pending_id": pending_id, "status": "cancelled",
+    }

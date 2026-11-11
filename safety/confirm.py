@@ -67,7 +67,9 @@ class ConfirmQueue:
         with self._lock:
             return self._items.pop(pending_id, None)
 
-    def clear(self) -> None:
-        """For the kill switch (P2.5)."""
+    def clear(self) -> list[Pending]:
+        """For the kill switch (P2.5). Returns what was dropped so each gets an outcome."""
         with self._lock:
+            dropped = list(self._items.values())
             self._items.clear()
+            return dropped

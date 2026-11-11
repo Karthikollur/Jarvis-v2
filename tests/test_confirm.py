@@ -62,9 +62,10 @@ def test_cap_refused(queue):
 
 def test_clear_empties(queue):
     first = add(queue, "t1")
-    add(queue, "t2")
-    queue.clear()
+    second = add(queue, "t2")
+    assert queue.clear() == [first, second]  # the kill switch gives each an outcome
     assert queue.list() == []
+    assert queue.clear() == []
     assert queue.take(first.id) is None
     add(queue, "t1")  # the task may ask again after a clear
 

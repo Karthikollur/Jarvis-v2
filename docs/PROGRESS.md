@@ -21,13 +21,16 @@ Newest session entry goes at the top of the Session log.
   `request`, `queued`, `approve`, `deny`, `expired`, `result`, `forbidden`. A failed write
   before an action -> 500 `Audit log unavailable` and the action does not run. Timed-out
   pending actions expire on their own (P2.3 follow-up). Details under Decisions.
-- Next task: P2.5 (kill switch). Plan approved by Karthik and saved at `docs/plans/P2.5.md`:
-  two commits, A (`POST /stop`, both roles; stops every task, cancels pending actions with
-  outcome `cancelled`, `stop` audit line written after stopping) and B (global hotkey via
-  stdlib `ctypes`, `config/hotkey.toml`, bridge refuses to start if it cannot register;
-  tick P2.5). Not started. Karthik's four answers are in the plan's Context. Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay
+- In progress: P2.5 (kill switch), plan `docs/plans/P2.5.md`, two commits.
+  A (`P2.5: kill switch endpoint`) DONE: `POST /stop` (roles core and ui) calls the single
+  inner `stop(source)` in `create_app`: marks every task stopped, `ConfirmQueue.clear()`
+  (now returns what it dropped) and gives each dropped action outcome `cancelled`
+  (approve/deny on it -> 410), then writes a `stop` audit line (`source` = role, `tasks`,
+  `cancelled` ids). Stops before logging; a failed write answers 200 `logged: false`.
+  `execute()` refuses a stopped task right before the handler (403, outcome and `result`
+  line `cancelled`). New tasks are accepted straight after. Next: B (global hotkey, tick P2.5). Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay
   open; 9 is in P2.6 and blocks P3.
-- Tests: `uv run python -m pytest` -> 147 passed, 1 skipped (2026-11-11, after P2.4). The skip is the
+- Tests: `uv run python -m pytest` -> 154 passed, 1 skipped (2026-11-11, after P2.5 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
