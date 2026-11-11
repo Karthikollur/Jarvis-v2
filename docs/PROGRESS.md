@@ -18,7 +18,10 @@ Newest session entry goes at the top of the Session log.
   bridge has seven routes: `GET /health`; core: `POST /task`, `POST /tool`, `POST /outcome`;
   ui only: `GET /pending`, `POST /approve`, `POST /deny`. A `confirm` decision now answers
   202 with a `pending_id`; it runs only after a ui-token approve passes `Policy.recheck`.
-- Next task: P2.4 (audit log, JSONL). Plan mode first (touches `safety/`).
+- Next task: P2.4 (audit log, JSONL). Plan approved by Karthik and saved at
+  `docs/plans/P2.4.md`: three commits, A (P2.3 follow-up: expire timed-out pending actions),
+  B (`safety/audit.py`), C (bridge writes the log, tick P2.4). Not started. The plan also
+  holds the review of the P2.3 commits and four decisions still open for Karthik.
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
 - Tests: `uv run python -m pytest` -> 123 passed, 1 skipped (2026-11-11, after P2.3). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
@@ -31,6 +34,11 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- P2.4 plan, "Decisions needed from Karthik" (`docs/plans/P2.4.md`): (1) confirm waiting time
+  counts against the 120 s; (2) results in the audit log cut to 2000 characters, full, or
+  none; (3) two PLAN.md additions: task lifecycle/eviction in P3, a concurrency test in P2.7
+  (`Policy`/`Task` have no lock); (4) audit point 9 in P2.6 or pulled into P2.4.
 
 - P2.3: the queue never evicts. An action whose task ran out of time stays listed (and
   holds one of the 16 slots) until the UI approves (-> 410) or denies it, and `/outcome`
@@ -260,6 +268,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P2.3 reviewed, P2.4 planned, not implemented)
+
+- Did: reviewed commits `46b88d8` and `7e97cb9` against `docs/plans/P2.3.md` (small drift,
+  nothing weakened; one new finding: `/outcome` answers 404 while an approved action runs);
+  triaged the open P2.3 gaps; wrote the P2.4 plan. All of it is in `docs/plans/P2.4.md`.
+- Files changed: `docs/plans/P2.4.md` (new), `docs/PROGRESS.md`. No code changed.
+- Tests: not rerun (docs only); last run after `7e97cb9`: 123 passed, 1 skipped.
+- Next concrete step: get Karthik's answers to the four decisions, then implement commit A
+  of `docs/plans/P2.4.md`.
 
 ### 2026-11-11 — Agent: Claude Code (P2.3 confirm queue)
 
