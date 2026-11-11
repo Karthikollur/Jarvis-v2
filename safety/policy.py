@@ -137,7 +137,8 @@ class Policy:
     def new_task(self) -> Task:
         return Task(started=self.clock())
 
-    def _out_of_time(self, task: Task) -> bool:
+    def out_of_time(self, task: Task) -> bool:
+        """Read-only: True once the task's wall-time budget is spent. Stops nothing."""
         return self.clock() - task.started > MAX_SECONDS
 
     def _stop(self, task: Task, reason: str) -> Decision:
@@ -148,7 +149,7 @@ class Policy:
         """Decide one tool request. Every request counts against the budget, refused or not."""
         if task.stopped:
             return Decision("deny", "task stopped")
-        if self._out_of_time(task):
+        if self.out_of_time(task):
             return self._stop(task, f"time budget exceeded ({MAX_SECONDS} s)")
         if task.calls >= MAX_CALLS:
             return self._stop(task, f"call budget exceeded ({MAX_CALLS} tool calls)")
@@ -194,7 +195,7 @@ class Policy:
         """
         if task.stopped:
             return "task stopped"
-        if self._out_of_time(task):
+        if self.out_of_time(task):
             return self._stop(task, f"time budget exceeded ({MAX_SECONDS} s)").reason
         rule = TOOLS.get(tool)
         if rule is None:

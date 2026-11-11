@@ -343,6 +343,9 @@ def test_queue_routes_enforce_roles(sandbox):
     for method, path in routes:
         response = client.request(method, path, json=body, headers={"x-jarvis-token": ""})
         assert response.status_code == 401, path
+    bare = TestClient(client.app, base_url=BASE, client=LOOPBACK)  # no token header at all
+    for method, path in routes:
+        assert bare.request(method, path, json=body).status_code == 401, path
     assert victim.exists()
     assert outcome(client, pending_id).json() == {"status": "pending"}
 
@@ -406,6 +409,57 @@ def test_waiting_past_the_task_window_expires(sandbox, clock):
     assert approve(client, root, pending_id).status_code == 410
     assert victim.exists()
     assert outcome(client, pending_id).json() == {"status": "expired"}
+
+
+def test_timed_out_action_expires_without_approve(sandbox, clock):
+    client, root, outside = sandbox
+    queued = [queue_delete(client, root, f"v{i}.txt") for i in range(16)]
+    victim, pending_id = queued[0]
+    assert call(client, new_task(client), "delete_file", path=str(victim)).status_code == 403
+    clock.now = 121.0
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    assert outcome(client, pending_id).json() == {"status": "expired"}
+    # Expired actions free their slots: a fresh task can queue again.
+    assert call(client, new_task(client), "delete_file", path=str(victim)).status_code == 202
+    assert approve(client, root, pending_id).status_code == 410
+    assert deny(client, root, queued[1][1]).status_code == 410
+    assert outcome(client, queued[1][1]).json() == {"status": "expired"}
+    assert all(path.exists() for path, _ in queued)
+
+
+def test_expiry_found_by_tool_call(sandbox, clock):
+    """A task stopped for time by another call reports `expired`, not `denied`."""
+    client, root, outside = sandbox
+    victim = root / "v.txt"
+    victim.write_text("keep")
+    task = new_task(client)
+    pending_id = call(client, task, "delete_file", path=str(victim)).json()["pending_id"]
+    clock.now = 121.0
+    stopped = call(client, task, "get_time")
+    assert stopped.status_code == 403
+    assert "time budget" in stopped.json()["detail"]
+    assert approve(client, root, pending_id).status_code == 410
+    assert victim.exists()
+    assert outcome(client, pending_id).json() == {"status": "expired"}
+
+
+def test_outcome_is_pending_while_handler_runs(storage, clock):
+    root = Path(os.path.realpath(storage / "root"))
+    root.mkdir()
+    seen = {}
+
+    def delete_file(args):
+        seen["during"] = outcome(client, seen["id"]).json()  # core polls mid-run
+        args["path"].unlink()
+
+    app = create_app(storage, roots=[root], handlers={"delete_file": delete_file}, clock=clock)
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        victim, seen["id"] = queue_delete(client, root)
+        assert approve(client, root, seen["id"]).status_code == 200
+        assert seen["during"] == {"status": "pending"}
+        assert outcome(client, seen["id"]).json() == {"status": "done", "result": None}
+    assert not victim.exists()
 
 
 def test_one_pending_per_task_and_global_cap(sandbox):

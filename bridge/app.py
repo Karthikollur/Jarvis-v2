@@ -182,6 +182,17 @@ def create_app(
         policy.record(task, tool, ok=True)
         return {"result": result}, {"status": "done", "result": result}
 
+    def expire() -> None:
+        """Every pending action whose task ran out of time leaves the queue as `expired`."""
+        for pending in queue.list():
+            if policy.out_of_time(tasks[pending.task_id]) and queue.take(pending.id):
+                outcomes[pending.id] = {"status": "expired"}
+
+    def unknown_pending(pending_id: str) -> JSONResponse:
+        if outcomes.get(pending_id, {}).get("status") == "expired":
+            return JSONResponse({"detail": "Pending action expired"}, status_code=410)
+        return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+
     @app.post("/task")
     def new_task():
         task_id = uuid.uuid4().hex
@@ -190,6 +201,7 @@ def create_app(
 
     @app.post("/tool")
     def run_tool(request: ToolRequest):
+        expire()
         task = tasks.get(request.task_id)
         if task is None:
             return JSONResponse({"detail": "Unknown task"}, status_code=404)
@@ -211,6 +223,7 @@ def create_app(
 
     @app.get("/pending")
     def list_pending():
+        expire()
         now = clock()
         return {
             "pending": [
@@ -232,11 +245,12 @@ def create_app(
         """Runs exactly the stored action, once, after re-validating it."""
         pending = queue.take(request.pending_id)
         if pending is None:
-            return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+            return unknown_pending(request.pending_id)
+        outcomes[pending.id] = {"status": "pending"}  # running: /outcome must not answer 404
         task = tasks[pending.task_id]
         refused = policy.recheck(task, pending.tool, pending.args, pending.paths)
         if refused is not None:
-            expired = refused.startswith("time budget")
+            expired = policy.out_of_time(task)
             outcomes[pending.id] = {"status": "expired" if expired else "denied"}
             return JSONResponse({"detail": refused}, status_code=410 if expired else 403)
         response, outcomes[pending.id] = execute(task, pending.tool, pending.args, pending.paths)
@@ -246,12 +260,13 @@ def create_app(
     def deny(request: PendingRequest):
         pending = queue.take(request.pending_id)
         if pending is None:
-            return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+            return unknown_pending(request.pending_id)
         outcomes[pending.id] = {"status": "denied"}
         return {"status": "denied"}
 
     @app.post("/outcome")
     def outcome(request: PendingRequest):
+        expire()
         if request.pending_id in outcomes:
             return outcomes[request.pending_id]
         if any(p.id == request.pending_id for p in queue.list()):

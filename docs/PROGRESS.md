@@ -18,12 +18,15 @@ Newest session entry goes at the top of the Session log.
   bridge has seven routes: `GET /health`; core: `POST /task`, `POST /tool`, `POST /outcome`;
   ui only: `GET /pending`, `POST /approve`, `POST /deny`. A `confirm` decision now answers
   202 with a `pending_id`; it runs only after a ui-token approve passes `Policy.recheck`.
-- Next task: P2.4 (audit log, JSONL). Plan approved by Karthik and saved at
-  `docs/plans/P2.4.md`: three commits, A (P2.3 follow-up: expire timed-out pending actions),
-  B (`safety/audit.py`), C (bridge writes the log, tick P2.4). Not started. The plan also
-  holds the review of the P2.3 commits. Its four decisions are answered (see Decisions).
+- In progress: P2.4 (audit log, JSONL), plan `docs/plans/P2.4.md`, three commits.
+  A (`P2.3: expire timed-out pending actions`) DONE: `Policy.out_of_time` is public and
+  read-only; bridge `expire()` runs at the top of `/tool`, `/pending`, `/outcome` and moves
+  every pending action whose task is out of time to outcome `expired` (frees its slot);
+  `/approve` labels `expired` (410) by `out_of_time`, not by string match; `/approve` and
+  `/deny` on an expired id answer 410; `/outcome` answers `pending` while an approved
+  handler runs. Next: B (`safety/audit.py`), then C (bridge writes the log, tick P2.4).
   Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
-- Tests: `uv run python -m pytest` -> 123 passed, 1 skipped (2026-11-11, after P2.3). The skip is the
+- Tests: `uv run python -m pytest` -> 127 passed, 1 skipped (2026-11-11, after P2.4 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -36,14 +39,8 @@ Newest session entry goes at the top of the Session log.
 ## Open questions for Karthik
 
 
-- P2.3: the queue never evicts. An action whose task ran out of time stays listed (and
-  holds one of the 16 slots) until the UI approves (-> 410) or denies it, and `/outcome`
-  keeps answering `pending` for it until then, so core needs its own timeout. Fine while the
-  UI shows them; if stale entries pile up, drop expired ones in `list`/`add`. `outcomes`
-  is never evicted either. No action yet.
-- P2.3: if the task was already stopped for time by another call while the action waited,
-  approve reports outcome `denied` (reason `task stopped`), not `expired`. Nothing runs
-  either way; only the label differs. Fix only if the UI needs the distinction.
+- (Resolved in P2.4 commit A: stale timed-out pending actions now expire and free their
+  slot; the `denied` vs `expired` label is fixed. Eviction of `tasks`/`outcomes` is P3.6.)
 
 - P1 review and bridge bypass audit (2026-11-11, newest Session log entry): which of the nine
   points get fixed, and in which task? Also still owed: a real Wi-Fi-off eval run for P1.

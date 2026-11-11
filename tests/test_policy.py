@@ -206,6 +206,16 @@ def test_time_budget(policy, clock):
     assert policy.check(task, "get_time", {}).reason == "task stopped"
 
 
+def test_out_of_time_is_read_only(policy, clock):
+    task = policy.new_task()
+    clock.now = MAX_SECONDS
+    assert not policy.out_of_time(task)
+    clock.now = MAX_SECONDS + 1
+    assert policy.out_of_time(task)
+    assert not task.stopped  # asking does not stop the task
+    assert task.calls == 0
+
+
 def test_retry_budget(policy):
     task = policy.new_task()
     for _ in range(MAX_FAILURES):
