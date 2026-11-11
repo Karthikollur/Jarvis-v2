@@ -2531,20 +2531,28 @@ name = "jarvis"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "openjarvis" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "pytest" },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "openjarvis", editable = "OpenJarvis" }]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "openjarvis", editable = "OpenJarvis" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]

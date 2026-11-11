@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (not started). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,10 +14,9 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P1.6
-- Next task: P2.1. It touches `bridge/`, so CLAUDE.md requires plan mode and Karthik's OK
-  before editing. It also needs new dependencies (FastAPI, uvicorn): ask first.
-- Tests: `uv run python -m pytest` -> 36 passed (2026-11-11). Evals:
+- Last completed task: P2.1
+- Next task: P2.2 (policy engine).
+- Tests: `uv run python -m pytest` -> 40 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -191,6 +190,23 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Codex (P2.1 complete)
+
+- Did: implemented skeleton only: authenticated GET /health, strict loopback Host checks,
+  no docs or CORS, persistent random token, hmac.compare_digest, icacls user-only ACLs.
+- Dependencies: Karthik approved fastapi and uvicorn plus httpx as dev dependency;
+  installed their required transitive dependencies. No pywin32. Existing venv preserved.
+- Files changed: bridge/app.py, bridge/__init__.py, tests/test_bridge.py, pyproject.toml,
+  uv.lock, .gitignore, AGENTS.md, docs/PLAN.md, docs/PROGRESS.md.
+- Tests: uv run python -m pytest -> 40 passed. Real icacls exercised only inside
+  repo-local .test-storage; production LOCALAPPDATA storage never created. Token not logged.
+  One Starlette httpx deprecation warning; no extra dependency added.
+- Unfinished work: none for P2.1. Next: P2.2 policy engine; no tools or policy added here.
+- Start: uv run python -m uvicorn bridge.app:create_app --factory --host 127.0.0.1 --port 8765 --no-access-log
+  Use x-jarvis-token header. Never bind to other interfaces. Production startup creates
+  LOCALAPPDATA/Jarvis storage; tests pass an explicit repo-local directory.
+
 
 ### 2026-11-11 — Agent: Codex (resume check)
 

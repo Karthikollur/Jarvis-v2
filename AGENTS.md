@@ -106,7 +106,7 @@ Commands:
 - Evals (from P1): `uv run python evals/run.py`
 - OpenJarvis CLI, for debugging only (core uses the Python SDK):
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
-- Bridge (dev): `TBD in P2`
+- Bridge (dev): `uv run python -m uvicorn bridge.app:create_app --factory --host 127.0.0.1 --port 8765 --no-access-log`
 - UI (dev, from P6): `cd ui && npm run dev`
 
 ## Repo map

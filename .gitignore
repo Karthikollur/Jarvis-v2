@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.test-storage/
 
 # UI
 node_modules/
