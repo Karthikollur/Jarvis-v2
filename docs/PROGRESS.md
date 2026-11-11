@@ -16,7 +16,7 @@ Newest session entry goes at the top of the Session log.
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
 - Last completed task: P2.1
 - Next task: P2.2 (policy engine).
-- Tests: `uv run python -m pytest` -> 40 passed (2026-11-11). Evals:
+- Tests: `uv run python -m pytest` -> 42 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -190,6 +190,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Codex (P2.1 ACL hardening)
+
+- Did: resolved whoami.exe and icacls.exe through absolute SystemRoot/System32 paths;
+  added Everyone SDDL alias handling so its explicit grant is removed.
+- Files changed: bridge/app.py, tests/test_bridge.py, docs/PROGRESS.md.
+- Tests: baseline 40 passed; full suite after changes 42 passed. New tests grant Everyone
+  read on a repo-local token file and verify removal, and inject a foreign verification
+  ACE to assert the not-user-only RuntimeError. No token output or production storage writes.
+  Existing Starlette httpx deprecation warning remains. No new dependencies.
+- Unfinished work: none for requested hardening. Next concrete step: P2.2 policy engine.
+
 
 ### 2026-11-11 — Agent: Codex (P2.1 complete)
 

@@ -14,7 +14,10 @@ from fastapi.responses import JSONResponse
 
 
 def _run(*args: str) -> str:
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    executable = Path(os.environ["SystemRoot"]) / "System32" / (args[0] + ".exe")
+    if not executable.is_absolute():
+        raise RuntimeError("SystemRoot must be absolute")
+    result = subprocess.run((str(executable), *args[1:]), capture_output=True, text=True, check=False)
     if result.returncode:
         raise RuntimeError("Bridge token ACL operation failed")
     return result.stdout
@@ -36,7 +39,7 @@ def protect(path: Path) -> None:
         _run("icacls", str(path), "/save", name, "/q")
         descriptor = Path(name).read_text(encoding="utf-16-le")
         aces = re.findall(r"\(([^()]*)\)", descriptor)
-        aliases = {"BA": "S-1-5-32-544", "SY": "S-1-5-18", "OW": "S-1-3-4"}
+        aliases = {"BA": "S-1-5-32-544", "SY": "S-1-5-18", "OW": "S-1-3-4", "WD": "S-1-1-0"}
         for trustee in {ace.split(";")[-1] for ace in aces} - {sid}:
             identity = aliases.get(trustee, trustee)
             _run("icacls", str(path), "/remove", "*" + identity)
