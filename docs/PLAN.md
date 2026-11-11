@@ -145,7 +145,7 @@ targets, network off.
 - [x] P2.2 `safety/policy.py`: tier table, allowed-roots check with full path resolution, per-task
       taint flag, budgets.
 - [x] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
-- [ ] P2.4 Audit log (JSONL).
+- [x] P2.4 Audit log (JSONL).
 - [ ] P2.5 Kill switch endpoint + global hotkey listener.
 - [ ] P2.6 Quarantine + undo records. Includes audit point 9 (PROGRESS.md, P1 review): the
       allowed-roots check refuses `%LOCALAPPDATA%\Jarvis` (tokens, audit log, quarantine) and

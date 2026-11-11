@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1, P2.2, P2.3 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 to P2.4 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,22 +14,18 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.3 (confirm queue, plan `docs/plans/P2.3.md`, implemented). The
-  bridge has seven routes: `GET /health`; core: `POST /task`, `POST /tool`, `POST /outcome`;
-  ui only: `GET /pending`, `POST /approve`, `POST /deny`. A `confirm` decision now answers
-  202 with a `pending_id`; it runs only after a ui-token approve passes `Policy.recheck`.
-- In progress: P2.4 (audit log, JSONL), plan `docs/plans/P2.4.md`, three commits.
-  A (`P2.3: expire timed-out pending actions`) DONE: `Policy.out_of_time` is public and
-  read-only; bridge `expire()` runs at the top of `/tool`, `/pending`, `/outcome` and moves
-  every pending action whose task is out of time to outcome `expired` (frees its slot);
-  `/approve` labels `expired` (410) by `out_of_time`, not by string match; `/approve` and
-  `/deny` on an expired id answer 410; `/outcome` answers `pending` while an approved
-  handler runs. B (`P2.4: audit log (safety)`) DONE: `safety/audit.py`, `AuditLog(path,
-  wall).write(event, **fields)` appends one JSON line (`ts` UTC ISO, `event`, fields) under a
-  lock, newline-escaped, OSError propagates; `result` logged as text, cut at 2000 chars with
-  `truncated`/`length`. Not wired into the bridge yet. Next: C (bridge writes the log, tick P2.4).
-  Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
-- Tests: `uv run python -m pytest` -> 136 passed, 1 skipped (2026-11-11, after P2.4 commit B). The skip is the
+- Last completed task: P2.4 (audit log, plan `docs/plans/P2.4.md`, implemented in three
+  commits). The bridge (seven routes: `GET /health`; core: `POST /task`, `POST /tool`,
+  `POST /outcome`; ui only: `GET /pending`, `POST /approve`, `POST /deny`) now writes
+  `%LOCALAPPDATA%\Jarvis\audit.jsonl` before every action: events `start`, `task`,
+  `request`, `queued`, `approve`, `deny`, `expired`, `result`, `forbidden`. A failed write
+  before an action -> 500 `Audit log unavailable` and the action does not run. Timed-out
+  pending actions expire on their own (P2.3 follow-up). Details under Decisions.
+- Next task: P2.5 (kill switch). Not planned yet; plan mode first (CLAUDE.md). It must give
+  pending actions dropped by `ConfirmQueue.clear()` an outcome (`cancelled`) and write its
+  own `stop` audit event. Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay
+  open; 9 is in P2.6 and blocks P3.
+- Tests: `uv run python -m pytest` -> 147 passed, 1 skipped (2026-11-11, after P2.4). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -73,6 +69,32 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-11 — P2.4 audit log. `safety/audit.py` `AuditLog.write(event, **fields)`
+  appends one JSON line `{"ts": UTC ISO, "event", ...}`; no edit/truncate/delete method;
+  `json.dumps` escapes newlines so no value can forge a line. File
+  `%LOCALAPPDATA%\Jarvis\audit.jsonl`, refused if a symlink or junction, user-only ACL via
+  `bridge.app.protect`, one file, no rotation. The bridge writes every line BEFORE the
+  action it describes: `start` (bridge start), `task`, `request` (after `Policy.check`, with
+  decision, reason, tier, resolved paths, taint; unknown task logged as deny), `queued`
+  (`pending_id`, or `refused` + reason), `approve` (after `recheck`, `recheck: ok` or the
+  refusal), `deny`, `expired`, `result` (`done`/`failed`/`not_implemented`; error text in
+  the log only, never returned), `forbidden` (valid token, wrong role). Requests with no
+  valid token are not logged (flooding). Fail closed: a failed write before an action ->
+  500 `Audit log unavailable`, nothing runs; a queued action whose `queued` line failed is
+  taken back out; an approve whose line failed stays taken out with outcome `denied`; a
+  failed `result` write after the handler ran -> 500 and the task is stopped. Results cut
+  at 2000 chars (`truncated`, `length`); non-text results logged as JSON text. No hash
+  chain. LIMIT: any process running as Karthik can edit the file (audit point 6);
+  "append-only" means Jarvis code only appends. — Claude Code, plan approved by Karthik
+- 2026-11-11 — P2.4 implementation choices the plan left open: (1) a `/tool` call answered
+  409 because its task already waits is logged as `queued` with `refused: awaiting
+  confirmation`, even when its own decision was `allow`, so every request line has a
+  follow-up. (2) `expire()` writes the `expired` line before taking the action out; if that
+  write fails the route answers 500 and the action stays listed, but it can no longer run
+  (approve's recheck refuses an out-of-time task). (3) If the `forbidden` write itself fails,
+  the OSError surfaces as a 500 from the middleware; the request is refused either way. —
+  Claude Code
 
 - 2026-11-11 — Waiting for a confirmation click counts against the task's 120 s (confirms the
   P2.3 default) — a forgotten dialog must not approve a stale action later — Karthik
@@ -276,6 +298,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P2.4 audit log, implemented)
+
+- Did: P2.4 in three commits, as planned in `docs/plans/P2.4.md`.
+  A. `P2.3: expire timed-out pending actions` (`3f908b3`) — `Policy.out_of_time`, bridge
+     `expire()`, 410 on expired ids, `/outcome` pending during a handler run.
+  B. `P2.4: audit log (safety)` (`ca3dc2b`) — `safety/audit.py`, `tests/test_audit.py`.
+  C. `P2.4: bridge writes the audit log` — events, fail-closed paths, 11 bridge tests plus
+     an audit assertion on the junction-swap test. P2.4 ticked, plan marked Implemented.
+  Codex ran a recovery check between A and B (`725bbe7`, docs only).
+- Files changed: `safety/policy.py`, `safety/audit.py`, `bridge/app.py`,
+  `tests/test_policy.py`, `tests/test_audit.py`, `tests/test_bridge.py`, `docs/PLAN.md`,
+  `docs/plans/P2.4.md`, `docs/PROGRESS.md`. No new dependencies.
+- Tests: `rtk proxy uv run python -m pytest` -> 147 passed, 1 skipped (symlink privilege).
+  Mutation check: with the pre-run `request` and `approve` writes no longer gating, 7 tests
+  fail (fail-closed, invariant, flow-order and junction tests); restored, green again.
+  No real uvicorn start (would create `%LOCALAPPDATA%\Jarvis`). Evals not rerun; core untouched.
+- Unfinished: none. Three implementation choices recorded under Decisions.
+- Next concrete step: plan P2.5 (kill switch) in plan mode and get Karthik's OK.
 
 ### 2026-11-11 — Agent: Codex (P2.4 recovery check)
 

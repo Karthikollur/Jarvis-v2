@@ -11,8 +11,11 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+import json
+
 from bridge.app import create_app, load_token
 from bridge import app as bridge_app
+from safety.audit import AuditLog
 
 BASE = "http://127.0.0.1:8765"
 LOOPBACK = ("127.0.0.1", 50000)
@@ -400,6 +403,10 @@ def test_junction_swapped_in_while_waiting_is_refused(sandbox):
     assert "outside the allowed roots" in refused.json()["detail"]
     assert (outside / "victim.txt").read_text() == "outside"
     assert outcome(client, pending_id).json() == {"status": "denied"}
+    log = audit(root)
+    approved = [e for e in log if e["event"] == "approve"]
+    assert len(approved) == 1 and "outside the allowed roots" in approved[0]["recheck"]
+    assert not [e for e in log if e["event"] == "result"]
 
 
 def test_waiting_past_the_task_window_expires(sandbox, clock):
@@ -492,3 +499,204 @@ def test_failing_handler_on_approve_counts_as_failure(sandbox):
         assert outcome(client, pending_id).json() == {"status": "failed"}
     # Policy.record saw all three failures: the tool is now refused for this task.
     assert call(client, task, "run_named_script", name="x").status_code == 403
+
+
+# --- audit log (P2.4) --------------------------------------------------------
+
+
+def audit(root):
+    """Every line of the audit log of the sandbox bridge (storage is root.parent)."""
+    text = (root.parent / "audit.jsonl").read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.splitlines()]
+
+
+def kinds(root):
+    return [entry["event"] for entry in audit(root)]
+
+
+def failing(*events):
+    """Make AuditLog.write raise OSError for the named events only."""
+    original = AuditLog.write
+
+    def write(self, event, **fields):
+        if event in events:
+            raise OSError("disk full")
+        return original(self, event, **fields)
+
+    return patch.object(AuditLog, "write", write)
+
+
+def test_audit_allowed_tool_logs_request_then_result(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert call(client, task, "create_folder", path=str(root / "new")).status_code == 200
+    assert kinds(root) == ["start", "task", "request", "result"]
+    _, created, request, result = audit(root)
+    assert created["task_id"] == task
+    assert request["ts"] <= result["ts"]
+    assert {k: request[k] for k in ("task_id", "tool", "args", "decision", "tier", "paths", "tainted")} == {
+        "task_id": task,
+        "tool": "create_folder",
+        "args": {"path": str(root / "new")},
+        "decision": "allow",
+        "tier": "T1",
+        "paths": {"path": str(root / "new")},
+        "tainted": False,
+    }
+    assert {k: result[k] for k in ("task_id", "tool", "status", "result")} == {
+        "task_id": task, "tool": "create_folder", "status": "done", "result": "created",
+    }
+
+
+def test_audit_denied_requests_have_no_result(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert call(client, task, "create_folder", path=str(outside / "x")).status_code == 403
+    assert call(client, task, "shell_exec", command="dir").status_code == 403
+    assert call(client, "no-such-task", "get_time").status_code == 404
+    requests = [e for e in audit(root) if e["event"] == "request"]
+    assert [(r["decision"], r["reason"]) for r in requests] == [
+        ("deny", "path: outside the allowed roots"),
+        ("deny", "unknown tool"),
+        ("deny", "unknown task"),
+    ]
+    assert requests[2]["task_id"] == "no-such-task"
+    assert "result" not in kinds(root)
+    assert not (outside / "x").exists()
+
+
+def test_audit_t2_approve_flow(sandbox):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    assert approve(client, root, pending_id).status_code == 200
+    assert kinds(root) == ["start", "task", "request", "queued", "approve", "result"]
+    _, created, request, queued, approved, result = audit(root)
+    task = created["task_id"]
+    assert (request["decision"], request["reason"], request["tier"]) == ("confirm", "T2", "T2")
+    assert (queued["task_id"], queued["pending_id"]) == (task, pending_id)
+    assert (approved["task_id"], approved["pending_id"], approved["tool"]) == (task, pending_id, "delete_file")
+    assert approved["recheck"] == "ok"
+    assert (result["task_id"], result["pending_id"], result["status"]) == (task, pending_id, "done")
+
+
+def test_audit_deny_and_expiry_flows(sandbox, clock):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    assert deny(client, root, pending_id).status_code == 200
+    assert kinds(root)[-3:] == ["request", "queued", "deny"]
+    assert audit(root)[-1]["pending_id"] == pending_id
+    victim, pending_id = queue_delete(client, root, "other.txt")
+    clock.now = 121.0
+    assert outcome(client, pending_id).json() == {"status": "expired"}
+    assert kinds(root)[-3:] == ["request", "queued", "expired"]
+    assert (audit(root)[-1]["pending_id"], audit(root)[-1]["tool"]) == (pending_id, "delete_file")
+    assert "result" not in kinds(root)
+    assert victim.exists()
+
+
+def test_audit_failed_and_missing_handlers(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    response = call(client, task, "system_stats")
+    assert response.status_code == 500
+    assert "blew up" not in response.text  # the model never sees the error text
+    assert call(client, task, "list_windows").status_code == 501
+    failed, missing = [e for e in audit(root) if e["event"] == "result"]
+    assert (failed["status"], failed["error"]) == ("failed", "RuntimeError: tool blew up")
+    assert missing["status"] == "not_implemented"
+
+
+def test_audit_forbidden_role_logged_bad_token_not(sandbox):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    before = len(audit(root))
+    assert client.post("/approve", json={"pending_id": pending_id}).status_code == 403  # core token
+    assert audit(root)[-1] | {"ts": None} == {"ts": None, "event": "forbidden", "role": "core", "path": "/approve"}
+    wrong = {"x-jarvis-token": "wrong"}
+    assert client.post("/approve", json={"pending_id": pending_id}, headers=wrong).status_code == 401
+    assert len(audit(root)) == before + 1
+    assert victim.exists()
+
+
+def test_audit_unavailable_fails_closed(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    with failing("request"):
+        response = call(client, task, "create_folder", path=str(root / "new"))
+    assert (response.status_code, response.json()["detail"]) == (500, "Audit log unavailable")
+    assert not (root / "new").exists()
+    with failing("queued"):
+        assert call(client, new_task(client), "delete_file", path=str(root / "x")).status_code == 500
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    victim, pending_id = queue_delete(client, root)
+    with failing("approve"):
+        assert approve(client, root, pending_id).status_code == 500
+    assert victim.exists()
+    assert approve(client, root, pending_id).status_code == 404  # not left runnable
+    assert outcome(client, pending_id).json() == {"status": "denied"}
+    assert "result" not in kinds(root)
+    with failing("task"):
+        assert client.post("/task").status_code == 500
+
+
+def test_audit_result_write_failure_stops_task(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    with failing("result"):
+        assert call(client, task, "create_folder", path=str(root / "new")).status_code == 500
+    # It ran; the request line without a result line shows the outcome is unknown.
+    assert (root / "new").is_dir()
+    refused = call(client, task, "get_time")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+
+
+def test_audit_file_must_not_be_a_link(storage):
+    (storage / "elsewhere").mkdir()
+    _winapi.CreateJunction(str(storage / "elsewhere"), str(storage / "audit.jsonl"))
+    with pytest.raises(RuntimeError, match="Unsafe audit log"):
+        create_app(storage, roots=[])
+
+
+def test_audit_file_acl_is_user_only(storage):
+    create_app(storage, roots=[])
+    path = storage / "audit.jsonl"
+    icacls = str(Path(os.environ["SystemRoot"]) / "System32" / "icacls.exe")
+    saved = storage / "check.acl"
+    subprocess.run([icacls, str(path), "/grant", "*S-1-1-0:R"], check=True, capture_output=True)
+    create_app(storage, roots=[])  # restart re-applies the ACL
+    subprocess.run([icacls, str(path), "/save", str(saved), "/q"], check=True, capture_output=True)
+    descriptor = saved.read_text(encoding="utf-16-le")
+    assert ";;;WD)" not in descriptor and ";;;S-1-1-0)" not in descriptor
+    events = [json.loads(line)["event"] for line in path.read_text(encoding="utf-8").splitlines()]
+    assert events == ["start", "start"]
+
+
+def test_audit_every_result_was_authorised(sandbox, clock):
+    """Invariant: each result line directly follows the allow or approved-ok line for it."""
+    client, root, outside = sandbox
+    task = new_task(client)
+    call(client, task, "get_time")
+    call(client, task, "create_folder", path=str(outside / "x"))
+    call(client, task, "system_stats")
+    (root / "a.txt").write_text("text")
+    call(client, task, "read_text_file", path=str(root / "a.txt"))
+    tainted = call(client, task, "create_folder", path=str(root / "new")).json()["pending_id"]
+    approve(client, root, tainted)
+    _, approved = queue_delete(client, root)
+    approve(client, root, approved)
+    _, denied = queue_delete(client, root, "d.txt")
+    deny(client, root, denied)
+    _, late = queue_delete(client, root, "late.txt")
+    clock.now = 121.0
+    approve(client, root, late)
+    log = audit(root)
+    results = [i for i, e in enumerate(log) if e["event"] == "result"]
+    assert len(results) == 5
+    for i in results:
+        before = log[i - 1]
+        assert (before["task_id"], before["tool"]) == (log[i]["task_id"], log[i]["tool"])
+        assert before["event"] in ("request", "approve")
+        if before["event"] == "request":
+            assert before["decision"] == "allow"
+        else:
+            assert before["recheck"] == "ok" and before["pending_id"] == log[i]["pending_id"]

@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
 
+from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue, QueueRefused
 from safety.policy import Policy, Task, load_roots
 
@@ -95,9 +96,10 @@ ROUTE_ROLES: dict[str, set[str]] = {
 class Authenticate:
     """Peer address, Host, token and role checks for every HTTP and WebSocket request."""
 
-    def __init__(self, app, tokens: dict[str, str]) -> None:
+    def __init__(self, app, tokens: dict[str, str], audit: AuditLog) -> None:
         self.app = app
         self.tokens = tokens  # role -> token
+        self.audit = audit
 
     def refusal(self, scope) -> tuple[int, str] | None:
         # The peer check holds even if the server is wrongly bound to another interface.
@@ -115,9 +117,10 @@ class Authenticate:
             if len(sent) == 1 and hmac.compare_digest(sent[0].encode(), token.encode())
         ]
         if not roles:
-            return 401, "Unauthorized"
+            return 401, "Unauthorized"  # not logged: any local process could flood the file
         # A path missing from ROUTE_ROLES is open to nobody.
         if roles[0] not in ROUTE_ROLES.get(scope["path"], ()):
+            self.audit.write("forbidden", role=roles[0], path=scope["path"])
             return 403, "Forbidden"
         return None
 
@@ -160,33 +163,72 @@ def create_app(
     if roots is None:
         roots = load_roots(Path(__file__).resolve().parent.parent / "config" / "allowed_roots.toml")
     tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
+    audit_path = storage / "audit.jsonl"
+    if audit_path.is_symlink() or audit_path.is_junction():
+        raise RuntimeError("Unsafe audit log")
+    audit_path.touch()
+    protect(audit_path)
+    audit = AuditLog(audit_path)
+    audit.write("start")  # in-memory pending actions from an earlier run are gone
     policy = Policy(roots, clock)
     queue = ConfirmQueue(clock)
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(Authenticate, tokens=tokens)
+    app.add_middleware(Authenticate, tokens=tokens, audit=audit)
 
-    def execute(task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]):
+    def log(event: str, **fields: Any) -> bool:
+        """Write one audit line. False means it was not written: the caller fails closed."""
+        try:
+            audit.write(event, **fields)
+        except OSError:
+            return False
+        return True
+
+    def unavailable() -> JSONResponse:
+        return JSONResponse({"detail": "Audit log unavailable"}, status_code=500)
+
+    def execute(
+        task_id: str, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path],
+        pending_id: str | None = None,
+    ):
         """The only place a tool handler is called. Reached from /tool and /approve only,
-        always after the policy said yes. Returns (response, outcome)."""
+        always after the policy said yes and that was logged. Logs the result.
+        Returns (response, outcome)."""
         handler = handlers.get(tool)
         if handler is None:
-            return JSONResponse({"detail": "Tool not implemented"}, status_code=501), {"status": "failed"}
-        try:
-            result = handler({**args, **paths})  # resolved paths win
-        except Exception:
-            policy.record(task, tool, ok=False)
-            return JSONResponse({"detail": "Tool failed"}, status_code=500), {"status": "failed"}
-        policy.record(task, tool, ok=True)
-        return {"result": result}, {"status": "done", "result": result}
+            response = JSONResponse({"detail": "Tool not implemented"}, status_code=501)
+            outcome, logged = {"status": "failed"}, {"status": "not_implemented"}
+        else:
+            try:
+                result = handler({**args, **paths})  # resolved paths win
+            except Exception as error:
+                policy.record(task, tool, ok=False)
+                response = JSONResponse({"detail": "Tool failed"}, status_code=500)
+                # The error text is for Karthik's log only, never returned to the model.
+                outcome = {"status": "failed"}
+                logged = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
+            else:
+                policy.record(task, tool, ok=True)
+                response = {"result": result}
+                outcome = logged = {"status": "done", "result": result}
+        ids = {"pending_id": pending_id} if pending_id else {}
+        if not log("result", task_id=task_id, tool=tool, **ids, **logged):
+            task.stopped = True  # nothing further runs unlogged
+            return unavailable(), outcome
+        return response, outcome
 
-    def expire() -> None:
-        """Every pending action whose task ran out of time leaves the queue as `expired`."""
+    def expire() -> bool:
+        """Every pending action whose task ran out of time leaves the queue as `expired`.
+        False if that could not be logged (the action stays queued; it can no longer run)."""
         for pending in queue.list():
-            if policy.out_of_time(tasks[pending.task_id]) and queue.take(pending.id):
-                outcomes[pending.id] = {"status": "expired"}
+            if policy.out_of_time(tasks[pending.task_id]):
+                if not log("expired", pending_id=pending.id, task_id=pending.task_id, tool=pending.tool):
+                    return False
+                if queue.take(pending.id):
+                    outcomes[pending.id] = {"status": "expired"}
+        return True
 
     def unknown_pending(pending_id: str) -> JSONResponse:
         if outcomes.get(pending_id, {}).get("status") == "expired":
@@ -196,20 +238,34 @@ def create_app(
     @app.post("/task")
     def new_task():
         task_id = uuid.uuid4().hex
+        if not log("task", task_id=task_id):
+            return unavailable()
         tasks[task_id] = policy.new_task()
         return {"task_id": task_id}
 
     @app.post("/tool")
     def run_tool(request: ToolRequest):
-        expire()
+        if not expire():
+            return unavailable()
+        request_line = {"task_id": request.task_id, "tool": request.tool, "args": request.args}
         task = tasks.get(request.task_id)
         if task is None:
+            if not log("request", **request_line, decision="deny", reason="unknown task"):
+                return unavailable()
             return JSONResponse({"detail": "Unknown task"}, status_code=404)
         # Checked first so a call made while an action waits still spends budget.
         decision = policy.check(task, request.tool, request.args)
+        if not log(
+            "request", **request_line, decision=decision.action, reason=decision.reason,
+            tier=decision.tier.name if decision.tier is not None else None,
+            paths=decision.paths, tainted=task.tainted,
+        ):
+            return unavailable()
         if decision.action == "deny":
             return JSONResponse({"detail": decision.reason}, status_code=403)
         if queue.for_task(request.task_id) is not None:
+            if not log("queued", task_id=request.task_id, refused="awaiting confirmation"):
+                return unavailable()
             return JSONResponse({"detail": "awaiting confirmation"}, status_code=409)
         if decision.action == "confirm":
             try:
@@ -217,13 +273,19 @@ def create_app(
                     request.task_id, request.tool, request.args, decision.paths, decision.reason
                 )
             except QueueRefused as refused:
+                if not log("queued", task_id=request.task_id, refused=str(refused)):
+                    return unavailable()
                 return JSONResponse({"detail": str(refused)}, status_code=403)
+            if not log("queued", task_id=request.task_id, pending_id=pending.id):
+                queue.take(pending.id)  # an unlogged action must not be approvable
+                return unavailable()
             return JSONResponse({"pending_id": pending.id}, status_code=202)
-        return execute(task, request.tool, request.args, decision.paths)[0]
+        return execute(request.task_id, task, request.tool, request.args, decision.paths)[0]
 
     @app.get("/pending")
     def list_pending():
-        expire()
+        if not expire():
+            return unavailable()
         now = clock()
         return {
             "pending": [
@@ -249,11 +311,18 @@ def create_app(
         outcomes[pending.id] = {"status": "pending"}  # running: /outcome must not answer 404
         task = tasks[pending.task_id]
         refused = policy.recheck(task, pending.tool, pending.args, pending.paths)
+        ids = {"pending_id": pending.id, "task_id": pending.task_id, "tool": pending.tool}
+        if not log("approve", **ids, recheck=refused or "ok"):
+            # Already taken out of the queue: it can never run.
+            outcomes[pending.id] = {"status": "denied"}
+            return unavailable()
         if refused is not None:
             expired = policy.out_of_time(task)
             outcomes[pending.id] = {"status": "expired" if expired else "denied"}
             return JSONResponse({"detail": refused}, status_code=410 if expired else 403)
-        response, outcomes[pending.id] = execute(task, pending.tool, pending.args, pending.paths)
+        response, outcomes[pending.id] = execute(
+            pending.task_id, task, pending.tool, pending.args, pending.paths, pending.id
+        )
         return response
 
     @app.post("/deny")
@@ -262,11 +331,14 @@ def create_app(
         if pending is None:
             return unknown_pending(request.pending_id)
         outcomes[pending.id] = {"status": "denied"}
+        if not log("deny", pending_id=pending.id, task_id=pending.task_id, tool=pending.tool):
+            return unavailable()
         return {"status": "denied"}
 
     @app.post("/outcome")
     def outcome(request: PendingRequest):
-        expire()
+        if not expire():
+            return unavailable()
         if request.pending_id in outcomes:
             return outcomes[request.pending_id]
         if any(p.id == request.pending_id for p in queue.list()):
