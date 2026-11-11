@@ -1,0 +1,186 @@
+"""Policy engine (P2.2): tiers, allowed roots, taint, budgets.
+
+The bridge asks `Policy.check` before running any tool and calls `Policy.record`
+afterwards. The model's opinion is never consulted. A tool that is not in `TOOLS`
+does not exist (that is how tier T3 is expressed).
+
+`check` answers one of:
+  allow   - run it
+  confirm - needs a human click in the UI (T2, or T1 on a tainted task)
+  deny    - refused; the reason is safe to show
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import time
+import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import IntEnum
+from pathlib import Path
+from typing import Any
+
+MAX_CALLS = 8  # tool calls per task
+MAX_SECONDS = 120  # wall time per task
+MAX_FAILURES = 3  # failures of one tool per task
+
+
+class Tier(IntEnum):
+    T0 = 0  # read-only
+    T1 = 1  # local and reversible
+    T2 = 2  # destructive, outbound or code-running
+
+
+@dataclass(frozen=True)
+class Rule:
+    tier: Tier
+    path_params: tuple[str, ...] = ()  # arguments that must resolve inside an allowed root
+    name_params: tuple[str, ...] = ()  # arguments that must be a bare file name
+    taints: bool = False  # a successful call brings untrusted text into the task
+
+
+# One entry per tool. A new tool gets a new entry at the strictest tier that works.
+TOOLS: dict[str, Rule] = {
+    "get_time": Rule(Tier.T0),
+    "list_windows": Rule(Tier.T0),
+    "system_stats": Rule(Tier.T0),
+    "list_dir": Rule(Tier.T0, ("path",)),
+    "read_text_file": Rule(Tier.T0, ("path",), taints=True),
+    "recall_memory": Rule(Tier.T0),
+    "open_app": Rule(Tier.T1),
+    "focus_window": Rule(Tier.T1),
+    "create_folder": Rule(Tier.T1, ("path",)),
+    "move_file": Rule(Tier.T1, ("source", "destination")),
+    "rename_file": Rule(Tier.T1, ("path",), ("new_name",)),
+    "delete_file": Rule(Tier.T2, ("path",)),
+    "run_named_script": Rule(Tier.T2),
+}
+
+_RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{device}{number}" for device in ("COM", "LPT") for number in range(10)
+}
+
+
+class PathRefused(ValueError):
+    pass
+
+
+def _bad_component(part: str) -> bool:
+    """Names Windows silently rewrites (trailing dot or space) or maps to a device."""
+    if part in (".", ".."):
+        return False
+    return part.endswith((".", " ")) or part.split(".")[0].strip().upper() in _RESERVED
+
+
+def resolve_inside(raw: Any, roots: list[Path]) -> Path:
+    """Return the fully resolved path, or raise PathRefused if it is not inside a root.
+
+    Callers must use the returned path, never the raw string.
+    """
+    if not isinstance(raw, str) or not raw or "\0" in raw:
+        raise PathRefused("not a path")
+    text = raw.replace("/", "\\")
+    if text.startswith("\\\\"):  # \\server\share, \\?\ and \\.\
+        raise PathRefused("UNC and device paths are not allowed")
+    if not re.match(r"[A-Za-z]:\\", text):
+        raise PathRefused("path must be absolute with a drive letter")
+    if ":" in text[2:]:
+        raise PathRefused("alternate data streams are not allowed")
+    if any(_bad_component(part) for part in text[3:].split("\\")):
+        raise PathRefused("reserved or ambiguous file name")
+    # realpath collapses `..` and follows symlinks and junctions, also for a
+    # path whose last components do not exist yet.
+    resolved = os.path.realpath(text)
+    folded = os.path.normcase(resolved)
+    for root in roots:
+        base = os.path.normcase(str(root))
+        if folded == base or folded.startswith(base + "\\"):
+            return Path(resolved)
+    raise PathRefused("outside the allowed roots")
+
+
+def load_roots(config: Path) -> list[Path]:
+    """Read config/allowed_roots.toml. Only Karthik edits that file."""
+    roots = []
+    for entry in tomllib.loads(config.read_text(encoding="utf-8")).get("root", []):
+        raw = entry["path"]
+        if not isinstance(raw, str) or not re.fullmatch(r"[A-Za-z]:\\[^\\].*", raw):
+            raise ValueError(f"allowed root must be an absolute folder below a drive: {raw!r}")
+        roots.append(Path(os.path.realpath(raw)))
+    return roots
+
+
+@dataclass
+class Task:
+    started: float
+    calls: int = 0
+    tainted: bool = False
+    stopped: bool = False
+    failures: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Decision:
+    action: str  # "allow" | "confirm" | "deny"
+    reason: str = ""
+    tier: Tier | None = None  # effective tier, after taint
+    paths: dict[str, Path] = field(default_factory=dict)  # resolved path arguments
+
+
+class Policy:
+    def __init__(self, roots: list[Path], clock: Callable[[], float] = time.monotonic) -> None:
+        self.roots = roots
+        self.clock = clock
+
+    def new_task(self) -> Task:
+        return Task(started=self.clock())
+
+    def _stop(self, task: Task, reason: str) -> Decision:
+        task.stopped = True
+        return Decision("deny", reason)
+
+    def check(self, task: Task, tool: Any, args: Any) -> Decision:
+        """Decide one tool request. Every request counts against the budget, refused or not."""
+        if task.stopped:
+            return Decision("deny", "task stopped")
+        if self.clock() - task.started > MAX_SECONDS:
+            return self._stop(task, f"time budget exceeded ({MAX_SECONDS} s)")
+        if task.calls >= MAX_CALLS:
+            return self._stop(task, f"call budget exceeded ({MAX_CALLS} tool calls)")
+        task.calls += 1
+        rule = TOOLS.get(tool) if isinstance(tool, str) else None
+        if rule is None:
+            return Decision("deny", "unknown tool")
+        if task.failures.get(tool, 0) >= MAX_FAILURES:
+            return self._stop(task, f"{tool} failed {MAX_FAILURES} times")
+        if not isinstance(args, dict):
+            return Decision("deny", "arguments must be an object")
+        paths = {}
+        for name in rule.path_params:
+            try:
+                paths[name] = resolve_inside(args.get(name), self.roots)
+            except PathRefused as refused:
+                return Decision("deny", f"{name}: {refused}")
+        for name in rule.name_params:
+            value = args.get(name)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value in (".", "..")
+                or re.search(r'[\\/:\0]', value)
+                or _bad_component(value)
+            ):
+                return Decision("deny", f"{name}: must be a plain file name")
+        tier = Tier.T2 if rule.tier is Tier.T1 and task.tainted else rule.tier
+        if tier is Tier.T2:
+            return Decision("confirm", "needs confirmation", tier, paths)
+        return Decision("allow", "", tier, paths)
+
+    def record(self, task: Task, tool: str, ok: bool) -> None:
+        """Report the outcome of a tool that ran."""
+        if not ok:
+            task.failures[tool] = task.failures.get(tool, 0) + 1
+        elif TOOLS[tool].taints:
+            task.tainted = True

@@ -1,0 +1,5 @@
+# Folders the file tools may touch. Only Karthik edits this file.
+# Each root must be an absolute folder below a drive (never a whole drive).
+
+[[root]]
+path = 'C:\JarvisSandbox'

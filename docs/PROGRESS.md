@@ -17,10 +17,12 @@ Newest session entry goes at the top of the Session log.
 - Last completed task: P2.1, plus its follow-up for audit points 1 and 2 (auth is now one ASGI
   middleware covering HTTP and WebSocket, and refuses any peer address other than `127.0.0.1`).
 - Next task: P2.2, approved plan in four commits: A auth follow-up (done), B policy engine in
-  `safety/policy.py` + `config/allowed_roots.toml`, C single `POST /tool` dispatch route
-  through policy (audit point 7), D separate UI token and per-route roles (audit point 8).
-  Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
-- Tests: `uv run python -m pytest` -> 44 passed (2026-11-11). Evals:
+  `safety/policy.py` + `config/allowed_roots.toml` (done; nothing calls it yet), C single
+  `POST /tool` dispatch route through policy (audit point 7), D separate UI token and
+  per-route roles (audit point 8). Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
+- Tests: `uv run python -m pytest` -> 90 passed, 1 skipped (2026-11-11). The skip is the
+  symlink escape test: this account may not create symlinks. The junction test covers the
+  same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -51,8 +53,6 @@ Newest session entry goes at the top of the Session log.
   any of these, or build our own as planned? Its memory has no approval queue.
 - P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
   8-tool-call budget for more than a few files. Batch move tool, or change the check?
-- Does `read_text_file` on a sandbox file taint the task? Plan lists only web, ingested docs,
-  clipboard.
 - The repo sits inside the Obsidian vault. P4.2 proposes the vault as a read-only docs root,
   which would include this repo's own `safety/` and `config/`. Exclude the repo folder, or move it?
 - `C:\JarvisSandbox` does not exist yet. Create it in P2/P3, or should Karthik create it?
@@ -61,6 +61,22 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-11 — P2.2: `safety/policy.py` is the whole policy engine. `Policy.check(task, tool,
+  args)` returns `allow`, `confirm` or `deny`; `Policy.record(task, tool, ok)` reports the
+  outcome. Tier T3 has no code: a tool missing from `TOOLS` is denied as unknown. Every
+  request counts against the 8-call budget, refused ones too, so a flailing model stops. A
+  breached budget stops the task for good. — Claude Code, plan approved by Karthik
+- 2026-11-11 — `read_text_file` taints the task (`taints=True` in `TOOLS`): file text can
+  carry injected instructions, and AGENTS.md asks for the strictest tier that works. Effect:
+  after a successful read, T1 actions in that task need confirmation. One flag to flip. This
+  answers the open question on sandbox reads. — Claude Code, plan approved by Karthik
+- 2026-11-11 — Path rule (`resolve_inside`): drive-letter absolute paths only. UNC, `\\?\`,
+  `\\.\`, drive-relative, alternate data streams, device names (NUL, COM1...) and names
+  ending in a dot or space are refused before resolution; then `os.path.realpath` and a
+  case-insensitive inside-root check. Tools must act on the returned path, never the raw
+  string. Not covered: hard links, and a link swapped in between check and use. — Claude Code
+- 2026-11-11 — `config/allowed_roots.toml` holds one root, `C:\JarvisSandbox`. `load_roots`
+  refuses a whole drive or a relative root. The folder itself is still not created. — Claude Code
 - 2026-11-11 — Repo lives at `C:\Mainframe\Second_Brain\Jarvis_v2` (inside the Obsidian vault) —
   Karthik chose to keep it here — Karthik
 - 2026-11-11 — Full clone of upstream OpenJarvis kept at `OpenJarvis/` (commit e6b7137),

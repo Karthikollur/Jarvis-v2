@@ -1,0 +1,246 @@
+import _winapi
+import os
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from safety.policy import (
+    MAX_CALLS,
+    MAX_FAILURES,
+    MAX_SECONDS,
+    TOOLS,
+    PathRefused,
+    Policy,
+    Tier,
+    load_roots,
+    resolve_inside,
+)
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def dirs():
+    """(root, outside): an allowed root and a sibling folder that is not allowed."""
+    storage = REPO / ".test-storage"
+    storage.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=storage) as directory:
+        root, outside = Path(directory) / "root", Path(directory) / "outside"
+        root.mkdir()
+        outside.mkdir()
+        yield root, outside
+
+
+class Clock:
+    now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def clock():
+    return Clock()
+
+
+@pytest.fixture
+def policy(dirs, clock):
+    return Policy([dirs[0]], clock)
+
+
+# --- allowed roots ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda r, o: str(r),
+        lambda r, o: str(r / "a" / "new.txt"),
+        lambda r, o: str(r / "a" / ".." / "b.txt"),
+        lambda r, o: str(r).upper() + "\\X.TXT",
+        lambda r, o: str(r / "a.txt").replace("\\", "/"),
+    ],
+)
+def test_paths_inside_root_allowed(dirs, make):
+    root, outside = dirs
+    resolved = resolve_inside(make(root, outside), [root])
+    assert os.path.normcase(str(resolved)).startswith(os.path.normcase(str(root)))
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda r, o: str(r / ".." / "outside" / "x.txt"),  # traversal
+        lambda r, o: str(o / "x.txt"),  # absolute, outside
+        lambda r, o: str(o / "x.txt").replace("\\", "/"),
+        lambda r, o: str(r) + "Evil\\x.txt",  # sibling sharing the prefix
+        lambda r, o: "C:\\Windows\\win.ini",
+        lambda r, o: "\\\\server\\share\\x.txt",  # UNC
+        lambda r, o: "//server/share/x.txt",
+        lambda r, o: "\\\\?\\" + str(r / "x.txt"),  # device paths
+        lambda r, o: "\\\\.\\C:\\x.txt",
+        lambda r, o: str(r / "x.txt") + ":stream",  # alternate data stream
+        lambda r, o: "C:x.txt",  # drive-relative
+        lambda r, o: "x.txt",  # relative
+        lambda r, o: "..\\x.txt",
+        lambda r, o: "\\x.txt",  # rooted, no drive
+        lambda r, o: str(r / "NUL"),  # device names
+        lambda r, o: str(r / "com1.txt"),
+        lambda r, o: str(r / "name."),  # Windows strips these silently
+        lambda r, o: str(r / "name "),
+        lambda r, o: str(r / "a\0b"),
+        lambda r, o: "",
+        lambda r, o: None,
+        lambda r, o: 5,
+    ],
+)
+def test_paths_outside_root_refused(dirs, make):
+    root, outside = dirs
+    with pytest.raises(PathRefused):
+        resolve_inside(make(root, outside), [root])
+
+
+def test_junction_out_of_root_refused(dirs):
+    root, outside = dirs
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    assert (root / "jump").is_junction()
+    with pytest.raises(PathRefused):
+        resolve_inside(str(root / "jump" / "x.txt"), [root])
+    with pytest.raises(PathRefused):
+        resolve_inside(str(root / "jump"), [root])
+
+
+def test_symlink_out_of_root_refused(dirs):
+    root, outside = dirs
+    try:
+        os.symlink(outside, root / "link", target_is_directory=True)
+    except OSError:
+        pytest.skip("this Windows account may not create symlinks")
+    with pytest.raises(PathRefused):
+        resolve_inside(str(root / "link" / "x.txt"), [root])
+
+
+def test_no_roots_means_nothing_allowed(dirs):
+    with pytest.raises(PathRefused):
+        resolve_inside(str(dirs[0]), [])
+
+
+def test_shipped_roots_file():
+    assert load_roots(REPO / "config" / "allowed_roots.toml") == [Path("C:\\JarvisSandbox")]
+
+
+@pytest.mark.parametrize("bad", ["C:\\", "C:", "sandbox", "\\\\server\\share", "C:\\\\x"])
+def test_unsafe_root_config_refused(dirs, bad):
+    config = dirs[0] / "roots.toml"
+    config.write_text(f"[[root]]\npath = '{bad}'\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_roots(config)
+
+
+# --- tiers and taint --------------------------------------------------------
+
+
+def test_tool_table_matches_eval_stubs():
+    from evals.stub_tools import SPECS
+
+    assert set(TOOLS) == set(SPECS)
+
+
+def test_unknown_tool_denied(policy):
+    task = policy.new_task()
+    for tool in ["shell_exec", "file_write", "", None, 3]:
+        assert policy.check(policy.new_task(), tool, {}).action == "deny"
+    assert policy.check(task, "get_time", "not a dict").action == "deny"
+
+
+def test_tiers(policy, dirs):
+    root, outside = dirs
+    inside = {"path": str(root / "a.txt")}
+    assert policy.check(policy.new_task(), "get_time", {}).action == "allow"
+    decision = policy.check(policy.new_task(), "create_folder", inside)
+    assert (decision.action, decision.tier) == ("allow", Tier.T1)
+    assert decision.paths["path"] == Path(os.path.realpath(root / "a.txt"))
+    assert policy.check(policy.new_task(), "delete_file", inside).action == "confirm"
+    assert policy.check(policy.new_task(), "run_named_script", {"name": "x"}).action == "confirm"
+
+
+def test_path_argument_outside_root_denied(policy, dirs):
+    root, outside = dirs
+    escape = str(root / ".." / "outside" / "x.txt")
+    for tool, args in [
+        ("list_dir", {"path": str(outside)}),
+        ("read_text_file", {"path": escape}),
+        ("delete_file", {"path": escape}),
+        ("create_folder", {}),  # missing argument
+        ("move_file", {"source": str(root / "a.txt"), "destination": str(outside)}),
+        ("move_file", {"source": escape, "destination": str(root)}),
+    ]:
+        assert policy.check(policy.new_task(), tool, args).action == "deny", (tool, args)
+
+
+def test_rename_needs_plain_file_name(policy, dirs):
+    path = str(dirs[0] / "a.txt")
+    ok = policy.check(policy.new_task(), "rename_file", {"path": path, "new_name": "b.txt"})
+    assert ok.action == "allow"
+    for name in ["..\\b.txt", "sub/b.txt", "C:b.txt", "..", "", "NUL", "b.txt.", None]:
+        args = {"path": path, "new_name": name}
+        assert policy.check(policy.new_task(), "rename_file", args).action == "deny", name
+
+
+def test_taint_upgrades_t1_to_confirm(policy, dirs):
+    root, outside = dirs
+    folder = {"path": str(root / "new")}
+    task = policy.new_task()
+    assert policy.check(task, "create_folder", folder).action == "allow"
+    assert policy.check(task, "read_text_file", {"path": str(root / "a.txt")}).action == "allow"
+    policy.record(task, "read_text_file", ok=True)
+    assert task.tainted
+    decision = policy.check(task, "create_folder", folder)
+    assert (decision.action, decision.tier) == ("confirm", Tier.T2)
+    assert policy.check(task, "open_app", {"app": "notepad"}).action == "confirm"
+    assert policy.check(task, "get_time", {}).action == "allow"  # T0 stays automatic
+
+
+def test_failed_read_does_not_taint(policy):
+    task = policy.new_task()
+    policy.record(task, "read_text_file", ok=False)
+    assert not task.tainted
+
+
+# --- budgets ----------------------------------------------------------------
+
+
+def test_call_budget(policy):
+    task = policy.new_task()
+    for _ in range(MAX_CALLS):
+        assert policy.check(task, "get_time", {}).action == "allow"
+    assert policy.check(task, "get_time", {}).action == "deny"
+    assert task.stopped
+
+
+def test_refused_calls_count_against_budget(policy):
+    task = policy.new_task()
+    for _ in range(MAX_CALLS):
+        assert policy.check(task, "shell_exec", {}).reason == "unknown tool"
+    assert "call budget" in policy.check(task, "get_time", {}).reason
+
+
+def test_time_budget(policy, clock):
+    task = policy.new_task()
+    clock.now = MAX_SECONDS
+    assert policy.check(task, "get_time", {}).action == "allow"
+    clock.now = MAX_SECONDS + 1
+    assert policy.check(task, "get_time", {}).action == "deny"
+    clock.now = 0  # a stopped task stays stopped
+    assert policy.check(task, "get_time", {}).reason == "task stopped"
+
+
+def test_retry_budget(policy):
+    task = policy.new_task()
+    for _ in range(MAX_FAILURES):
+        assert policy.check(task, "system_stats", {}).action == "allow"
+        policy.record(task, "system_stats", ok=False)
+    assert policy.check(task, "system_stats", {}).action == "deny"
+    assert task.stopped
+    assert policy.check(task, "get_time", {}).action == "deny"
