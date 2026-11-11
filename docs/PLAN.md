@@ -117,7 +117,7 @@ Do not start a phase until the previous phase's "Done when" passes and is record
 - [x] P0.4 From OpenJarvis docs/source, find how to register a custom tool that calls an HTTP
       endpoint. Build a hello-world tool.
 - [x] P0.5 Decide core placement (WSL2 vs native). Record decision and reason.
-- [ ] P0.6 Fill in the Commands section of AGENTS.md.
+- [x] P0.6 Fill in the Commands section of AGENTS.md.
 
 **Done when:** a typed request in OpenJarvis triggers the custom tool, which hits a Windows
 localhost server, with Wi-Fi off.

@@ -6,8 +6,10 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.5
-- Next task: P0.6
+- Last completed task: P0.6 (all P0 tasks ticked)
+- Phase gate: P0 "Done when" NOT yet passed. Karthik must turn Wi-Fi off and run
+  `uv run python core/hello_tool.py`; it must print `OK`. Record the result here.
+- Next task: P1.1, only after the gate above is recorded as passed
 - Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -139,9 +141,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Result: `OK` in 16 s (warm model).
 - Tests run + result: `uv run python core/hello_tool.py` -> OK.
 - Unfinished work stopped at (exact point): nothing in progress.
-- Next concrete step: P0.5 (record core placement: native Windows; evidence is in Decisions),
-  then P0.6 (Commands in AGENTS.md: note the signed-venv step and `python -m` rule). P0 "Done
-  when" still needs Karthik to turn Wi-Fi off and run `uv run python core/hello_tool.py`.
+- P0.5: placement decision recorded (native Windows). P0.6: Commands and repo map in AGENTS.md
+  filled in.
+- Next concrete step: get the Wi-Fi-off result from Karthik and record it under Current state.
+  If it fails, find which call went out (candidates: PyPI update check, PostHog, HuggingFace
+  via `datasets`) and fix before P1. Then P1.1 (`qwen3.5:4b` is already pulled, so it is
+  config only). Before P1.2, ask Karthik to approve adding pytest and resolve the latency
+  open question (thinking off, context size, keep-alive).
 
 <!-- Copy this template for each session, newest on top.
 

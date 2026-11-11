@@ -82,13 +82,32 @@ next concrete step. Commit it. Write it for an agent that has never seen this re
 
 ## Commands
 
-Fill in during P0 and keep current.
+Keep current. Shell is PowerShell, run from the repo root.
 
-- Python env: `uv sync`
-- Tests: `uv run pytest`
-- Evals: `uv run python evals/run.py`
+Two machine rules first (reasons in PROGRESS.md Decisions, 2026-11-11):
+
+- Windows Smart App Control blocks unsigned `.exe` files, including the `python.exe` that
+  `uv venv` creates and every script launcher in `.venv\Scripts` (`jarvis.exe`, `pytest.exe`).
+  So the venv must be created by the signed python.org interpreter, and tools are always run
+  as `uv run python -m <module>` or `uv run python <file>`, never by `.exe` name. Do not turn
+  Smart App Control off.
+- `uv sync` needs the upstream clone at `OpenJarvis/` (gitignored workspace member, commit
+  `e6b7137`). If it is missing: `git clone https://github.com/open-jarvis/OpenJarvis.git`
+  (a download: ask Karthik first).
+
+Commands:
+
+- Python env, first time or after deleting `.venv`:
+  `& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv; uv sync`
+- Python env, afterwards: `uv sync`
+- Check Ollama and models: `ollama list` (needs `qwen3.5:4b`)
+- Tests (P0): `uv run python core/hello_tool.py` — must print `OK`; needs Ollama running
+- Tests (from P1/P2, once pytest is approved and added): `uv run python -m pytest`
+- Evals (from P1): `uv run python evals/run.py`
+- OpenJarvis CLI, for debugging only (core uses the Python SDK):
+  `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 - Bridge (dev): `TBD in P2`
-- UI (dev): `cd ui && npm run dev`
+- UI (dev, from P6): `cd ui && npm run dev`
 
 ## Repo map
 
@@ -97,6 +116,8 @@ AGENTS.md / CLAUDE.md   agent rules
 docs/PLAN.md            phases, tasks, acceptance checks
 docs/PROGRESS.md        current state, decisions, session log
 core/                   OpenJarvis config, prompts, tool registration
+OpenJarvis/             upstream source clone (gitignored, read-only reference, installed editable)
+.openjarvis/            OpenJarvis runtime data (gitignored)
 bridge/                 native Windows tool service (127.0.0.1 only, token auth)
 safety/                 policy engine: tiers, allowed roots, taint, budgets, confirm queue, audit, quarantine
 memory/                 SQLite schema, ingestion, retrieval, approval queue
