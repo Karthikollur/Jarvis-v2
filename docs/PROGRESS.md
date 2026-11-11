@@ -11,9 +11,9 @@ Newest session entry goes at the top of the Session log.
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Last completed task: P1.4 (closed without code)
-- Next task: P1.5
-- Tests: `uv run python -m pytest` -> 12 passed (2026-11-11). Evals:
+- Last completed task: P1.5
+- Next task: P1.6
+- Tests: `uv run python -m pytest` -> 36 passed (2026-11-11). Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -119,6 +119,14 @@ Format: `YYYY-MM-DD — decision — reason — who`
   Shrinking saves 0.5 GB and risks truncating tool schemas plus an 8-call history. RULE: every
   caller must use the same `num_ctx`; a different value makes Ollama reload the model (7.8 s
   measured). — Claude Code
+- 2026-11-11 — P1.5: fast path is `core/router.py::route(text) -> (tool, args) | None`.
+  Whole-utterance regex matches only, for time/date, open <allowlisted app alias>, and
+  stop/cancel/abort/halt. Anything else returns None and goes to the LLM. It returns a tool
+  REQUEST, not permission: results must go through the bridge and policy like LLM tool calls.
+  `("stop", {})` has no tool behind it until the kill switch exists (P2.5). App aliases are
+  hardcoded in the router for now; move them beside the allowlist in `config/apps.toml` at
+  P3.2. `evals/run.py` uses the router by default; `--no-router` measures the LLM alone. —
+  Claude Code
 - 2026-11-11 — P1.4 marked satisfied with no code change. OpenJarvis's orchestrator already
   sends each tool's JSON schema to Ollama as native function-calling `tools`, and the first
   eval run got 23/23 arguments right. True schema-constrained output is not available through
@@ -175,6 +183,11 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   for the missing details but without a question mark. Two latency outliers, t01 4.7 s and
   t03 9.3 s, not yet explained. The set is easy (explicit paths, one step each, prompt written
   alongside the cases); treat 100% as a floor check, not proof of robustness.
+- 2026-11-11 — qwen3.5:4b + fast-path router (P1.5) — same scores (25/25, 23/23, 10/10, 4/5) —
+  5/40 cases took the fast path at 0.0 s — median 1.0 s, max 3.9 s. The slow case is always
+  the first LLM call that carries tool schemas (t01 at 4.7 s before, t02 at 3.9 s now), so it
+  is a one-off prompt warm-up, not a property of that command. The 9.3 s on t03 in the first
+  run did not repeat.
 
 ## Session log
 
@@ -213,15 +226,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 - Tests run + result: `uv run python -m pytest` -> 12 passed. `uv run python evals/run.py` ->
   39/40.
 - P1.4: closed by decision, no code (see Decisions).
-- Next concrete step: P1.5, deterministic fast-path router before the LLM for the most common
-  commands (open app, time, stop). Suggested shape: one pure function in `core/`, e.g.
-  `route(text) -> (tool_name, args) | None`, exact/regex matches only ("open <app in APPS>",
-  "what time is it", "stop"), returning None for anything else so the LLM handles it. It must
-  only ever return tools from the same allowlist the LLM gets, and its output goes through the
-  bridge/policy like any other tool call. Test with pytest, including near-misses that must
-  NOT match ("open the pod bay doors", "stop the dev server script"). Then P1.6: record
-  baseline, optional `uv run python evals/run.py --model qwen3.5:9b`, and look into the two
-  latency outliers (t01, t03).
+- P1.5: `core/router.py`, `tests/test_router.py` (24 tests incl. 12 near-misses that must fall
+  through, and a check that the router never disagrees with the eval set), router wired into
+  `evals/run.py`.
+- Tests run + result: `uv run python -m pytest` -> 36 passed. Evals -> 39/40, 5 on fast path.
+- Next concrete step: P1.6. The 4b baseline is already under Eval results. Optional 9b run:
+  `uv run python evals/run.py --no-router --model qwen3.5:9b` (already pulled; 6.6 GB will
+  spill to CPU, expect it to be slow; it also evicts 4b from VRAM). Then check P1 "Done when"
+  (>=90% tool selection, all must-refuse refused, latency in targets, network off) and ask
+  Karthik to confirm the phase closes. Worth proposing first: harder eval cases (typos,
+  indirect phrasing, multi-step), since the current set is easy.
 
 <!-- Copy this template for each session, newest on top.
 

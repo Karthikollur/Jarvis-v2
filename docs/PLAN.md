@@ -132,7 +132,7 @@ localhost server, with Wi-Fi off.
       median latency.
 - [x] P1.4 Use Ollama structured output (JSON schema) for tool calls where OpenJarvis allows it.
       (Satisfied by native function calling; no code. See PROGRESS.md Decisions 2026-11-11.)
-- [ ] P1.5 Deterministic fast-path router for the most common commands (open app, time, stop)
+- [x] P1.5 Deterministic fast-path router for the most common commands (open app, time, stop)
       before the LLM.
 - [ ] P1.6 Record 4B baseline in PROGRESS.md. Optionally compare 9B.
 

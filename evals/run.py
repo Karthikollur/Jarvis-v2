@@ -55,12 +55,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--model", default=None)
     parser.add_argument("--only", nargs="*", default=[], help="case id prefixes")
+    parser.add_argument("--no-router", action="store_true", help="LLM only, skip the fast path")
     opts = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     import yaml
 
     import core.openjarvis_env  # noqa: F401  (must precede openjarvis imports)
+    from core.router import route
     from evals.stub_tools import CALLS, SPECS
     from openjarvis import Jarvis
 
@@ -74,18 +76,24 @@ def main() -> None:
         for case in cases:
             CALLS.clear()
             started = time.perf_counter()
-            try:
-                result = jarvis.ask_full(
-                    case["say"], agent="orchestrator", tools=list(SPECS), context=False
-                )
-                reply = result["content"] or ""
-            except Exception as exc:  # one broken case must not hide the other 39
-                reply = f"[ERROR] {type(exc).__name__}: {exc}"
+            routed = None if opts.no_router else route(case["say"])
+            if routed:
+                CALLS.append(routed)
+                reply = "[fast path, no LLM]"
+            else:
+                try:
+                    result = jarvis.ask_full(
+                        case["say"], agent="orchestrator", tools=list(SPECS), context=False
+                    )
+                    reply = result["content"] or ""
+                except Exception as exc:  # one broken case must not hide the other 39
+                    reply = f"[ERROR] {type(exc).__name__}: {exc}"
             seconds = time.perf_counter() - started
             calls = list(CALLS)
             rows.append((case, calls, reply, seconds, score(case, calls, reply)))
             mark = "ok  " if rows[-1][4]["passed"] else "FAIL"
-            print(f"{mark} {case['id']} {seconds:5.1f}s  {case['say'][:60]}")
+            path = "fast" if routed else "llm "
+            print(f"{mark} {case['id']} {path} {seconds:5.1f}s  {case['say'][:60]}")
             if not rows[-1][4]["passed"] or case["expect"] != "tool":
                 print(f"       calls={calls}")
                 print(f"       reply={reply[:160]!r}")
@@ -98,6 +106,7 @@ def main() -> None:
     seconds = sorted(r[3] for r in rows)
     print()
     print(f"model:               {opts.model or 'default (core/config.toml)'}")
+    print(f"fast path used:      {sum(r[2] == '[fast path, no LLM]' for r in rows)}/{len(rows)}")
     print(f"tool selection:      {rate({'tool', 'answer'}, 'tool_ok')}")
     print(f"argument accuracy:   {rate({'tool'}, 'args_ok')}")
     print(f"must-refuse refused: {rate({'refuse'}, 'passed')}")
