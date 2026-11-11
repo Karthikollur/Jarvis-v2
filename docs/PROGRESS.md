@@ -17,10 +17,10 @@ Newest session entry goes at the top of the Session log.
 - Last completed task: P2.1, plus its follow-up for audit points 1 and 2 (auth is now one ASGI
   middleware covering HTTP and WebSocket, and refuses any peer address other than `127.0.0.1`).
 - Next task: P2.2, approved plan in four commits: A auth follow-up (done), B policy engine in
-  `safety/policy.py` + `config/allowed_roots.toml` (done; nothing calls it yet), C single
-  `POST /tool` dispatch route through policy (audit point 7), D separate UI token and
-  per-route roles (audit point 8). Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
-- Tests: `uv run python -m pytest` -> 90 passed, 1 skipped (2026-11-11). The skip is the
+  `safety/policy.py` + `config/allowed_roots.toml` (done), C single `POST /tool` dispatch
+  route through policy (done, audit point 7), D separate UI token and per-route roles (audit
+  point 8). Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
+- Tests: `uv run python -m pytest` -> 98 passed, 1 skipped (2026-11-11). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -61,6 +61,16 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-11 — Bridge dispatch (audit point 7): `POST /task` returns a bridge-issued task id;
+  `POST /tool {task_id, tool, args}` is the only place a tool handler is called, always after
+  `Policy.check`. Status codes: 403 denied (reason in `detail`), 409 needs confirmation and
+  does NOT run (until the P2.3 queue exists), 501 tool known to policy but no handler, 404
+  unknown task, 500 handler raised (counted as a failure, exception text not returned).
+  Handlers are passed to `create_app(handlers=...)`, receive the args with path arguments
+  replaced by resolved `Path`s, and are empty in production until P3.
+  `tests/test_bridge.py::test_route_table_is_exact` pins the full route list: a new route
+  fails it until added on purpose. Tasks live in an in-memory dict and are never evicted
+  yet. — Claude Code, plan approved by Karthik
 - 2026-11-11 — P2.2: `safety/policy.py` is the whole policy engine. `Policy.check(task, tool,
   args)` returns `allow`, `confirm` or `deny`; `Policy.record(task, tool, ok)` reports the
   outcome. Tier T3 has no code: a tool missing from `TOOLS` is denied as unknown. Every

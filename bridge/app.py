@@ -1,5 +1,6 @@
 """Run: uv run python -m uvicorn bridge.app:create_app --factory --host 127.0.0.1 --port 8765 --no-access-log"""
 
+from collections.abc import Callable
 import csv
 import hmac
 import os
@@ -8,10 +9,15 @@ import re
 import secrets
 import subprocess
 import tempfile
+from typing import Any
+import uuid
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.datastructures import Headers
+
+from safety.policy import Policy, Task, load_roots
 
 
 def _run(*args: str) -> str:
@@ -109,12 +115,57 @@ class Authenticate:
             await response(scope, receive, send)
 
 
-def create_app(storage: Path | None = None) -> FastAPI:
+class ToolRequest(BaseModel):
+    task_id: str
+    tool: str
+    args: dict[str, Any] = {}
+
+
+def create_app(
+    storage: Path | None = None,
+    roots: list[Path] | None = None,
+    handlers: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
+) -> FastAPI:
+    """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it."""
     if storage is None:
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
+    if roots is None:
+        roots = load_roots(Path(__file__).resolve().parent.parent / "config" / "allowed_roots.toml")
     token = load_token(storage)
+    policy = Policy(roots)
+    handlers = dict(handlers or {})
+    tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(Authenticate, token=token)
+
+    @app.post("/task")
+    def new_task():
+        task_id = uuid.uuid4().hex
+        tasks[task_id] = policy.new_task()
+        return {"task_id": task_id}
+
+    @app.post("/tool")
+    def run_tool(request: ToolRequest):
+        """The only place a tool handler is called. Do not call handlers anywhere else."""
+        task = tasks.get(request.task_id)
+        if task is None:
+            return JSONResponse({"detail": "Unknown task"}, status_code=404)
+        decision = policy.check(task, request.tool, request.args)
+        if decision.action == "deny":
+            return JSONResponse({"detail": decision.reason}, status_code=403)
+        if decision.action != "allow":
+            # No confirm queue yet (P2.3): anything needing confirmation does not run.
+            return JSONResponse({"detail": "Needs confirmation"}, status_code=409)
+        handler = handlers.get(request.tool)
+        if handler is None:
+            return JSONResponse({"detail": "Tool not implemented"}, status_code=501)
+        try:
+            result = handler({**request.args, **decision.paths})  # resolved paths win
+        except Exception:
+            policy.record(task, request.tool, ok=False)
+            return JSONResponse({"detail": "Tool failed"}, status_code=500)
+        policy.record(task, request.tool, ok=True)
+        return {"result": result}
 
     @app.get("/health")
     async def health():
