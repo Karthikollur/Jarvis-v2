@@ -1,0 +1,22 @@
+# OpenJarvis config for Jarvis. Loaded via OPENJARVIS_CONFIG (see docs/PROGRESS.md).
+# Local only: no cloud engines, no analytics, no update checks.
+
+[engine]
+default = "ollama"
+
+[engine.ollama]
+host = "http://127.0.0.1:11434"
+
+[intelligence]
+default_model = "qwen3.5:4b"
+
+[agent]
+default_agent = "simple"
+context_from_memory = false  # our own memory/ path owns this (P4)
+
+[analytics]
+enabled = false
+choice_recorded = true  # suppress the consent prompt
+
+[updates]
+auto_update = false  # otherwise CLI polls pypi.org

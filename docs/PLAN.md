@@ -112,7 +112,7 @@ Do not start a phase until the previous phase's "Done when" passes and is record
 - [x] P0.1 Initialise repo: folder layout from AGENTS.md, `uv` project, `.gitignore`, docs in place.
 - [x] P0.2 Install OpenJarvis following its current Windows docs (WSL2 or desktop build). Record
       exact steps in PROGRESS.md Decisions.
-- [ ] P0.3 Connect OpenJarvis to the existing Windows Ollama. If core runs in WSL2, confirm it can
+- [x] P0.3 Connect OpenJarvis to the existing Windows Ollama. If core runs in WSL2, confirm it can
       reach Windows Ollama and a dummy HTTP server on Windows localhost.
 - [ ] P0.4 From OpenJarvis docs/source, find how to register a custom tool that calls an HTTP
       endpoint. Build a hello-world tool.

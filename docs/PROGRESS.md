@@ -6,15 +6,24 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.2
-- Next task: P0.3
+- Last completed task: P0.3
+- Next task: P0.4
 - Tests: not set up yet (pytest not added; adding a dependency needs Karthik's OK)
 - Uncommitted work: none
 - Blockers: none
-- Run OpenJarvis with (PowerShell, from repo root):
-  `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; uv run python -m openjarvis.cli <args>`
+- Run OpenJarvis with (PowerShell, from repo root; both env vars required):
+  `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- Latency (measured in P0.3, `qwen3.5:4b`, 100% GPU, "reply pong"): cold 90 s, warm 16 s through
+  the OpenJarvis CLI, 10 s direct to Ollama, 4 s is bare CLI start-up. The model thinks before
+  answering (104 tokens generated for a one-word reply) and Ollama loads it with a 16384 context.
+  The 3 s target needs, in P1: thinking off, smaller context, model kept loaded, and core as a
+  long-running process instead of a CLI call per request. Not fixed yet.
+- OpenJarvis logs `Failed to set up rate limiter: No module named 'openjarvis_rust'` on every
+  call. The Rust extension is not installed (needs a Rust toolchain = system install). Harmless
+  so far; some features (its memory commands) need it. We do not plan to use those.
 
 - An older OpenJarvis install exists at `%USERPROFILE%\.openjarvis` (created 2026-09-19, has
   `config.toml`, memory and agent DBs). Not touched. If `OPENJARVIS_HOME` is ever unset, this
@@ -65,6 +74,14 @@ Format: `YYYY-MM-DD — decision — reason — who`
   "An Application Control policy has blocked this file". So always call tools as
   `uv run python -m <module>`, never by `.exe` name. Do not disable Smart App Control. If
   `.venv` is deleted, redo step 1 before `uv sync` — Claude Code
+- 2026-11-11 — P0.3: OpenJarvis config is hand-written and tracked at `core/config.toml`, loaded
+  via `OPENJARVIS_CONFIG`; `jarvis init` was not run — init may download models and prompt for
+  analytics; tracked config survives handoffs — Claude Code
+- 2026-11-11 — Config turns off the PyPI update check (`[updates] auto_update = false`) and
+  PostHog analytics (`[analytics] enabled = false`); `context_from_memory = false` — offline
+  rule; our own memory path owns memory — Claude Code
+- 2026-11-11 — Core runs natively on Windows, so the WSL2 half of P0.3 was skipped (P0.5 will
+  record the placement decision formally) — Claude Code
 - 2026-11-11 — No dependencies added in P0.1, not even pytest — rule: ask before adding — Claude Code
 - 2026-11-11 — PLAN.md + PROGRESS.md are the only planning files; no separate task_plan.md —
   avoid two sources of truth — Claude Code (Karthik can overrule)
@@ -90,12 +107,15 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   workaround). `uv run python -m openjarvis.cli --version` prints `1.0.5.dev180+ge6b71376`;
   config/data/cache paths resolve under `<repo>\.openjarvis`. Only `--version` has been run;
   no `jarvis init`, no model calls yet.
+- P0.3: wrote `core/config.toml`; `ask --no-stream "Reply with exactly: pong"` returned `pong`
+  from `qwen3.5:4b` on Windows Ollama (`ollama ps`: 100% GPU). Wi-Fi-off run not done yet; that
+  is the P0 "Done when" check.
 - Tests run + result: none exist. `uv sync` succeeds.
 - Unfinished work stopped at (exact point): nothing in progress.
-- Next concrete step: P0.3. Read `OpenJarvis/src/openjarvis/core/config.py` and
-  `cli/_version_check.py` first (the latter may call out on startup), write a minimal
-  `.openjarvis/config.toml` by hand pointing at `http://localhost:11434` with `qwen3.5:4b`
-  rather than running `jarvis init` (which may download things), then one `ask` round trip.
+- Next concrete step: P0.4. Read `OpenJarvis/src/openjarvis/tools/` (registry, base class) and
+  how `--tools` / `[agent] tools` filter tools. Build a hello-world tool that calls a dummy
+  HTTP server on `127.0.0.1`, and show that built-in tools (`shell_exec`, `file_write`, ...)
+  are not callable when not listed.
 
 <!-- Copy this template for each session, newest on top.
 
