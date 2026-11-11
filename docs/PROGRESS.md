@@ -239,6 +239,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-11 — Agent: Claude Code (P2.3 planned, not implemented; handoff)
+
+- State for a new agent: P0, P1, P2.1, P2.2 done. Next is P2.3 (confirm queue). Its plan is
+  approved and lives at `docs/plans/P2.3.md`: two commits, A (`safety/confirm.py`,
+  `Policy.recheck`, tests) then B (`/pending`, `/approve`, `/deny`, `/outcome` routes, tick
+  P2.3). Both marked remaining in that file. Karthik's instructions for it: execute the plan
+  exactly, tests first (including refusal and bypass cases), one commit at a time, stop after
+  each commit with a diff summary for Karthik, log anything ambiguous or security-relevant
+  under "Open questions for Karthik" instead of improvising in `safety/` or `bridge/`. After B:
+  tick P2.3 in PLAN.md and mark the plan file "Implemented".
+- Did this session (all committed): P1 phase review and bridge bypass audit (`c8119bf`);
+  P2.2 plus audit points 1, 2, 7, 8 (`bc077f2`..`24c86d9`); P2.3 plan (`e18af09`).
+- Files changed this entry: `docs/plans/P2.3.md` (status line), `docs/PROGRESS.md`.
+- Tests: `uv run python -m pytest` -> 100 passed, 1 skipped (last run after `24c86d9`; no code
+  changed since). In Claude Code's Bash tool run it as `rtk proxy uv run python -m pytest`;
+  without `rtk proxy` collection fails with a false `No module named 'bridge'`.
+- Unfinished work stopped at: an implementation request for P2.3 was interrupted before any
+  file was touched. Working tree clean.
+- Next concrete step: implement commit A of `docs/plans/P2.3.md`.
+
 ### 2026-11-11 — Agent: Claude Code (P2.2 + audit points 1, 2, 7, 8)
 
 - Did, in four commits after Karthik approved the plan:
