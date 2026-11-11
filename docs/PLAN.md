@@ -142,7 +142,7 @@ targets, network off.
 ### P2 — Safety core + bridge skeleton (~3–4 days)
 
 - [x] P2.1 `bridge/`: FastAPI on `127.0.0.1`, token generated on first run, user-only file ACL.
-- [ ] P2.2 `safety/policy.py`: tier table, allowed-roots check with full path resolution, per-task
+- [x] P2.2 `safety/policy.py`: tier table, allowed-roots check with full path resolution, per-task
       taint flag, budgets.
 - [ ] P2.3 Confirm queue: pending T2 actions, approve/deny endpoints.
 - [ ] P2.4 Audit log (JSONL).

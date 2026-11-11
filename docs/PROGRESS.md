@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 and P2.2 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,13 +14,13 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.1, plus its follow-up for audit points 1 and 2 (auth is now one ASGI
-  middleware covering HTTP and WebSocket, and refuses any peer address other than `127.0.0.1`).
-- Next task: P2.2, approved plan in four commits: A auth follow-up (done), B policy engine in
-  `safety/policy.py` + `config/allowed_roots.toml` (done), C single `POST /tool` dispatch
-  route through policy (done, audit point 7), D separate UI token and per-route roles (audit
-  point 8). Tick P2.2 after D. Audit points 3, 4, 5, 6, 9 stay open.
-- Tests: `uv run python -m pytest` -> 98 passed, 1 skipped (2026-11-11). The skip is the
+- Last completed task: P2.2 (policy engine), done together with audit points 1, 2, 7, 8 from
+  the P1 review. The bridge now has three routes: `GET /health`, `POST /task`, `POST /tool`.
+- Next task: P2.3 (confirm queue). Its approve/deny routes must be `{"ui"}` only in
+  `bridge.app.ROUTE_ROLES`, and must be added to `test_route_table_is_exact`. Today a
+  `confirm` decision returns 409 and nothing runs. Plan mode first (touches `bridge/`).
+  Audit points 3, 4, 5, 6, 9 (session log, P1 review entry) stay open.
+- Tests: `uv run python -m pytest` -> 100 passed, 1 skipped (2026-11-11). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -60,6 +60,21 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-11 — Two bridge tokens (audit point 8): `bridge.token` is role `core` (tool
+  requests), `ui.token` is role `ui` (will be the only role allowed to approve T2 in P2.3).
+  Both live in `%LOCALAPPDATA%\Jarvis` with the same user-only ACL. `ROUTE_ROLES` in
+  `bridge/app.py` maps each path to the roles allowed; a path with no entry is refused 403
+  for every token, so a new route is closed until given a role (unknown paths now answer 403,
+  not 404). LIMIT: any process running as Karthik can read both files (audit point 6). This
+  keeps the tool-calling path and core code from approving their own actions; it does not
+  stop same-user malware. — Claude Code, plan approved by Karthik
+- 2026-11-11 — Auth is one raw ASGI middleware (`bridge.app.Authenticate`) so WebSocket
+  routes cannot skip it, and it refuses any peer address other than `127.0.0.1` even if
+  uvicorn is bound elsewhere (audit points 1, 2). Tests must build
+  `TestClient(app, base_url="http://127.0.0.1:8765", client=("127.0.0.1", 50000))`; for
+  WebSockets pass the full `ws://127.0.0.1:8765/...` URL, TestClient ignores `base_url`
+  there. — Claude Code, plan approved by Karthik
 
 - 2026-11-11 — Bridge dispatch (audit point 7): `POST /task` returns a bridge-issued task id;
   `POST /tool {task_id, tool, args}` is the only place a tool handler is called, always after
@@ -222,6 +237,29 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-11 — Agent: Claude Code (P2.2 + audit points 1, 2, 7, 8)
+
+- Did, in four commits after Karthik approved the plan:
+  A. `P2.1: auth covers WebSocket and checks peer address` (points 1, 2).
+  B. `P2.2: policy engine` — `safety/policy.py`, `config/allowed_roots.toml`.
+  C. `P2.2: single tool dispatch route through policy` (point 7) — `POST /task`, `POST /tool`.
+  D. `P2.2: separate UI credential and per-route roles` (point 8).
+- Files changed: `bridge/app.py`, `safety/__init__.py`, `safety/policy.py`,
+  `config/allowed_roots.toml`, `tests/test_bridge.py`, `tests/test_policy.py`,
+  `docs/PLAN.md`, `docs/PROGRESS.md`. No new dependencies.
+- Tests: `uv run python -m pytest` -> 100 passed, 1 skipped (symlink test: no privilege on
+  this account; the junction test covers the same escape). Evals not rerun; core is untouched.
+- Not done: the manual check with a real uvicorn start. It would create
+  `%LOCALAPPDATA%\Jarvis` (outside the repo) for the first time; left for Karthik. The same
+  three cases are covered through TestClient.
+- Known gaps, on purpose: no confirm queue (409 instead), no audit log, no kill switch, no
+  quarantine, no real tool handlers, tasks never evicted, core not wired to the bridge,
+  `C:\JarvisSandbox` not created. Path check does not cover hard links or a link swapped in
+  between check and use.
+- Unfinished work stopped at: nothing in progress. Tree clean after commit D.
+- Next concrete step: Karthik reviews the `safety/` and `bridge/` diffs
+  (`git diff c8119bf..HEAD -- safety bridge config`). Then P2.3 in plan mode.
 
 ### 2026-11-11 — Agent: Claude Code (P1 phase review + bridge bypass audit, read-only)
 

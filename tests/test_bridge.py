@@ -44,8 +44,8 @@ def test_health_and_refusals(storage):
         assert "access-control-allow-origin" not in response.headers
         for host in ["localhost", "evil.example", "127.0.0.1.evil", "0.0.0.0"]:
             assert client.get("/health", headers={**headers, "host": host}).status_code == 400
-        for route in ["/docs", "/openapi.json", "/tools"]:
-            assert client.get(route, headers=headers).status_code == 404
+        for route in ["/docs", "/openapi.json", "/tools", "/tool/", "/health/"]:
+            assert client.get(route, headers=headers).status_code == 403  # not in ROUTE_ROLES
 
 
 def test_non_loopback_peer_refused(storage):
@@ -73,13 +73,16 @@ def test_websocket_goes_through_auth(storage):
                 pass
 
     with TestClient(app, base_url=BASE, client=LOOPBACK) as client:
-        with client.websocket_connect(url, headers=good) as connection:
-            assert connection.receive_text() == "in"
-        refused(client, {})
-        refused(client, {"x-jarvis-token": "wrong"})
-        refused(client, {**good, "host": "evil.example"})
-    with TestClient(app, base_url=BASE, client=LAN_PEER) as client:
-        refused(client, good)
+        refused(client, good)  # a route with no entry in ROUTE_ROLES is open to nobody
+        with patch.dict(bridge_app.ROUTE_ROLES, {"/ws": {"core"}}):
+            with client.websocket_connect(url, headers=good) as connection:
+                assert connection.receive_text() == "in"
+            refused(client, {})
+            refused(client, {"x-jarvis-token": "wrong"})
+            refused(client, {"x-jarvis-token": load_token(storage, "ui.token")})
+            refused(client, {**good, "host": "evil.example"})
+            with TestClient(app, base_url=BASE, client=LAN_PEER) as lan:
+                refused(lan, good)
 
 
 def test_acl_failure_stops_startup(storage):
@@ -181,6 +184,27 @@ def test_route_table_is_exact(storage):
     assert all(type(route) is APIRoute for route in app.routes)
     table = {(method, route.path) for route in app.routes for method in route.methods}
     assert table == {("GET", "/health"), ("POST", "/task"), ("POST", "/tool")}
+    assert {path for _, path in table} == set(bridge_app.ROUTE_ROLES)
+
+
+def test_ui_token_cannot_request_tools(sandbox):
+    client, root, outside = sandbox
+    core = load_token(root.parent)
+    ui = {"x-jarvis-token": load_token(root.parent, "ui.token")}
+    assert core != ui["x-jarvis-token"]
+    assert client.get("/health", headers=ui).status_code == 200
+    assert client.post("/task", headers=ui).status_code == 403
+    body = {"task_id": new_task(client), "tool": "create_folder", "args": {"path": str(root / "n")}}
+    assert client.post("/tool", json=body, headers=ui).status_code == 403
+    assert not (root / "n").exists()
+
+
+def test_core_token_cannot_use_ui_only_route(sandbox):
+    client, root, outside = sandbox
+    ui = {"x-jarvis-token": load_token(root.parent, "ui.token")}
+    with patch.dict(bridge_app.ROUTE_ROLES, {"/health": {"ui"}}):
+        assert client.get("/health").status_code == 403  # client default is the core token
+        assert client.get("/health", headers=ui).status_code == 200
 
 
 def test_tool_runs_inside_root(sandbox):

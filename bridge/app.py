@@ -59,12 +59,12 @@ def protect(path: Path) -> None:
         Path(name).unlink(missing_ok=True)
 
 
-def load_token(storage: Path) -> str:
+def load_token(storage: Path, name: str = "bridge.token") -> str:
     storage.mkdir(parents=True, exist_ok=True)
     if storage.is_symlink() or storage.is_junction():
         raise RuntimeError("Unsafe token storage")
     protect(storage)
-    path = storage / "bridge.token"
+    path = storage / name
     if path.is_symlink() or path.is_junction():
         raise RuntimeError("Unsafe token file")
     if not path.exists():
@@ -77,12 +77,21 @@ def load_token(storage: Path) -> str:
     return token
 
 
-class Authenticate:
-    """Peer address, Host and token checks for every HTTP and WebSocket request."""
+# Which token role may call which path. "core" sends tool requests; "ui" is the only role
+# that will be allowed to approve them (P2.3). Every route needs an entry here.
+ROUTE_ROLES: dict[str, set[str]] = {
+    "/health": {"core", "ui"},
+    "/task": {"core"},
+    "/tool": {"core"},
+}
 
-    def __init__(self, app, token: str) -> None:
+
+class Authenticate:
+    """Peer address, Host, token and role checks for every HTTP and WebSocket request."""
+
+    def __init__(self, app, tokens: dict[str, str]) -> None:
         self.app = app
-        self.token = token
+        self.tokens = tokens  # role -> token
 
     def refusal(self, scope) -> tuple[int, str] | None:
         # The peer check holds even if the server is wrongly bound to another interface.
@@ -93,9 +102,17 @@ class Authenticate:
         hosts = headers.getlist("host")
         if len(hosts) != 1 or not re.fullmatch(r"127\.0\.0\.1(?::[0-9]{1,5})?", hosts[0]):
             return 400, "Invalid host"
-        tokens = headers.getlist("x-jarvis-token")
-        if len(tokens) != 1 or not hmac.compare_digest(tokens[0].encode(), self.token.encode()):
+        sent = headers.getlist("x-jarvis-token")
+        roles = [
+            role
+            for role, token in self.tokens.items()
+            if len(sent) == 1 and hmac.compare_digest(sent[0].encode(), token.encode())
+        ]
+        if not roles:
             return 401, "Unauthorized"
+        # A path missing from ROUTE_ROLES is open to nobody.
+        if roles[0] not in ROUTE_ROLES.get(scope["path"], ()):
+            return 403, "Forbidden"
         return None
 
     async def __call__(self, scope, receive, send) -> None:
@@ -131,12 +148,12 @@ def create_app(
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
     if roots is None:
         roots = load_roots(Path(__file__).resolve().parent.parent / "config" / "allowed_roots.toml")
-    token = load_token(storage)
+    tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
     policy = Policy(roots)
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(Authenticate, token=token)
+    app.add_middleware(Authenticate, tokens=tokens)
 
     @app.post("/task")
     def new_task():
