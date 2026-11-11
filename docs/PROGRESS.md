@@ -6,9 +6,10 @@ Newest session entry goes at the top of the Session log.
 ## Current state
 
 - Active phase: P0
-- Last completed task: P0.3
-- Next task: P0.4
-- Tests: not set up yet (pytest not added; adding a dependency needs Karthik's OK)
+- Last completed task: P0.4
+- Next task: P0.5
+- Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
+  `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
 - Blockers: none
 - Run OpenJarvis with (PowerShell, from repo root; both env vars required):
@@ -82,6 +83,21 @@ Format: `YYYY-MM-DD — decision — reason — who`
   rule; our own memory path owns memory — Claude Code
 - 2026-11-11 — Core runs natively on Windows, so the WSL2 half of P0.3 was skipped (P0.5 will
   record the placement decision formally) — Claude Code
+- 2026-11-11 — P0.4: how OpenJarvis tools work (from source, `OpenJarvis/src/openjarvis`):
+  a tool is a `BaseTool` subclass (`tools/_stubs.py`) with a `spec` property (`ToolSpec`: name,
+  description, JSON-schema parameters) and `execute(**params) -> ToolResult`, registered with
+  `@ToolRegistry.register("name")`. The `orchestrator` agent sends specs to Ollama as native
+  OpenAI-style function calls. — Claude Code
+- 2026-11-11 — Core drives OpenJarvis through its Python SDK, not the `jarvis` CLI:
+  `Jarvis(config_path=...).ask_full(query, agent="orchestrator", tools=[...names])`
+  (`sdk.py`). Reasons: (1) lockout: the SDK builds tool objects only from the explicit `tools`
+  list and `ToolExecutor` answers `Unknown tool` for anything else, while the CLI `ask` path
+  additionally loads MCP tools and skill tools; (2) no 4 s CLI start-up per request. Importing
+  `openjarvis.tools` still registers every built-in (`shell_exec`, `file_write`, ...) in the
+  registry, so the tool-name list passed to `ask_full` IS the allowlist: it must be a constant
+  in our code, never model- or user-supplied. — Claude Code
+- 2026-11-11 — `OPENJARVIS_HOME` and `OPENJARVIS_CONFIG` must be set before `import openjarvis`
+  (paths resolve at import time). `core/hello_tool.py` shows the pattern. — Claude Code
 - 2026-11-11 — No dependencies added in P0.1, not even pytest — rule: ask before adding — Claude Code
 - 2026-11-11 — PLAN.md + PROGRESS.md are the only planning files; no separate task_plan.md —
   avoid two sources of truth — Claude Code (Karthik can overrule)
@@ -110,12 +126,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 - P0.3: wrote `core/config.toml`; `ask --no-stream "Reply with exactly: pong"` returned `pong`
   from `qwen3.5:4b` on Windows Ollama (`ollama ps`: 100% GPU). Wi-Fi-off run not done yet; that
   is the P0 "Done when" check.
-- Tests run + result: none exist. `uv sync` succeeds.
+- P0.4: `core/hello_tool.py` = custom tool `hello_bridge` + self-check. The check starts a dummy
+  server on `127.0.0.1:8765` that returns a random code, asks the model to greet Karthik, and
+  asserts: only `hello_bridge` was used, the server was hit, the code came back, and
+  `shell_exec` / `file_write` / `http_request` / `apply_patch` are refused as `Unknown tool`.
+  Result: `OK` in 16 s (warm model).
+- Tests run + result: `uv run python core/hello_tool.py` -> OK.
 - Unfinished work stopped at (exact point): nothing in progress.
-- Next concrete step: P0.4. Read `OpenJarvis/src/openjarvis/tools/` (registry, base class) and
-  how `--tools` / `[agent] tools` filter tools. Build a hello-world tool that calls a dummy
-  HTTP server on `127.0.0.1`, and show that built-in tools (`shell_exec`, `file_write`, ...)
-  are not callable when not listed.
+- Next concrete step: P0.5 (record core placement: native Windows; evidence is in Decisions),
+  then P0.6 (Commands in AGENTS.md: note the signed-venv step and `python -m` rule). P0 "Done
+  when" still needs Karthik to turn Wi-Fi off and run `uv run python core/hello_tool.py`.
 
 <!-- Copy this template for each session, newest on top.
 

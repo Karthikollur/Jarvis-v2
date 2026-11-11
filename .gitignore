@@ -19,6 +19,9 @@ ui/src-tauri/target/
 # Reference clone of upstream OpenJarvis (its own git repo, not ours)
 OpenJarvis/
 
+# Agent tooling caches
+.serena/
+
 # Starter bundle leftovers
 files/
 *.zip

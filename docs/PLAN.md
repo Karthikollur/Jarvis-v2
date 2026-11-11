@@ -114,7 +114,7 @@ Do not start a phase until the previous phase's "Done when" passes and is record
       exact steps in PROGRESS.md Decisions.
 - [x] P0.3 Connect OpenJarvis to the existing Windows Ollama. If core runs in WSL2, confirm it can
       reach Windows Ollama and a dummy HTTP server on Windows localhost.
-- [ ] P0.4 From OpenJarvis docs/source, find how to register a custom tool that calls an HTTP
+- [x] P0.4 From OpenJarvis docs/source, find how to register a custom tool that calls an HTTP
       endpoint. Build a hello-world tool.
 - [ ] P0.5 Decide core placement (WSL2 vs native). Record decision and reason.
 - [ ] P0.6 Fill in the Commands section of AGENTS.md.
