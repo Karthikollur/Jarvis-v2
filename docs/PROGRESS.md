@@ -192,6 +192,17 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-11 — Agent: Codex (resume check)
+
+- Did: verified the previous handoff, active P2 plan, clean working tree, and recent commits.
+- Files changed: `docs/PROGRESS.md` only.
+- Tests run + result: `uv run python -m pytest` -> 36 passed; cache access required escalation.
+- Unfinished work stopped at: P2.1 remains ready for implementation; adding FastAPI and
+  uvicorn still needs explicit dependency approval under AGENTS.md. No dependencies added.
+- Next concrete step: obtain dependency approval, implement the P2.1 scope described in the
+  preceding planning handoff, test it, and commit the task.
+
+
 ### 2026-11-11 — Agent: Codex (P2.1 planning)
 
 - Did: read AGENTS.md, CLAUDE.md, the handoff, and PLAN.md; inspected git status and the
