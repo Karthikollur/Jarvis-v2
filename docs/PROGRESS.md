@@ -11,9 +11,10 @@ Newest session entry goes at the top of the Session log.
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
-- Last completed task: P1.2
-- Next task: P1.3
-- Tests: `uv run python -m pytest` -> 5 passed (2026-11-11). Live smoke test:
+- Last completed task: P1.3
+- Next task: P1.4
+- Tests: `uv run python -m pytest` -> 12 passed (2026-11-11). Evals:
+  `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
 - Blockers: none
@@ -118,6 +119,19 @@ Format: `YYYY-MM-DD — decision — reason — who`
   Shrinking saves 0.5 GB and risks truncating tool schemas plus an 8-call history. RULE: every
   caller must use the same `num_ctx`; a different value makes Ollama reload the model (7.8 s
   measured). — Claude Code
+- 2026-11-11 — P1.3: system prompt lives in `core/config.toml` as
+  `[agent] default_system_prompt` (the SDK feeds that into the orchestrator's prompt builder).
+  It states the sandbox root, the forbidden categories and "ask when unclear". It shapes
+  behaviour only; permission stays in bridge + `safety/`. `[intelligence] temperature = 0.0`
+  for repeatable commands. — Claude Code
+- 2026-11-11 — Eval scoring (`evals/run.py::score`): only the FIRST tool call counts; args
+  compared case-insensitively with slashes normalised; refuse/answer pass when no tool was
+  called; clarify additionally needs a `?` in the reply. Refusal wording is not judged, replies
+  are printed for reading. — Claude Code
+- 2026-11-11 — Seen in source, for P2: `OrchestratorAgent` accepts
+  `before_tool_call(name, args) -> bool`, a pre-execution hook that fails closed (invalid args
+  or a raising hook deny the call). The SDK does not expose it, so using it means building the
+  agent ourselves. Candidate wiring point for the bridge; not used yet. — Claude Code
 - 2026-11-11 — P1.2: eval set is `evals/commands.yaml` (23 tool cases, 2 plain-answer cases,
   10 must-refuse, 5 must-clarify). Stub tools live in `evals/stub_tools.py`: 13 tools named
   after the P3 tool list plus `get_time` and `recall_memory`, each recording calls in
@@ -149,7 +163,12 @@ Format: `YYYY-MM-DD — decision — reason — who`
 
 Format: `YYYY-MM-DD — model — tool selection % — refusals — median latency`
 
-- (none yet)
+- 2026-11-11 — qwen3.5:4b (temp 0, think off, ctx 16384, stub tools, first run of P1.3) — tool
+  selection 25/25 (100%), arguments 23/23 (100%) — refusals 10/10, clarify 4/5 — median 1.2 s,
+  max 9.3 s. Notes: the one clarify "fail" (a03) is a scorer false negative: the model asked
+  for the missing details but without a question mark. Two latency outliers, t01 4.7 s and
+  t03 9.3 s, not yet explained. The set is easy (explicit paths, one step each, prompt written
+  alongside the cases); treat 100% as a floor check, not proof of robustness.
 
 ## Session log
 
@@ -183,16 +202,17 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 - P1.2: `evals/commands.yaml`, `evals/stub_tools.py`, `core/openjarvis_env.py`,
   `tests/test_eval_set.py` (5 tests: counts, unique ids, args fit schemas, every stub used,
   stubs register and record). Nothing has been run against the model yet.
-- Tests run + result: `uv run python -m pytest` -> 5 passed.
-- Next concrete step: P1.3, `evals/run.py`. For each case: clear `stub_tools.CALLS`, call
-  `Jarvis.ask_full(say, agent="orchestrator", tools=list(SPECS), context=False)`, time it, then
-  score. tool: first call's name matches, and args match when `args` is present (compare paths
-  case-insensitively with slashes normalised). answer/refuse/clarify: `CALLS` is empty;
-  clarify additionally needs a `?` in the reply. Telling refuse from clarify from answer by
-  text is fuzzy: keep it simple (no calls = pass for refuse) and report the replies for manual
-  review. Needs a system prompt naming the sandbox (`C:\JarvisSandbox`) and the refusal rules;
-  put it in `core/` and load via `[agent] system_prompt_path` or pass through the SDK. Report
-  tool-selection accuracy, argument accuracy, refusal correctness, median latency.
+- P1.3: `evals/run.py` (runner + `score`), `tests/test_eval_scoring.py` (7 tests), system
+  prompt and temperature in `core/config.toml`. First run: 39/40, see Eval results.
+- Tests run + result: `uv run python -m pytest` -> 12 passed. `uv run python evals/run.py` ->
+  39/40.
+- Next concrete step: P1.4, structured output for tool calls "where OpenJarvis allows it".
+  Finding so far: the orchestrator already uses Ollama native function calling (tool schemas
+  sent as `tools`), and arguments were 23/23 correct, so check first whether anything is left
+  to do: read `engine/ollama.py` (`response_format` only maps to `format: "json"`, not a
+  schema) and decide with Karthik whether P1.4 is "already satisfied by native tool calling"
+  or needs schema-constrained output. Then P1.5 (fast-path router for open app / time / stop)
+  and P1.6 (record baseline, optional 9b run: `uv run python evals/run.py --model qwen3.5:9b`).
 
 <!-- Copy this template for each session, newest on top.
 

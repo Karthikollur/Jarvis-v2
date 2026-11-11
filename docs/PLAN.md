@@ -128,7 +128,7 @@ localhost server, with Wi-Fi off.
 - [x] P1.2 `evals/commands.yaml`: 40 typed commands with expected tool + arguments, including
       10 that must be refused and 5 ambiguous ones that must trigger a clarifying question.
       Use stub tools.
-- [ ] P1.3 `evals/run.py`: reports tool-selection accuracy, argument accuracy, refusal correctness,
+- [x] P1.3 `evals/run.py`: reports tool-selection accuracy, argument accuracy, refusal correctness,
       median latency.
 - [ ] P1.4 Use Ollama structured output (JSON schema) for tool calls where OpenJarvis allows it.
 - [ ] P1.5 Deterministic fast-path router for the most common commands (open app, time, stop)
