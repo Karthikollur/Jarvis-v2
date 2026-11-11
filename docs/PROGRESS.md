@@ -7,9 +7,12 @@ Newest session entry goes at the top of the Session log.
 
 - Active phase: P0
 - Last completed task: P0.6 (all P0 tasks ticked)
-- Phase gate: P0 "Done when" NOT yet passed. Karthik must turn Wi-Fi off and run
-  `uv run python core/hello_tool.py`; it must print `OK`. Record the result here.
-- Next task: P1.1, only after the gate above is recorded as passed
+- Active phase is now P1.
+- Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
+  Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
+  inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
+  covers the Python process only, not Ollama's own process.
+- Next task: P1.1 (includes the latency fixes; Karthik approved)
 - Tests: no pytest yet (adding a dependency needs Karthik's OK). One self-check exists:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none
@@ -28,9 +31,6 @@ Newest session entry goes at the top of the Session log.
   call. The Rust extension is not installed (needs a Rust toolchain = system install). Harmless
   so far; some features (its memory commands) need it. We do not plan to use those.
 
-- An older OpenJarvis install exists at `%USERPROFILE%\.openjarvis` (created 2026-09-19, has
-  `config.toml`, memory and agent DBs). Not touched. If `OPENJARVIS_HOME` is ever unset, this
-  repo's OpenJarvis will silently use that folder and its config. Keep, or remove it yourself?
 - OpenJarvis core dependencies include `posthog`, `python-telegram-bot`, `ddgs`, `openai`,
   `datasets`. They cannot be dropped without forking. Offline check must prove none of them
   connect out.
@@ -42,9 +42,6 @@ Newest session entry goes at the top of the Session log.
   (default on). No documented offline mode. The Wi-Fi-off check in P0 is a real gate.
 - OpenJarvis already ships SQLite memory, faster-whisper STT, Kokoro TTS and a Tauri app. Reuse
   any of these, or build our own as planned? Its memory has no approval queue.
-- `.claude/settings.json` is not in place; the file is still at `files/settings.json` (gitignored).
-  Agents may not touch `.claude/` unasked. Karthik: move it yourself or say so explicitly. Note
-  its rules are `Bash(...)` only and likely do not cover the PowerShell tool.
 - P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
   8-tool-call budget for more than a few files. Batch move tool, or change the check?
 - Does `read_text_file` on a sandbox file taint the task? Plan lists only web, ingested docs,
@@ -106,6 +103,15 @@ Format: `YYYY-MM-DD — decision — reason — who`
   in our code, never model- or user-supplied. — Claude Code
 - 2026-11-11 — `OPENJARVIS_HOME` and `OPENJARVIS_CONFIG` must be set before `import openjarvis`
   (paths resolve at import time). `core/hello_tool.py` shows the pattern. — Claude Code
+- 2026-11-11 — pytest approved as a dev dependency, to be added at P1.2; run it as
+  `uv run python -m pytest` — safety/ and evals need real tests — Karthik
+- 2026-11-11 — Latency fixes (thinking off, smaller context, model kept loaded) are part of
+  P1.1 — 16 s warm vs 3 s target makes evals unusable otherwise — Karthik
+- 2026-11-11 — `files/settings.json` moved unchanged to `.claude/settings.json` and committed —
+  Karthik asked. Its rules are `Bash(...)` only and do not match PowerShell-tool commands;
+  Karthik chose not to add PowerShell rules for now — Karthik
+- 2026-11-11 — Old install at `%USERPROFILE%\.openjarvis` is left alone; agents never touch it —
+  outside the repo; harmless while `OPENJARVIS_HOME` is set — Karthik
 - 2026-11-11 — No dependencies added in P0.1, not even pytest — rule: ask before adding — Claude Code
 - 2026-11-11 — PLAN.md + PROGRESS.md are the only planning files; no separate task_plan.md —
   avoid two sources of truth — Claude Code (Karthik can overrule)
