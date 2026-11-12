@@ -24,12 +24,14 @@ Newest session entry goes at the top of the Session log.
   must call it (not wired yet: there are no real handlers). Details under Decisions.
 - Next task: P2.7 (path traversal, token, budget, taint, kill-switch tests; `Policy`/`Task`
   lock). Plan APPROVED 2026-11-12 at `docs/plans/P2.7.md`: A policy lock, B Stop cannot
-  leave a queued action, C traversal and token sweeps (tests only). Next step: commit A on
-  Karthik's "go, commit A". Audit point 9 is closed, so it no longer blocks P3.
+  leave a queued action, C traversal and token sweeps (tests only). Commit A done
+  (2026-11-12): `Policy.check`, `recheck` and `record` each run whole under one
+  `threading.Lock`, tested with barrier-forced interleavings. Next step: commit B on
+  Karthik's "go, commit B". Audit point 9 is closed, so it no longer blocks P3.
   Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 216 passed, 1 skipped (2026-11-12, after P2.6). The skip is the
+- Tests: `uv run python -m pytest` -> 220 passed, 1 skipped (2026-11-12, after P2.7 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:

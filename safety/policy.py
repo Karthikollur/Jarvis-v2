@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 import tomllib
 from collections.abc import Callable
@@ -147,6 +148,11 @@ class Policy:
         self.clock = clock
         # Resolved once, like roots, so a junction or 8.3 name in the given path cannot dodge it.
         self.protected = [Path(os.path.realpath(folder)) for folder in protected]
+        # Routes run in a thread pool: check, recheck and record each run whole under
+        # this lock, so two calls for one task cannot both pass a budget. Not re-entrant:
+        # `_stop` and `out_of_time` must never take it. Never held across a handler.
+        # ponytail: global lock, per-task locks if throughput matters
+        self._lock = threading.Lock()
 
     def new_task(self) -> Task:
         return Task(started=self.clock())
@@ -161,6 +167,10 @@ class Policy:
 
     def check(self, task: Task, tool: Any, args: Any) -> Decision:
         """Decide one tool request. Every request counts against the budget, refused or not."""
+        with self._lock:
+            return self._check(task, tool, args)
+
+    def _check(self, task: Task, tool: Any, args: Any) -> Decision:
         if task.stopped:
             return Decision("deny", "task stopped")
         if self.out_of_time(task):
@@ -207,6 +217,12 @@ class Policy:
         still resolve to exactly the path shown when it was queued, so a junction swapped
         in while it waited is refused.
         """
+        with self._lock:
+            return self._recheck(task, tool, args, paths)
+
+    def _recheck(
+        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]
+    ) -> str | None:
         if task.stopped:
             return "task stopped"
         if self.out_of_time(task):
@@ -225,7 +241,8 @@ class Policy:
 
     def record(self, task: Task, tool: str, ok: bool) -> None:
         """Report the outcome of a tool that ran."""
-        if not ok:
-            task.failures[tool] = task.failures.get(tool, 0) + 1
-        elif TOOLS[tool].taints:
-            task.tainted = True
+        with self._lock:
+            if not ok:
+                task.failures[tool] = task.failures.get(tool, 0) + 1
+            elif TOOLS[tool].taints:
+                task.tainted = True

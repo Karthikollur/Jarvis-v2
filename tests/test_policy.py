@@ -1,5 +1,7 @@
 import _winapi
 import os
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,7 @@ from safety.policy import (
     MAX_SECONDS,
     TOOLS,
     PathRefused,
+    Task,
     Tier,
     load_roots,
     resolve_inside,
@@ -316,3 +319,136 @@ def test_check_and_recheck_refuse_protected(guarded, clock):
     (root / "d").rmdir()
     _winapi.CreateJunction(str(protected), str(root / "d"))
     assert policy.recheck(task, "delete_file", args, decision.paths) == "path: protected folder"
+
+
+# --- concurrency (P2.7) -----------------------------------------------------
+# Routes run in a thread pool, so two requests for one task can reach `Policy` at the
+# same time. Each test forces the interleaving with a Barrier instead of hoping a sleep
+# lines it up. Under the lock only one thread can be inside, so the barrier never fills:
+# it breaks after BARRIER_TIMEOUT and every later wait returns at once.
+
+BARRIER_TIMEOUT = 1.0
+JOIN_TIMEOUT = 5.0
+
+
+def _meet(barrier: threading.Barrier | None) -> None:
+    if barrier is not None:
+        try:
+            barrier.wait(BARRIER_TIMEOUT)
+        except threading.BrokenBarrierError:
+            pass
+
+
+class _BarrierTask(Task):
+    """A Task whose every read of `calls` waits until all threads have read it."""
+
+    barrier: threading.Barrier | None = None
+
+    @property
+    def calls(self) -> int:
+        value = self._calls
+        _meet(self.barrier)
+        return value
+
+    @calls.setter
+    def calls(self, value: int) -> None:
+        self._calls = value
+
+
+class _BarrierDict(dict):
+    """A failures dict whose every `get` waits until all threads have read it."""
+
+    barrier: threading.Barrier | None = None
+
+    def get(self, key, default=None):
+        value = super().get(key, default)
+        _meet(self.barrier)
+        return value
+
+
+def _run_all(target, count: int) -> list:
+    """Run `target` in `count` daemon threads; return the results. Every thread must
+    finish within JOIN_TIMEOUT, so a deadlock fails the test instead of hanging the
+    suite (daemon threads cannot block interpreter exit)."""
+    results, errors = [], []
+
+    def run():
+        try:
+            results.append(target())
+        except BaseException as error:  # reported below, never lost in the thread
+            errors.append(error)
+
+    threads = [threading.Thread(target=run, daemon=True) for _ in range(count)]
+    try:
+        for thread in threads:
+            thread.start()
+    finally:
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(JOIN_TIMEOUT)
+    assert not [thread for thread in threads if thread.is_alive()], "a thread hung"
+    assert not errors, errors
+    return results
+
+
+def test_concurrent_checks_cannot_exceed_call_budget(policy, clock):
+    count = 4
+    task = _BarrierTask(started=clock())
+    task.calls = MAX_CALLS - 1
+    task.barrier = threading.Barrier(count)
+    decisions = _run_all(lambda: policy.check(task, "get_time", {}), count)
+    task.barrier = None
+    assert sorted(decision.action for decision in decisions) == ["allow"] + ["deny"] * (count - 1)
+    # The first refusal stops the task, so the later ones may answer "task stopped".
+    reasons = [d.reason for d in decisions if d.action == "deny"]
+    assert any("call budget" in reason for reason in reasons)
+    assert all("call budget" in reason or reason == "task stopped" for reason in reasons)
+    assert task.calls == MAX_CALLS and task.stopped
+
+
+def test_concurrent_failures_are_all_counted(policy, clock):
+    task = Task(started=clock(), failures=_BarrierDict())
+    task.failures.barrier = threading.Barrier(MAX_FAILURES)
+    _run_all(lambda: policy.record(task, "system_stats", ok=False), MAX_FAILURES)
+    task.failures.barrier = None
+    assert task.failures["system_stats"] == MAX_FAILURES  # no lost update
+    decision = policy.check(task, "system_stats", {})
+    assert decision.action == "deny" and "failed" in decision.reason
+
+
+def test_recheck_and_check_do_not_deadlock(policy, clock):
+    # Both paths reach `_stop` while holding the lock; the lock is not re-entrant, so
+    # `_stop` must not take it. A hang fails in _run_all.
+    task = policy.new_task()
+    decision = policy.check(task, "delete_file", {"path": str(policy.roots[0] / "x.txt")})
+    assert decision.action == "confirm"
+    clock.now = MAX_SECONDS + 1
+    reasons = _run_all(
+        lambda: policy.recheck(task, "delete_file", {"path": str(policy.roots[0] / "x.txt")},
+                               decision.paths),
+        1,
+    )
+    assert "time budget" in reasons[0] and task.stopped
+    fresh = policy.new_task()
+    fresh.started = -MAX_SECONDS  # out of time: check also reaches _stop
+    assert _run_all(lambda: policy.check(fresh, "get_time", {}).reason, 1)[0].startswith("time")
+
+
+def test_call_budget_under_thread_stress(policy):
+    # Second net without a test-only Task: switch threads as often as possible.
+    count = 32
+    task = policy.new_task()
+    start = threading.Barrier(count)
+
+    def call():
+        _meet(start)
+        return policy.check(task, "get_time", {}).action
+
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        actions = _run_all(call, count)
+    finally:
+        sys.setswitchinterval(old)
+    assert actions.count("allow") == MAX_CALLS
+    assert task.calls == MAX_CALLS
