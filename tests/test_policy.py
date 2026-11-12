@@ -498,8 +498,8 @@ def test_root_itself_cannot_be_changed(nested):
     assert _decide(policy, "create_folder", path=str(root)) == ("deny", "path: the root itself")
     assert _decide(policy, "move_file", source=str(root), destination=inside) == (
         "deny", "source: the root itself")
-    assert _decide(policy, "move_file", source=inside, destination=str(root)) == (
-        "deny", "destination: the root itself")
+    # The root is a folder things move INTO (P2.9 R3): allowed as a destination.
+    assert _decide(policy, "move_file", source=inside, destination=str(root)) == ("allow", "")
     # Spelled differently, still the root.
     assert _decide(policy, "delete_file", path=str(root).upper() + "\\a\\..")[0] == "deny"
     assert _decide(policy, "list_dir", path=str(root)) == ("allow", "")  # reading is fine
@@ -539,6 +539,58 @@ def test_rename_landing_place_is_checked_and_returned(nested):
     assert policy.recheck(task, "rename_file", args, moved) == "new_name: changed since the request"
     assert policy.recheck(task, "rename_file", {**args, "path": str(root)}, decision.paths) == (
         "path: the root itself")
+
+
+def test_move_landing_place_is_checked_and_returned(nested):
+    """P2.9 R3: `destination` is a folder; the item lands at destination / source name.
+    The policy builds and checks that place; the handler never does."""
+    policy, root, keep = nested
+    (root / "in").mkdir()
+    args = {"source": str(root / "in" / "a.txt"), "destination": str(root)}
+    task = policy.new_task()
+    decision = policy.check(task, "move_file", args)
+    assert decision.action == "allow"
+    assert decision.paths == {
+        "source": Path(os.path.realpath(root / "in" / "a.txt")),
+        "destination": Path(os.path.realpath(root)),
+        "target": Path(os.path.realpath(root / "a.txt")),
+    }
+    # Into a folder that contains a protected folder: fine, unless it lands on it.
+    assert _decide(policy, "move_file", source=str(root / "in" / "a.txt"), destination=str(keep))[0] == "allow"
+    for name in ["secret", "SECRET"]:
+        assert _decide(policy, "move_file", source=str(root / "in" / name), destination=str(keep)) == (
+            "deny", "destination: protected folder"), name
+    assert _decide(policy, "move_file", source=str(root / "in" / "a.txt"), destination=str(keep / "secret")) == (
+        "deny", "destination: protected folder")
+    # recheck validates the landing place too.
+    assert policy.recheck(task, "move_file", args, decision.paths) is None
+    moved = {**decision.paths, "target": root / "elsewhere.txt"}
+    assert policy.recheck(task, "move_file", args, moved) == "destination: changed since the request"
+
+
+BAD_NAMES = [
+    "x‮txt.exe",  # right-to-left override: shows as "xexe.txt" in the confirm UI
+    "a\nb", "a\tb", "x\ud800", "*", "a?b", 'a"b', "a<b", "a>b", "a|b",
+    "COM¹", "lpt³.txt",  # Windows device names with superscript digits
+]
+
+
+def test_names_are_plain_and_printable(policy, dirs):
+    """P2.9 nit: a name parameter takes what Windows accepts as a file name and nothing
+    that disguises itself on screen."""
+    root = dirs[0]
+    for name in BAD_NAMES:
+        assert _decide(policy, "rename_file", path=str(root / "a"), new_name=name) == (
+            "deny", "new_name: must be a plain file name"), repr(name)
+    assert _decide(policy, "rename_file", path=str(root / "a"), new_name="report (final) 2.txt")[0] == "allow"
+
+
+def test_paths_are_plain_and_printable(policy, dirs):
+    root = dirs[0]
+    for name in BAD_NAMES:
+        decision = policy.check(policy.new_task(), "read_text_file", {"path": str(root / name)})
+        assert decision.action == "deny" and decision.reason.startswith("path: "), repr(name)
+    assert policy.check(policy.new_task(), "read_text_file", {"path": str(root / "a b (1).txt")}).action == "allow"
 
 
 # --- argument rules (P2.8 commit B) -----------------------------------------

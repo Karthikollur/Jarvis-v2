@@ -40,6 +40,9 @@ class Rule:
     tier: Tier
     path_params: tuple[str, ...] = ()  # arguments that must resolve inside an allowed root
     name_params: tuple[str, ...] = ()  # arguments that must be a bare file name
+    # Path parameters that are a FOLDER the first path parameter moves into. The folder
+    # itself is not changed (so it may be the root); the landing place is checked (P2.9).
+    into: tuple[str, ...] = ()
     taints: bool = False  # a successful call brings untrusted text into the task
     # (argument, allowlist): the value must be a name on that allowlist ("apps" or "scripts")
     choices: tuple[tuple[str, str], ...] = ()
@@ -63,15 +66,17 @@ TOOLS: dict[str, Rule] = {
     "open_app": Rule(Tier.T1, choices=(("app", "apps"),)),
     "focus_window": Rule(Tier.T1, text_params=("title",)),
     "create_folder": Rule(Tier.T1, ("path",)),
-    "move_file": Rule(Tier.T1, ("source", "destination")),
+    "move_file": Rule(Tier.T1, ("source", "destination"), into=("destination",)),
     "rename_file": Rule(Tier.T1, ("path",), ("new_name",)),
     "delete_file": Rule(Tier.T2, ("path",)),
     "run_named_script": Rule(Tier.T2, choices=(("name", "scripts"),)),
 }
 
 _RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
-    f"{device}{number}" for device in ("COM", "LPT") for number in range(10)
+    f"{device}{number}" for device in ("COM", "LPT") for number in [*range(10), "¹", "²", "³"]
 }
+# Not allowed in a Windows file name (`:` and `\` are handled separately).
+_WILDCARDS = re.compile(r'[*?"<>|]')
 
 
 class PathRefused(ValueError):
@@ -115,6 +120,10 @@ def resolve_inside(
     """
     if not isinstance(raw, str) or not raw or "\0" in raw:
         raise PathRefused("not a path")
+    # isprintable: no control, format (right-to-left override), separator or lone
+    # surrogate characters, which disguise a path in the confirm UI or break encoding.
+    if not raw.isprintable() or _WILDCARDS.search(raw):
+        raise PathRefused("unprintable or wildcard character")
     text = raw.replace("/", "\\")
     if text.startswith("\\\\"):  # \\server\share, \\?\ and \\.\
         raise PathRefused("UNC and device paths are not allowed")
@@ -284,32 +293,39 @@ class Policy:
             return str(refused)
         for name, path in now.items():
             if path != paths.get(name):
-                label = rule.name_params[0] if name == "target" else name
+                label = (*rule.name_params, *rule.into)[0] if name == "target" else name
                 return f"{label}: changed since the request"
         return None
 
     def _resolve(self, rule: Rule, args: dict[str, Any]) -> dict[str, Path]:
         """Every path a call may touch, resolved and checked; PathRefused names the argument.
-        A name parameter also yields `target`: where the renamed item lands, next to the
-        first path parameter. Handlers use `target`, never build it themselves."""
+        A name parameter or an `into` folder also yields `target`: where the item lands
+        (next to, or inside, those). Handlers use `target`, never build it themselves."""
         mutating = rule.tier >= Tier.T1
         paths = {}
         for name in rule.path_params:
             try:
-                paths[name] = resolve_inside(args.get(name), self.roots, self.protected, mutating)
+                changed = mutating and name not in rule.into
+                paths[name] = resolve_inside(args.get(name), self.roots, self.protected, changed)
             except PathRefused as refused:
                 raise PathRefused(f"{name}: {refused}") from None
+        landings = []
         for name in rule.name_params:
             value = args.get(name)
             if (
                 not isinstance(value, str)
                 or not value
                 or value in (".", "..")
-                or re.search(r'[\\/:\0]', value)
+                or not value.isprintable()
+                or re.search(r'[\\/:]', value)
+                or _WILDCARDS.search(value)
                 or _bad_component(value)
             ):
                 raise PathRefused(f"{name}: must be a plain file name")
-            landing = paths[rule.path_params[0]].parent / value
+            landings.append((name, paths[rule.path_params[0]].parent / value))
+        for name in rule.into:
+            landings.append((name, paths[name] / paths[rule.path_params[0]].name))
+        for name, landing in landings:  # ponytail: at most one per tool today
             try:
                 paths["target"] = resolve_inside(str(landing), self.roots, self.protected, True)
             except PathRefused as refused:
