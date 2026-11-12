@@ -23,7 +23,9 @@ Newest session entry goes at the top of the Session log.
   deleting and reverses records on a ui request; nothing is ever overwritten. P3 handlers
   must call it (not wired yet: there are no real handlers). Details under Decisions.
 - Next task: P2.7 (path traversal, token, budget, taint, kill-switch tests; `Policy`/`Task`
-  lock). Plan it in plan mode first. Audit point 9 is closed, so it no longer blocks P3.
+  lock). Plan APPROVED 2026-11-12 at `docs/plans/P2.7.md`: A policy lock, B Stop cannot
+  leave a queued action, C traversal and token sweeps (tests only). Next step: commit A on
+  Karthik's "go, commit A". Audit point 9 is closed, so it no longer blocks P3.
   Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
