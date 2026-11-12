@@ -38,6 +38,11 @@ class AuditLog:
         ts = datetime.fromtimestamp(self._wall(), timezone.utc).isoformat()
         # json.dumps escapes newlines, so no value can start a second line.
         line = json.dumps({"ts": ts, "event": event, **fields}, default=str, ensure_ascii=False)
-        with self._lock, self._path.open("a", encoding="utf-8", newline="\n") as handle:
+        # backslashreplace: a lone surrogate (legal in a Windows file name) cannot be encoded
+        # as UTF-8. It is written as \udXXX, which JSON reads back, instead of raising
+        # after the action already ran.
+        with self._lock, self._path.open(
+            "a", encoding="utf-8", errors="backslashreplace", newline="\n"
+        ) as handle:
             handle.write(line + "\n")
             handle.flush()

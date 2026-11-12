@@ -40,6 +40,10 @@ def policy(dirs, clock):
 class FakeListener:
     def __init__(self, combo, callback):
         self.combo, self.callback, self.closed = combo, callback, False
+        self.dead = False  # a test sets this to simulate the hotkey thread dying
+
+    def alive(self):
+        return not (self.closed or self.dead)
 
     def close(self):
         self.closed = True

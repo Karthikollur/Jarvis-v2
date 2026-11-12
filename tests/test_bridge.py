@@ -333,16 +333,17 @@ def test_every_route_needs_a_token_and_loopback(sandbox, storage):
     routes = [(method, route.path) for route in app.routes for method in sorted(route.methods)]
     assert {path for _, path in routes} == set(bridge_app.ROUTE_ROLES)  # nothing skipped
     body = {"task_id": task, "tool": "get_time", "args": {}, "pending_id": "x", "record_id": "x"}
+    # Not entered with `with`: the app (and its hotkey listener) is started once, by `sandbox`.
+    anyone = TestClient(app, base_url=BASE, client=LOOPBACK)
+    remote = TestClient(app, base_url=BASE, client=LAN_PEER)
     for method, path in routes:
         for bad in BAD_TOKENS:
             headers = {} if bad is None else {"x-jarvis-token": bad}
-            with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as anyone:
-                response = anyone.request(method, path, json=body)
+            response = anyone.request(method, path, json=body, headers=headers)
             assert response.status_code == 401, (method, path, bad)
         role = sorted(bridge_app.ROUTE_ROLES[path])[0]  # a token this route accepts
         valid = {"x-jarvis-token": tokens[role]}
-        with TestClient(app, base_url=BASE, client=LAN_PEER, headers=valid) as remote:
-            response = remote.request(method, path, json=body)
+        response = remote.request(method, path, json=body, headers=valid)
         assert response.status_code == 403, (method, path, "non-loopback")
     # Nothing ran and nothing was logged: the task is still live and can still call.
     assert (storage / "audit.jsonl").read_bytes() == before
@@ -1083,7 +1084,7 @@ def test_concurrent_http_calls_cannot_exceed_call_budget(storage, clock):
     ran = []
     app = create_app(
         storage, roots=[], handlers={"get_time": lambda args: ran.append(1)}, clock=clock,
-        protected=[],
+        protected=[], hotkey=None,  # each thread starts the app; one listener cannot serve 32
     )
     headers = {"x-jarvis-token": load_token(storage)}
     start = threading.Barrier(count)
@@ -1471,3 +1472,60 @@ def test_resume_when_not_halted_is_harmless(sandbox):
     assert resume(client, ui_headers(root)).json() == {"status": "resumed"}
     assert not halted(client)
     assert client.get("/resume", headers=ui_headers(root)).status_code == 405
+
+
+# --- kill-switch liveness and audit encoding (P2.8 commit E) --------------------
+# Same rule as at startup: no kill switch, no tools.
+
+
+def test_dead_hotkey_listener_stops_everything(sandbox, fake_hotkey):
+    client, root, outside = sandbox
+    (listener,) = fake_hotkey
+    task = new_task(client)
+    assert call(client, task, "get_time").status_code == 200  # alive: tools run
+    listener.dead = True  # the hotkey thread died
+    refused = call(client, task, "create_folder", path=str(root / "new"))
+    assert (refused.status_code, refused.json()["detail"]) == (503, "kill switch unavailable")
+    assert not (root / "new").exists()
+    stop_line, result_line = audit(root)[-2:]
+    assert (stop_line["event"], stop_line["source"], stop_line["latched"]) == (
+        "stop", "hotkey-dead", True)
+    assert (result_line["event"], result_line["status"]) == ("result", "cancelled")
+    # Latched: nothing new starts until Karthik resumes (and the bridge needs a restart).
+    assert client.post("/task").json()["detail"] == "stopped"
+
+
+def test_dead_hotkey_listener_blocks_approve(sandbox, fake_hotkey):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    fake_hotkey[0].dead = True
+    refused = approve(client, root, pending_id)
+    assert refused.status_code in (403, 503)  # stopped by the liveness check or by its Stop
+    assert victim.exists()
+    assert outcome(client, pending_id).json()["status"] in ("cancelled", "denied")
+    assert "done" not in [entry.get("status") for entry in audit(root)]
+
+
+def test_hotkey_configured_but_never_started_runs_no_tool(storage, clock):
+    """The listener starts with the app (lifespan). Without it there is no kill switch."""
+    ran = []
+    app = create_app(storage, roots=[], handlers={"get_time": lambda args: ran.append(1)}, clock=clock)
+    headers = {"x-jarvis-token": load_token(storage)}
+    client = TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers)  # no `with`: no lifespan
+    assert call(client, new_task(client), "get_time").status_code == 503
+    assert ran == []
+
+
+def test_surrogate_in_a_result_is_logged_and_returned(storage, clock):
+    """Windows file names can hold an unpaired surrogate; list_dir would return one."""
+    name = "report\ud800.txt"
+    app = create_app(
+        storage, roots=[], handlers={"get_time": lambda args: [name]}, clock=clock, hotkey=None,
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, new_task(client), "get_time")
+        assert response.status_code == 200
+        assert response.json() == {"result": [name]}
+    lines = [json.loads(line) for line in (storage / "audit.jsonl").read_bytes().decode("ascii").splitlines()]
+    assert lines[-1]["status"] == "done" and "report" in lines[-1]["result"]

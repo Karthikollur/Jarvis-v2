@@ -93,3 +93,15 @@ def test_concurrent_writes_stay_intact(log_path):
     entries = lines(log_path)
     assert len(entries) == 1000
     assert {(e["worker"], e["i"]) for e in entries} == {(n, i) for n in range(50) for i in range(20)}
+
+
+def test_lone_surrogate_is_written_escaped(log_path):
+    # P2.8: an unpaired surrogate cannot be encoded as UTF-8. The line must still be written.
+    log = AuditLog(log_path, wall=lambda: 0.0)
+    log.write("request", args={"path": "C:\\x\\a\ud800.txt"})
+    log.write("result", status="done", result="b\udfff")
+    raw = log_path.read_bytes()
+    assert raw.count(b"\n") == 2
+    first, second = lines(log_path)
+    assert first["args"] == {"path": "C:\\x\\a\ud800.txt"}
+    assert second["result"] == "b\udfff"

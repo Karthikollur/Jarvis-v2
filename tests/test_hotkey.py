@@ -56,9 +56,11 @@ def test_real_listener_fires_and_closes():
         assert isinstance(listener, Listener)
         press(listener)
         assert pressed.wait(5)
+        assert listener.alive()
     finally:
         listener.close()
     assert not listener.thread.is_alive()
+    assert not listener.alive()
     listen(FREE, lambda: None).close()  # unregistered on close: the combo is free again
 
 

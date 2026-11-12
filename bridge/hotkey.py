@@ -93,6 +93,10 @@ class Listener:
         finally:
             user32.UnregisterHotKey(None, 1)
 
+    def alive(self) -> bool:
+        """False once the listening thread has ended, for any reason: the hotkey is gone."""
+        return self.thread.is_alive()
+
     def close(self) -> None:
         user32.PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0)
         self.thread.join(timeout=5)

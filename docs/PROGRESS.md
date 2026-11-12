@@ -48,12 +48,16 @@ Newest session entry goes at the top of the Session log.
   the ui latches the bridge (`/task` and `/tool` answer 403 `stopped`, logged) until a
   ui-only `POST /resume`; a Stop relayed by the core ends current tasks only; a restart
   also clears the latch. Until P6 has a button, resume = restart the bridge or call
-  `/resume` with the ui token. Next step: commit E (kill-switch liveness, audit encoding)
-  on Karthik's "go, commit E". P3 cannot start until P2.8 is done and reviewed.
+  `/resume` with the ui token. Commit E done (2026-11-12): before any handler runs, a
+  configured hotkey whose listener is not alive (died, never started, or shut down) stops
+  everything, latches and answers 503 `kill switch unavailable`; the audit file is written
+  with `backslashreplace` and tool results are returned as ASCII-escaped JSON, so a lone
+  surrogate breaks neither. Next step: commit F (tests only: built-in tools guard, sweep
+  additions) on Karthik's "go, commit F". P3 cannot start until P2.8 is done and reviewed.
   P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 310 passed, 1 skipped (2026-11-12, after P2.8 commit D). The skip is the
+- Tests: `uv run python -m pytest` -> 315 passed, 1 skipped (2026-11-12, after P2.8 commit E). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:
@@ -169,6 +173,13 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — P2.8 E, two points beyond the plan text, both stricter. (1) The liveness
+  check also refuses when a hotkey is configured but the listener was never started (the
+  app's lifespan did not run) — the plan named only a dead thread; same rule, no kill
+  switch, no tools. (2) A successful tool result is returned with `json.dumps` (ASCII
+  escapes) instead of FastAPI's UTF-8 encoder — the plan asked that a result holding a
+  lone surrogate answers normally; the UTF-8 encoder raises on it after the handler ran.
+  Same JSON for every other result. — Claude Code, within the approved P2.8 plan
 - 2026-11-12 — P2.8 B allowlist file format: `config/apps.toml` and `config/scripts.toml`
   hold one `[lower_case_name]` table per entry (name: `[a-z0-9_]{1,32}`); the policy reads
   only the names, what a table contains is P3.2 / P3.3's business; a bad name stops the

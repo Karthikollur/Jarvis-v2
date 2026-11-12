@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import csv
 from dataclasses import asdict
 import hmac
+import json
 import os
 from pathlib import Path
 import re
@@ -16,7 +17,7 @@ from typing import Any
 import uuid
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictBool
 from starlette.datastructures import Headers
 
@@ -223,8 +224,11 @@ def create_app(
     # Latch set by a Stop from the hotkey or the UI: no new task and no tool call until a
     # ui-only /resume (P2.8). A bridge restart also clears it.
     halted = False
+    listener = None  # the hotkey listener, started with the app
+
     @asynccontextmanager
     async def lifespan(_app):
+        nonlocal listener
         # A combo that cannot be registered raises here: the bridge does not start.
         listener = hotkeys.listen(hotkey, lambda: stop("hotkey")) if hotkey else None
         try:
@@ -256,7 +260,13 @@ def create_app(
         Returns (response, outcome)."""
         nonlocal context_tainted
         handler = handlers.get(tool)
-        if task.stopped:  # Stop landed after the policy check (e.g. an approve past recheck)
+        if hotkey and (listener is None or not listener.alive()):
+            # Same rule as at startup: no kill switch, no tools. Also true before the app
+            # has started its listener and after it has shut down.
+            stop("hotkey-dead")
+            response = JSONResponse({"detail": "kill switch unavailable"}, status_code=503)
+            outcome = logged = {"status": "cancelled"}
+        elif task.stopped:  # Stop landed after the policy check (e.g. an approve past recheck)
             response = JSONResponse({"detail": "task stopped"}, status_code=403)
             outcome = logged = {"status": "cancelled"}
         elif handler is None:
@@ -274,7 +284,10 @@ def create_app(
             else:
                 policy.record(task, tool, ok=True)
                 context_tainted = context_tainted or task.tainted
-                response = {"result": result}
+                # ASCII-escaped JSON: a lone surrogate in a result cannot be sent as UTF-8.
+                response = Response(
+                    json.dumps({"result": result}, default=str), media_type="application/json"
+                )
                 outcome = logged = {"status": "done", "result": result}
         ids = {"pending_id": pending_id} if pending_id else {}
         if not log("result", task_id=task_id, tool=tool, **ids, **logged):
