@@ -149,7 +149,7 @@ targets, network off.
 - [x] P2.5 Kill switch endpoint + global hotkey listener.
 - [ ] P2.6 Quarantine + undo records. Includes audit point 9 (PROGRESS.md, P1 review): the
       allowed-roots check refuses `%LOCALAPPDATA%\Jarvis` (tokens, audit log, quarantine) and
-      this repo's `safety/` and `config/`, whatever roots are configured, with tests.
+      this whole repo folder (Karthik, 2026-11-11), whatever roots are configured, with tests.
 - [ ] P2.7 Tests: path traversal (`..\`, absolute, junction, UNC), missing/wrong token, budget
       breach, tainted T1 upgraded to T2, kill switch mid-task, concurrent calls cannot exceed a
       budget (`Policy`/`Task` need a lock).

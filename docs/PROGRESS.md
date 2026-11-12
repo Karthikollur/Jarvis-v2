@@ -22,12 +22,12 @@ Newest session entry goes at the top of the Session log.
   registered) call one `stop()`: every task stopped, every pending action `cancelled`, a
   `stop` audit line written after stopping. The audit log (P2.4) records every request,
   decision and result before it happens. Details under Decisions.
-- Next task: P2.6 (protected folders = audit point 9, quarantine, undo records). Plan DRAFTED
-  at `docs/plans/P2.6.md`, NOT APPROVED: the approval prompt was cut off by a hard shutdown.
-  Karthik's four answers are in its Context (whole repo protected; undo is ui-only; refuse
-  if the original location is taken; undoing `create_folder` moves it to quarantine).
-  Next step: Karthik reviews and approves the plan, then commit A. Then P2.7. Audit point 9
-  blocks P3. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
+- Next task: P2.6 (protected folders = audit point 9, quarantine, undo records). Plan
+  APPROVED 2026-11-12 at `docs/plans/P2.6.md`, with four review fixes: 32-hex record ids and
+  quarantine paths derived from the id; `os.rename` only (never overwrite, refuse across
+  drives); only user-side paths go through `resolve`; protected folders realpath-resolved,
+  8.3 short-name test. Next step: commit A (protected folders) on Karthik's "go, commit A".
+  Then P2.7. Audit point 9 blocks P3. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
 - Tests: `uv run python -m pytest` -> 179 passed, 1 skipped (2026-11-11, after P2.5). The skip is the
