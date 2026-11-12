@@ -26,6 +26,8 @@ Newest session entry goes at the top of the Session log.
   and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
+- Before any P3 handler: Karthik's decisions on the P2 phase-review findings N1-N6 (Open
+  questions, top entry).
 - Next task: P3.0a (PLAN.md; refuse a path whose drive letter matches no root BEFORE
   `realpath`; touches `safety/`: plan mode, Karthik's OK first), then P3.0b (duplicate
   `x-jarvis-token` and `Host` header tests). Both come from the P2 gate review (Open
@@ -36,7 +38,7 @@ Newest session entry goes at the top of the Session log.
 - Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (2026-11-12, after P2.7). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
-  `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
+  `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
 - Blockers: none
@@ -44,6 +46,49 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- P2 phase review, bypass audit (2026-11-12, Fable 5.2, read-only; nothing fixed). All
+  three P2 "Done when" criteria pass. None of the gaps below is reachable today: there
+  are no real handlers. Each needs a decision (which task, or accept) before P3 handlers
+  are written. N1-N5 were confirmed by calling `Policy.check` directly.
+  New:
+  N1 `rename_file` on the root itself is allowed (T1, auto): `path` is checked, the place
+  the renamed item lands (`parent/new_name`, outside the roots) is not.
+  N2 `move_file`/`rename_file` on a folder that CONTAINS a protected folder is allowed;
+  the check refuses paths inside a protected folder only. Harmless with today's root;
+  matters if a root is ever set above the repo or `%LOCALAPPDATA%\Jarvis`. Same for
+  `delete_file` on the root itself (goes to confirm).
+  N3 Unknown arguments pass through: the policy has no list of permitted argument names
+  and `execute` hands every argument to the handler (`create_folder` with `overwrite=True`).
+  N4 Tools without path parameters get no argument check: `open_app` (T1, auto-allowed
+  with any argument), `focus_window`, `run_named_script` (any name, goes to confirm).
+  `config/apps.toml` and `config/scripts.toml` are not enforced anywhere yet.
+  N5 Taint and budgets reset with a new task: `POST /task` is free and unlimited, so a
+  tainted task's T1 action is auto-allowed again in a fresh task, and the 8-call, 120 s
+  and 3-failure budgets restart. Main way around the confirm queue for T1. Related: only
+  `read_text_file` taints; `list_dir` (file names), `list_windows` (window titles) and
+  `recall_memory` also return text an attacker can shape.
+  N6 Stop is not sticky: `stop()` stops existing tasks only; the core can open a new task
+  at once (by design today: `test_stop_stops_live_tasks_and_new_tasks_work`).
+  Known or by design, listed for completeness:
+  - Token: same-user processes can read both token files, so the core/ui split is a
+    convention (audit point 6). Loopback bind is command-line only; a local port forward
+    makes a remote caller look like 127.0.0.1 (token still needed). `protect()` finds
+    `icacls`/`whoami` through `SystemRoot`, at startup. Duplicate headers: P3.0b.
+  - Roots: `realpath` before the roots check (P3.0a). Check-to-handler gap on the direct
+    `/tool` path: a junction swapped in after the check is caught only on approve
+    (`recheck`); P3 handlers must not follow links. Hard links into the root are not seen.
+  - Confirm queue: approval re-validates paths, not file contents.
+  - Policy engine: `POST /undo` skips `Policy.check` (ui only; re-checks roots and
+    protected). `record.json` is editable by a same-user process (inside roots only, never
+    overwrites, needs a click). `UndoLog.quarantine/moved/created` trust the path given.
+    A running handler is not interrupted by Stop.
+  - Kill switch and audit: a dead hotkey thread is not noticed. A lone surrogate in a tool
+    result makes the `result` line fail to write after the handler ran. The audit log is
+    editable by a same-user process (audit point 6).
+  - Outside `safety/` and `bridge/`: nothing forces the model's tools through the bridge.
+    The core has no bridge client yet; OpenJarvis built-ins (`shell_exec`) are kept out
+    only by the `tools=[...]` list on each call. Largest bypass; belongs to P3.5.
 
 - P2 gate review notes (2026-11-12). (a) and (b) are now PLAN.md tasks P3.0a and P3.0b
   (Karthik, 2026-11-12); the nits (c), (d), (e) have no task yet.
@@ -423,6 +468,11 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Karthik passed the P2 gate and answered both questions (KEEP, OK). Docs-only commit.
   Next: should-fix (a) and (b) under Open questions, (a) needs plan mode and Karthik's OK;
   then P3.1.
+- Later again: P2 phase review on Karthik's request (read-only). Tests 259 passed,
+  1 skipped; evals 39/40 (tool selection 25/25, must-refuse 10/10, clarifying 4/5, median
+  1.2 s; a03 fails as in the baseline). Six new policy gaps N1-N6 logged under Open
+  questions (top entry) with the known ones. Nothing fixed: Karthik reviews first.
+  Next: Karthik decides per finding; then P3.0a (plan mode).
 
 ### 2026-11-12 — Agent: Claude Code (P2.6 implemented; audit point 9 closed)
 
