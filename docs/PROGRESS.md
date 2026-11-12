@@ -22,9 +22,12 @@ Newest session entry goes at the top of the Session log.
   registered) call one `stop()`: every task stopped, every pending action `cancelled`, a
   `stop` audit line written after stopping. The audit log (P2.4) records every request,
   decision and result before it happens. Details under Decisions.
-- Next task: P2.6 (quarantine + undo records, includes audit point 9, which blocks P3). Not
-  planned yet; plan mode first (CLAUDE.md). Then P2.7. Audit points 3, 4, 5, 6 (session log,
-  P1 review entry) stay open.
+- Next task: P2.6 (protected folders = audit point 9, quarantine, undo records). Plan DRAFTED
+  at `docs/plans/P2.6.md`, NOT APPROVED: the approval prompt was cut off by a hard shutdown.
+  Karthik's four answers are in its Context (whole repo protected; undo is ui-only; refuse
+  if the original location is taken; undoing `create_folder` moves it to quarantine).
+  Next step: Karthik reviews and approves the plan, then commit A. Then P2.7. Audit point 9
+  blocks P3. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
 - Tests: `uv run python -m pytest` -> 179 passed, 1 skipped (2026-11-11, after P2.5). The skip is the
@@ -322,6 +325,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-12 — Agent: Claude Code (P2.6 drafted; laptop hang diagnosed; handoff)
+
+- Did: drafted the P2.6 plan after Karthik answered four design questions; saved it as
+  `docs/plans/P2.6.md`, marked DRAFT, NOT APPROVED (the approval step was cut off by a hard
+  shutdown). After the shutdown: read-only diagnosis of the hang (90% RAM, overheating).
+- Diagnosis: repo healthy after the shutdown (`git fsck` clean, no `index.lock`, 179
+  passed, 1 skipped). Tests start no servers (FastAPI `TestClient` in-process only, hotkey
+  listeners closed in `finally`); Python process count was the same before and after a run,
+  port 8765 never listening. Windows logged no unexpected shutdown or low-memory event in 7
+  days. Most likely cause: everything running at once on 16 GB: Claude app (~3 GB), more
+  than one Claude Code session each starting ~750 MB of MCP servers (rea, serena, headroom,
+  repomix, notebooklm-py), a Codex session, and the Ollama model. Not this repo's code.
+- Changed OUTSIDE the repo, at Karthik's request: those five MCP servers turned off
+  globally. `~/.claude.json`: user `mcpServers` emptied (entries saved in
+  `~/.claude/mcp-servers-removed-2026-11-11.json`) and the Jarvis_v2 project lists them in
+  `disabledMcpServers`; `~/.claude/settings.json`: plugin `repomix-mcp@repomix` = false.
+  Backups beside both files (`.bak-2026-11-11*`). `claude-mem` kept. Verified: 0 such
+  processes in a new session; RAM used fell from 10.8 to 10.1 GB. Side effect: running
+  `ollama ps` started the Ollama app.
+- Files changed in the repo: `docs/plans/P2.6.md` (new), `docs/PROGRESS.md`.
+- Tests: 179 passed, 1 skipped (no code changed).
+- Unfinished work stopped at: P2.6 plan awaiting Karthik's approval. No P2.6 code.
+- Next concrete step: Karthik approves `docs/plans/P2.6.md`; then commit A (protected
+  folders), tests first.
 
 ### 2026-11-11 — Agent: Claude Code (P2.5 kill switch, implemented)
 
