@@ -1529,3 +1529,77 @@ def test_surrogate_in_a_result_is_logged_and_returned(storage, clock):
         assert response.json() == {"result": [name]}
     lines = [json.loads(line) for line in (storage / "audit.jsonl").read_bytes().decode("ascii").splitlines()]
     assert lines[-1]["status"] == "done" and "report" in lines[-1]["result"]
+
+
+# --- sweep additions (P2.8 commit F) -------------------------------------------
+
+
+def live_routes(app):
+    return [(method, route.path) for route in app.routes for method in sorted(route.methods)]
+
+
+SWEEP_BODY = {"tool": "get_time", "args": {}, "pending_id": "x", "record_id": "x"}
+
+
+def test_duplicate_token_or_host_header_refused_on_every_route(sandbox, storage):
+    """Two headers of the same name: which one would a proxy or a parser pick? Refuse both."""
+    client, root, outside = sandbox
+    task = new_task(client)
+    body = {**SWEEP_BODY, "task_id": task}
+    tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
+    before = (storage / "audit.jsonl").read_bytes()
+    bare = TestClient(client.app, base_url=BASE, client=LOOPBACK)  # no default token header
+    for method, path in live_routes(client.app):
+        valid = tokens[sorted(bridge_app.ROUTE_ROLES[path])[0]]
+        for pair in [(valid, "wrong"), ("wrong", valid), (valid, valid), (valid, "")]:
+            headers = [("x-jarvis-token", pair[0]), ("x-jarvis-token", pair[1])]
+            response = bare.request(method, path, json=body, headers=headers)
+            assert response.status_code == 401, (method, path, pair)
+        for hosts in [("127.0.0.1:8765", "evil.example"), ("evil.example", "127.0.0.1:8765"),
+                      ("127.0.0.1:8765", "127.0.0.1:8765")]:
+            headers = [("host", hosts[0]), ("host", hosts[1]), ("x-jarvis-token", valid)]
+            response = bare.request(method, path, json=body, headers=headers)
+            assert response.status_code == 400, (method, path, hosts)
+    assert (storage / "audit.jsonl").read_bytes() == before  # nothing ran, nothing logged
+    assert call(client, task, "get_time").status_code == 200
+
+
+def test_wrong_role_refused_on_every_single_role_route(sandbox, storage):
+    client, root, outside = sandbox
+    task = new_task(client)
+    body = {**SWEEP_BODY, "task_id": task}
+    tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
+    bare = TestClient(client.app, base_url=BASE, client=LOOPBACK)
+    before = len(audit(root))
+    swept = []
+    for method, path in live_routes(client.app):
+        for role in set(tokens) - bridge_app.ROUTE_ROLES[path]:
+            response = bare.request(method, path, json=body, headers={"x-jarvis-token": tokens[role]})
+            assert response.status_code == 403, (method, path, role)
+            swept.append((role, path))
+    # Every refusal is logged as `forbidden`, and nothing else happened.
+    logged = [(entry["role"], entry["path"]) for entry in audit(root)[before:]]
+    assert logged == swept and all(entry["event"] == "forbidden" for entry in audit(root)[before:])
+    assert {path for _, path in swept} == {
+        path for path, roles in bridge_app.ROUTE_ROLES.items() if len(roles) == 1
+    }  # the sweep is not vacuous: every single-role route was tried
+    assert call(client, task, "get_time").status_code == 200
+
+
+MISSING = object()
+
+
+@pytest.mark.parametrize("value", [MISSING, None, 123, 1.5, True, ["C:/x"], {"path": "C:/x"}, ""],
+                         ids=["missing", "null", "int", "float", "bool", "list", "object", "empty"])
+@pytest.mark.parametrize("tool, param", PATH_PARAMS)
+def test_every_path_parameter_must_be_a_string(every_tool, tool, param, value):
+    client, root, outside, protected, ran = every_tool
+    args = valid_args(tool, root)
+    if value is MISSING:
+        del args[param]
+    else:
+        args[param] = value
+    response = call(client, new_task(client), tool, **args)
+    assert (response.status_code, response.json()["detail"]) == (403, f"{param}: not a path")
+    assert ran == []
+    assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []

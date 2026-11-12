@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2.8 hardening (added after the P2 gate passed; P3 waits for it). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2.8 hardening complete, awaiting Karthik's review; P3 not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -28,39 +28,32 @@ Newest session entry goes at the top of the Session log.
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
   (P2.8 C: `POST /task` now takes an optional body `{"fresh_context": true}`.
   P2.8 D: new ui-only route `POST /resume`.)
-- Next task: P2.8 hardening (plan APPROVED 2026-11-12 at `docs/plans/P2.8.md`, six commits
-  A to F, tests first, stop after each). It fixes the phase-review findings N1-N6, the
-  hotkey liveness and audit encoding items, and adds the built-in tools guard; it absorbs
-  the former P3.0a and P3.0b. Touches `safety/` and `bridge/`. Commit A done
-  (2026-11-12): `resolve_inside` refuses a drive with no root before `realpath`; with
-  `mutating` (T1/T2 tools and undo) it refuses the root itself and a folder that contains
-  a protected folder; a rename's landing place is checked and handed to the handler as
-  `target`. Commit B done (2026-11-12): every rule declares its
-  arguments (`Rule.params`); an undeclared argument is refused; `open_app` and
-  `run_named_script` values must be names in `config/apps.toml` / `config/scripts.toml`
-  (neither file exists yet, so both tools refuse everything until P3.2 / P3.3 add
-  entries); `focus_window` and `recall_memory` take one short printable string.
-  Commit C done (2026-11-12): `list_dir`,
-  `list_windows` and `recall_memory` taint; the bridge keeps one conversation taint flag,
-  so `POST /task` creates a tainted task after any successful tainting call, until the
-  core sends `{"fresh_context": true}` (core only, strict boolean, audited) or the bridge
-  restarts. Commit D done (2026-11-12): a Stop from the hotkey or
-  the ui latches the bridge (`/task` and `/tool` answer 403 `stopped`, logged) until a
-  ui-only `POST /resume`; a Stop relayed by the core ends current tasks only; a restart
-  also clears the latch. Until P6 has a button, resume = restart the bridge or call
-  `/resume` with the ui token. Commit E done (2026-11-12): before any handler runs, a
-  configured hotkey whose listener is not alive (died, never started, or shut down) stops
-  everything, latches and answers 503 `kill switch unavailable`; the audit file is written
-  with `backslashreplace` and tool results are returned as ASCII-escaped JSON, so a lone
-  surrogate breaks neither. Next step: commit F (tests only: built-in tools guard, sweep
-  additions) on Karthik's "go, commit F". P3 cannot start until P2.8 is done and reviewed.
-  P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
+- Last hardening task: P2.8 DONE 2026-11-12 (plan `docs/plans/P2.8.md`, six commits A to F,
+  ticked in PLAN.md). What changed, in one place:
+  A path rules: a drive with no root is refused before `realpath`; T1/T2 tools and undo
+  cannot touch the root itself or a folder that contains a protected folder; a rename's
+  landing place is checked and handed to the handler as `target`.
+  B argument rules: every rule declares its arguments, anything else is refused;
+  `open_app` / `run_named_script` values must be names in `config/apps.toml` /
+  `config/scripts.toml` (neither exists yet: both tools refuse everything until P3.2 /
+  P3.3); `focus_window` and `recall_memory` take one short printable string.
+  C taint: `list_dir`, `list_windows`, `recall_memory` taint; new tasks inherit taint until
+  the core sends `{"fresh_context": true}` on `POST /task` or the bridge restarts.
+  D stop latch: a hotkey or ui Stop latches until ui-only `POST /resume`; a core Stop does
+  not latch.
+  E a configured hotkey whose listener is not alive stops everything (503); audit file and
+  tool results survive a lone surrogate.
+  F tests only: built-in tools guard (`tests/test_core_tools.py`), duplicate token and Host
+  headers, wrong-role sweep, non-string path parameters.
+- Next task: Karthik reviews P2.8 (`git diff 1d341fd..HEAD`). The agent does not start P3.
+  After the review: P3.1, with the restore point created first (P3 precondition, still
+  owed). Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 315 passed, 1 skipped (2026-11-12, after P2.8 commit E). The skip is the
+- Tests: `uv run python -m pytest` -> 381 passed, 1 skipped (2026-11-12, after P2.8). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
-  `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:
+  `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12 after P2.8, unchanged; needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
 - Blockers: none
@@ -173,6 +166,18 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — P2.8 limits, as built. (1) Conversation taint trusts the core's
+  `fresh_context` claim; P3.5 must test that the core sends it only after dropping the
+  model's context, and sends it after a bridge restart. (2) The latch covers `/task` and
+  `/tool`; an approve past its checks is covered by the stopped-checks. Until P6 has a
+  button, resume = restart the bridge or call `/resume` with the ui token. (3) After the
+  hotkey thread dies, resume does not help: the bridge needs a restart. (4) Allowlists are
+  read at start; editing `apps.toml` / `scripts.toml` needs a restart. (5) The drive
+  check compares letters, not volumes. (6) The built-in tools guard is static: it scans
+  `tools=` and `agent=` keyword arguments in `core/` and `evals/`; a call that builds the
+  list another way is not seen, so P3.5's bridge client must pass `tools=` literally or
+  extend the guard. (7) With `list_dir` tainting, a multi-file move needs one click per
+  file until P3.2's batch confirmation. — Claude Code, plan approved by Karthik
 - 2026-11-12 — P2.8 E, two points beyond the plan text, both stricter. (1) The liveness
   check also refuses when a hotkey is configured but the listener was never started (the
   app's lifespan did not run) — the plan named only a dead thread; same rule, no kill
@@ -499,6 +504,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-12 — Agent: Claude Code (P2.8 hardening implemented; awaits Karthik's review)
+
+- Did: after the P2 gate passed, a read-only phase review found six policy gaps (N1-N6)
+  and three more items; Karthik approved fixing them as P2.8 before P3. Six commits, one
+  per go: 089e6b5 path rules; c195b5d argument rules; 387a49f taint survives a new task;
+  0d4f0df stop latch; 1fab025 kill-switch liveness and audit encoding; commit F tests only
+  (built-in tools guard, sweep additions) with P2.8 ticked.
+- Files: `safety/policy.py`, `safety/audit.py`, `bridge/app.py`, `bridge/hotkey.py`,
+  `tests/` (new `tests/test_core_tools.py`), `docs/PLAN.md`, `docs/PROGRESS.md`,
+  `docs/plans/P2.8.md`.
+- Tests: `uv run python -m pytest` -> 381 passed, 1 skipped (symlink test, as before).
+  Evals `uv run python evals/run.py` -> 39/40, unchanged (a03 fails as in the baseline).
+  Mutation checks for every commit (32 mutants in total), each failed the tests meant to
+  catch it and was restored.
+- Not a clean red-green for commit B: the first test run failed on shell quoting, so its
+  tests first ran after the code existed; the mutation checks stand in for the red run.
+- Existing tests changed on purpose: a ui Stop now latches (D); the token sweep and the
+  32-thread HTTP test no longer restart one app many times (E).
+- Tooling note for the next agent: in this Git Bash, heredocs halve backslashes and a
+  stray quote can abort a whole command. Write test snippets with the file tools and
+  apply them with a small script instead.
+- Stopped at: P2.8 complete. Not done: Karthik's review of `git diff 1d341fd..HEAD`;
+  the restore point; anything in P3.
+- Next step: Karthik reviews P2.8; then P3.1.
 
 ### 2026-11-12 — Agent: Claude Code (P2.7 implemented; P2 gate awaits Karthik)
 

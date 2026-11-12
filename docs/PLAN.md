@@ -153,7 +153,7 @@ targets, network off.
 - [x] P2.7 Tests: path traversal (`..\`, absolute, junction, UNC), missing/wrong token, budget
       breach, tainted T1 upgraded to T2, kill switch mid-task, concurrent calls cannot exceed a
       budget (`Policy`/`Task` need a lock).
-- [ ] P2.8 Hardening from the P2 phase review (N1–N6, kill-switch liveness, audit encoding,
+- [x] P2.8 Hardening from the P2 phase review (N1–N6, kill-switch liveness, audit encoding,
       built-in tools guard; absorbs the former P3.0a and P3.0b). Plan: `docs/plans/P2.8.md`.
 
 **Done when:** all tests pass; a fake tool cannot act outside the sandbox or without a token by
