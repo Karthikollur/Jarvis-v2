@@ -17,6 +17,7 @@ from bridge.app import create_app, load_token
 from bridge import app as bridge_app
 from safety.audit import AuditLog
 from safety.policy import Policy
+from safety.undo import UndoLog
 
 BASE = "http://127.0.0.1:8765"
 LOOPBACK = ("127.0.0.1", 50000)
@@ -204,6 +205,8 @@ def test_route_table_is_exact(storage):
         ("POST", "/deny"),
         ("POST", "/outcome"),
         ("POST", "/stop"),
+        ("GET", "/undo"),
+        ("POST", "/undo"),
     }
     assert {path for _, path in table} == set(bridge_app.ROUTE_ROLES)
 
@@ -332,7 +335,7 @@ def test_storage_is_always_protected(storage, protected):
             ("read_text_file", storage / "bridge.token"),
             ("read_text_file", storage / "ui.token"),
             ("delete_file", storage / "audit.jsonl"),
-            ("create_folder", storage / "quarantine"),
+            ("create_folder", storage / "quarantine" / "new"),
             ("list_dir", storage),
             ("read_text_file", root / "storage" / ".." / "storage" / "bridge.token"),
         ]:
@@ -343,7 +346,7 @@ def test_storage_is_always_protected(storage, protected):
             assert call(client, new_task(client), "create_folder", path=str(root / "ok")).status_code == 200
     assert ran == ([] if protected is None else ["create"])
     assert load_token(storage) == token
-    assert not (storage / "quarantine").exists()
+    assert not (storage / "quarantine" / "new").exists()
     assert (storage / "audit.jsonl").read_bytes().startswith(audit_before)
 
 
@@ -940,3 +943,103 @@ def test_stop_between_recheck_and_handler(sandbox):
         "ts": None, "event": "result", "task_id": audit(root)[1]["task_id"],
         "tool": "delete_file", "pending_id": pending_id, "status": "cancelled",
     }
+
+
+# --- undo routes (P2.6) -------------------------------------------------------
+
+
+@pytest.fixture
+def undo_box(storage, clock):
+    """(client, root): a bridge whose delete_file quarantines, as P3 handlers will."""
+    root = Path(os.path.realpath(storage.parent / "root"))
+    root.mkdir()
+
+    def delete_file(args):
+        return UndoLog(storage / "quarantine").quarantine(args["path"], "delete_file").id
+
+    app = create_app(storage, roots=[root], handlers={"delete_file": delete_file}, clock=clock, protected=[])
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        yield client, root
+
+
+def quarantined(client, root, name="victim.txt"):
+    """Delete a real file through the confirm queue; returns (victim, record_id)."""
+    victim, pending_id = queue_delete(client, root, name)
+    assert approve(client, root, pending_id).status_code == 200
+    assert not victim.exists()
+    return victim, outcome(client, pending_id).json()["result"]
+
+
+def undo(client, root, record_id, headers=None):
+    return client.post("/undo", json={"record_id": record_id}, headers=headers or ui_headers(root))
+
+
+def test_undo_restores_quarantined_file(undo_box):
+    client, root = undo_box
+    victim, record_id = quarantined(client, root)
+    listed = client.get("/undo", headers=ui_headers(root)).json()["records"]
+    assert [(r["id"], r["kind"], r["path"], r["undone"]) for r in listed] == [
+        (record_id, "quarantined", str(victim), None)
+    ]
+    response = undo(client, root, record_id)
+    assert response.status_code == 200
+    assert response.json()["undone"] is not None
+    assert victim.read_text() == "keep"
+    before, after = audit(root)[-2:]
+    assert before | {"ts": None} == {
+        "ts": None, "event": "undo", "record_id": record_id, "kind": "quarantined",
+        "paths": {"path": str(victim)},
+    }
+    assert after | {"ts": None} == {"ts": None, "event": "undo_result", "record_id": record_id, "status": "done"}
+
+
+def test_undo_routes_are_ui_only(undo_box):
+    client, root = undo_box
+    victim, record_id = quarantined(client, root)
+    assert client.get("/undo").status_code == 403  # client default is the core token
+    assert audit(root)[-1] | {"ts": None} == {"ts": None, "event": "forbidden", "role": "core", "path": "/undo"}
+    assert client.post("/undo", json={"record_id": record_id}).status_code == 403
+    for headers in [{"x-jarvis-token": "wrong"}, {"x-jarvis-token": ""}]:
+        assert client.get("/undo", headers=headers).status_code == 401
+        assert undo(client, root, record_id, headers).status_code == 401
+    bare = TestClient(client.app, base_url=BASE, client=LOOPBACK)  # no token header at all
+    assert bare.get("/undo").status_code == 401
+    assert bare.post("/undo", json={"record_id": record_id}).status_code == 401
+    assert not victim.exists()
+    assert "undo" not in kinds(root)
+
+
+def test_undo_refusals_over_http(undo_box):
+    client, root = undo_box
+    for bad in ["0" * 32, "../x", r"..\..\audit.jsonl", ""]:
+        response = undo(client, root, bad)
+        assert response.status_code == 404, bad
+    assert audit(root)[-1] | {"ts": None} == {
+        "ts": None, "event": "undo_result", "record_id": "", "status": "refused", "reason": "unknown record",
+    }
+    victim, record_id = quarantined(client, root)
+    victim.write_text("in the way")
+    response = undo(client, root, record_id)
+    assert (response.status_code, response.json()["detail"]) == (409, "original location is occupied")
+    assert victim.read_text() == "in the way"
+    assert audit(root)[-1]["status"] == "refused"
+    victim.rename(root / "blocker.txt")
+    assert undo(client, root, record_id).status_code == 200
+    assert victim.read_text() == "keep"
+    response = undo(client, root, record_id)
+    assert (response.status_code, response.json()["detail"]) == (409, "already undone")
+    assert (root / "blocker.txt").read_text() == "in the way"
+
+
+def test_undo_fails_closed_without_audit(undo_box):
+    client, root = undo_box
+    victim, record_id = quarantined(client, root)
+    with failing("undo"):
+        response = undo(client, root, record_id)
+    assert (response.status_code, response.json()["detail"]) == (500, "Audit log unavailable")
+    assert not victim.exists()
+    assert "undo_result" not in kinds(root)
+    with failing("undo_result"):  # it ran; the undo line without a result shows that
+        assert undo(client, root, record_id).status_code == 500
+    assert victim.read_text() == "keep"

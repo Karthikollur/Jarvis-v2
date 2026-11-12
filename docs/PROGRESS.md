@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 to P2.5 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 to P2.6 complete). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,30 +14,20 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.5 (kill switch, plan `docs/plans/P2.5.md`, implemented in two
-  commits). Bridge routes: `GET /health`; core: `POST /task`, `POST /tool`,
-  `POST /outcome`; ui only: `GET /pending`, `POST /approve`, `POST /deny`; both:
-  `POST /stop`. `/stop` and the global hotkey (`config/hotkey.toml`, default
-  `Ctrl+Alt+End`, registered at bridge start; the bridge refuses to start if it cannot be
-  registered) call one `stop()`: every task stopped, every pending action `cancelled`, a
-  `stop` audit line written after stopping. The audit log (P2.4) records every request,
-  decision and result before it happens. Details under Decisions.
-- Next task: P2.6 (protected folders = audit point 9, quarantine, undo records). Plan
-  APPROVED 2026-11-12 at `docs/plans/P2.6.md`, with four review fixes: 32-hex record ids and
-  quarantine paths derived from the id; `os.rename` only (never overwrite, refuse across
-  drives); only user-side paths go through `resolve`; protected folders realpath-resolved,
-  8.3 short-name test. Commit A (protected folders) DONE: `resolve_inside`/`Policy` refuse
-  any path in a protected folder (`path: protected folder`); the bridge always protects its
-  storage folder and, by default, the whole repo (`create_app(protected=None)`; tests pass
-  `[]` because their sandbox is in the repo). Bridge test sandboxes now put roots beside
-  storage, not inside it. Commit B DONE: `safety/undo.py` (`UndoLog`: quarantine, moved,
-  created, list, get, undo; stdlib only, no bridge change). Every move is `os.rename` (refuses
-  an existing target and other drives); 32-hex ids; `<id>/item` layout, nothing on the
-  quarantine side read from `record.json`. Next step: commit C (`GET`/`POST /undo`, ui only)
-  on Karthik's "go, commit C". Then P2.7. Audit point 9 blocks P3 until C lands. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
+- Last completed task: P2.6 (protected folders = audit point 9, quarantine, undo records;
+  plan `docs/plans/P2.6.md`, implemented in three commits). Bridge routes: `GET /health`;
+  core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
+  `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`. No tool can
+  reach the bridge storage folder (`%LOCALAPPDATA%\Jarvis`: tokens, audit log, quarantine)
+  or this repo, whatever roots are configured. `safety/undo.py` quarantines instead of
+  deleting and reverses records on a ui request; nothing is ever overwritten. P3 handlers
+  must call it (not wired yet: there are no real handlers). Details under Decisions.
+- Next task: P2.7 (path traversal, token, budget, taint, kill-switch tests; `Policy`/`Task`
+  lock). Plan it in plan mode first. Audit point 9 is closed, so it no longer blocks P3.
+  Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 212 passed, 1 skipped (2026-11-12, after P2.6 commit B). The skip is the
+- Tests: `uv run python -m pytest` -> 216 passed, 1 skipped (2026-11-12, after P2.6). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -74,13 +64,43 @@ Newest session entry goes at the top of the Session log.
   any of these, or build our own as planned? Its memory has no approval queue.
 - P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
   8-tool-call budget for more than a few files. Batch move tool, or change the check?
-- The repo sits inside the Obsidian vault. P4.2 proposes the vault as a read-only docs root,
-  which would include this repo's own `safety/` and `config/`. Exclude the repo folder, or move it?
+- (Resolved in P2.6: the repo sits inside the Obsidian vault, and the whole repo folder is now
+  a protected folder, so a vault docs root in P4.2 can never reach `safety/`, `config/` or
+  any other repo file.)
 - `C:\JarvisSandbox` does not exist yet. Create it in P2/P3, or should Karthik create it?
 
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-12 — P2.6 protected folders (audit point 9, CLOSED). `resolve_inside(raw, roots,
+  protected)` refuses any path equal to or inside a protected folder, after the roots check,
+  with the same realpath + normcase comparison; `Policy` realpath-resolves protected folders
+  once when built, so junctions, `..`, case and 8.3 short names cannot dodge it. The bridge
+  always protects its storage folder; `create_app(protected=None)` (production) also
+  protects the whole repo folder. Tests pass `protected=[]` (their sandbox is inside the
+  repo) and cannot unprotect storage. — Karthik (whole repo); Claude Code, plan approved
+
+- 2026-11-12 — P2.6 quarantine and undo. `safety/undo.py` `UndoLog` (stdlib only): one
+  folder per record in `%LOCALAPPDATA%\Jarvis\quarantine`, `<id>/record.json` plus
+  `<id>/item` (the quarantined file or folder itself). Kinds `quarantined`, `moved`,
+  `created`. Every move is `os.rename`: refuses an existing target (never overwrites or
+  nests) and refuses across drives. Record ids are 32 hex; quarantine-side paths come from
+  the id only, never from `record.json`; user-side paths are re-checked by the policy and
+  must come back unchanged. Undoing `created` moves the folder to quarantine (a new,
+  restorable record). Only the ui token may undo: `GET /undo` lists, `POST /undo
+  {record_id}` reverses; an `undo` audit line is written before anything moves (failed
+  write -> 500, nothing moved), then `undo_result` `done` or `refused` + reason. 404 for
+  unknown or malformed ids, 409 for every other refusal. No model-facing undo tool. —
+  Karthik (ui only; refuse if taken; created -> quarantine); Claude Code, plan approved
+
+- 2026-11-12 — P2.6 limits, accepted for now: a quarantined item keeps its own permissions
+  (the quarantine folder is user-only); roots on another drive than `%LOCALAPPDATA%` cannot
+  quarantine; hard links are not detected by `realpath` (no tool creates them); a link
+  swapped in between the undo check and the move is not covered (same limit as tools);
+  quarantine grows until Karthik empties it by hand (no purge in Jarvis code); any
+  same-user process can edit quarantine and records (audit point 6); a refused quarantine
+  leaves an empty record folder (skipped by `list`, never deleted by Jarvis). — Claude Code
 
 - 2026-11-11 — P2.5 kill switch. One inner `stop(source)` in `bridge/app.py` is the only
   stop path, reached by `POST /stop` (roles core and ui; core relays a spoken "stop") and
@@ -332,6 +352,28 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-12 — Agent: Claude Code (P2.6 implemented; audit point 9 closed)
+
+- Did: reviewed the P2.6 draft against the code; Karthik approved it with four fixes
+  (32-hex ids, quarantine paths from the id only; `os.rename` only; only user-side paths
+  through `resolve`; protected folders realpath-resolved + 8.3 test). Then three commits,
+  tests first, each stopped for review: A `f4ca891` protected folders, B `edd2ac5`
+  `safety/undo.py`, C undo routes. One layout change from the plan, recorded in it:
+  `<id>/item` is the quarantined thing itself (the plan had `<id>/item/<name>`, which used a
+  record value on the quarantine side).
+- Files changed: `safety/policy.py`, `safety/undo.py` (new), `bridge/app.py`,
+  `tests/test_policy.py`, `tests/test_undo.py` (new), `tests/test_bridge.py` (sandbox roots
+  now beside storage, not inside it), `docs/plans/P2.6.md`, `docs/PLAN.md`, this file.
+- Tests: 216 passed, 1 skipped (symlink test). Mutation checks: A dropping the protected
+  check fails 14 tests, dropping the realpath at `Policy` build fails 1; B `os.replace` +
+  no occupied check fails 3; C ungating the pre-undo audit write fails the fail-closed test.
+  All restored.
+- Not checked by a human: a real bridge start (now also creates
+  `%LOCALAPPDATA%\Jarvis\quarantine`).
+- Unfinished work stopped at: nothing in progress. P2.6 ticked.
+- Next concrete step: plan P2.7 in plan mode (traversal/token/budget/taint/kill-switch
+  tests and the `Policy`/`Task` lock) and get Karthik's approval.
 
 ### 2026-11-12 — Agent: Claude Code (P2.6 drafted; laptop hang diagnosed; handoff)
 

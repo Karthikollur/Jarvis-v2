@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 import csv
+from dataclasses import asdict
 import hmac
 import os
 from pathlib import Path
@@ -22,7 +23,8 @@ from starlette.datastructures import Headers
 from bridge import hotkey as hotkeys
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue, QueueRefused
-from safety.policy import Policy, Task, load_roots
+from safety.policy import Policy, Task, load_roots, resolve_inside
+from safety.undo import UndoLog, UndoRefused, UnknownRecord
 
 
 def _run(*args: str) -> str:
@@ -93,6 +95,7 @@ ROUTE_ROLES: dict[str, set[str]] = {
     "/approve": {"ui"},
     "/deny": {"ui"},
     "/stop": {"core", "ui"},  # stopping is the safe direction; core relays a spoken "stop"
+    "/undo": {"ui"},  # only Karthik undoes; no model-facing undo tool
 }
 
 
@@ -155,6 +158,10 @@ class PendingRequest(BaseModel):
     pending_id: str
 
 
+class UndoRequest(BaseModel):
+    record_id: str
+
+
 CONFIG = Path(__file__).resolve().parent.parent / "config"
 FROM_CONFIG: Any = object()  # default for `hotkey`: read config/hotkey.toml
 
@@ -190,6 +197,7 @@ def create_app(
     repo = [CONFIG.parent] if protected is None else list(protected)
     policy = Policy(roots, clock, [storage, *repo])
     queue = ConfirmQueue(clock)
+    undo_log = UndoLog(storage / "quarantine")  # inside storage: protected, user-only ACL
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
@@ -395,6 +403,39 @@ def create_app(
     @app.post("/stop")
     def stop_route(request: Request):
         return stop(request.state.role)
+
+    @app.get("/undo")
+    def list_undo():
+        return {"records": [asdict(record) for record in undo_log.list()]}
+
+    @app.post("/undo")
+    def undo(request: UndoRequest):
+        """Reverse one undo record. Logged before anything moves; refuses, never overwrites."""
+        record_id = request.record_id
+        try:
+            record = undo_log.get(record_id)
+        except UndoRefused:
+            record = None  # undo() below raises the same refusal, after it is logged
+        details = {}
+        if record is not None:
+            paths = {name: getattr(record, name) for name in ("path", "source", "destination")}
+            details = {"kind": record.kind, "paths": {k: v for k, v in paths.items() if v}}
+        if not log("undo", record_id=record_id, **details):
+            return unavailable()
+
+        def resolve(raw: str) -> Path:
+            return resolve_inside(raw, policy.roots, policy.protected)
+
+        try:
+            done = undo_log.undo(record_id, resolve)
+        except UndoRefused as refused:
+            if not log("undo_result", record_id=record_id, status="refused", reason=str(refused)):
+                return unavailable()
+            status = 404 if isinstance(refused, UnknownRecord) else 409
+            return JSONResponse({"detail": str(refused)}, status_code=status)
+        if not log("undo_result", record_id=record_id, status="done"):
+            return unavailable()
+        return asdict(done)
 
     @app.get("/health")
     async def health():
