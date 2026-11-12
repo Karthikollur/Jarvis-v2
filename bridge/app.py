@@ -331,6 +331,13 @@ def create_app(
                 if not log("queued", task_id=request.task_id, refused=str(refused)):
                     return unavailable()
                 return JSONResponse({"detail": str(refused)}, status_code=403)
+            if task.stopped:  # Stop landed between the policy check and the queue
+                queue.take(pending.id)
+                outcomes[pending.id] = {"status": "cancelled"}
+                ids = {"task_id": request.task_id, "pending_id": pending.id}
+                if not log("queued", **ids, refused="task stopped"):
+                    return unavailable()
+                return JSONResponse({"detail": "task stopped"}, status_code=403)
             if not log("queued", task_id=request.task_id, pending_id=pending.id):
                 queue.take(pending.id)  # an unlogged action must not be approvable
                 return unavailable()

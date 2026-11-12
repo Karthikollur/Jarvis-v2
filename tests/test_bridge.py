@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+import threading
 from unittest.mock import patch
 
 import pytest
@@ -16,7 +17,8 @@ import json
 from bridge.app import create_app, load_token
 from bridge import app as bridge_app
 from safety.audit import AuditLog
-from safety.policy import Policy
+from safety.confirm import ConfirmQueue
+from safety.policy import MAX_CALLS, Policy
 from safety.undo import UndoLog
 
 BASE = "http://127.0.0.1:8765"
@@ -943,6 +945,83 @@ def test_stop_between_recheck_and_handler(sandbox):
         "ts": None, "event": "result", "task_id": audit(root)[1]["task_id"],
         "tool": "delete_file", "pending_id": pending_id, "status": "cancelled",
     }
+
+
+
+def test_stop_while_queueing_leaves_nothing_queued(sandbox):
+    """P2.7: Stop lands after the policy check but before the action enters the queue
+    (so Stop's clear cannot drop it). The action must not stay pending."""
+    client, root, outside = sandbox
+    victim = root / "victim.txt"
+    victim.write_text("keep")
+    task = new_task(client)
+    original = ConfirmQueue.add
+    added = []
+
+    def stop_then_add(self, *args):
+        assert client.post("/stop").status_code == 200
+        added.append(original(self, *args))
+        return added[-1]
+
+    with patch.object(ConfirmQueue, "add", stop_then_add):
+        refused = call(client, task, "delete_file", path=str(victim))
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []
+    assert victim.exists()
+    pending_id = added[0].id
+    assert [entry["event"] for entry in audit(root)[-2:]] == ["stop", "queued"]
+    assert audit(root)[-1] | {"ts": None} == {
+        "ts": None, "event": "queued", "task_id": task, "pending_id": pending_id,
+        "refused": "task stopped",
+    }
+    refused = approve(client, root, pending_id)
+    assert (refused.status_code, refused.json()["detail"]) == (410, "Pending action cancelled")
+    assert outcome(client, pending_id).json() == {"status": "cancelled"}
+    assert victim.exists()
+
+
+def test_concurrent_http_calls_cannot_exceed_call_budget(storage, clock):
+    """P2.7: 32 concurrent /tool calls for one task, one TestClient (own event loop) each."""
+    count = 32
+    ran = []
+    app = create_app(
+        storage, roots=[], handlers={"get_time": lambda args: ran.append(1)}, clock=clock,
+        protected=[],
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    start = threading.Barrier(count)
+    statuses, errors = [], []
+
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as setup:
+        task = new_task(setup)
+
+    def run():
+        try:
+            with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+                start.wait(5)
+                statuses.append(call(client, task, "get_time").status_code)
+        except BaseException as error:  # reported below, never lost in the thread
+            errors.append(error)
+
+    threads = [threading.Thread(target=run, daemon=True) for _ in range(count)]
+    try:
+        for thread in threads:
+            thread.start()
+    finally:
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(30)
+    assert not [thread for thread in threads if thread.is_alive()], "a thread hung"
+    assert not errors, errors
+    # The policy allows exactly 8. The 9th call's budget refusal stops the task, so an
+    # allowed call that has not reached its handler yet is cancelled (execute's
+    # stopped-check): fewer than 8 may answer 200, never more.
+    lines = [json.loads(line) for line in (storage / "audit.jsonl").read_text().splitlines()]
+    assert sum(e["event"] == "request" and e["decision"] == "allow" for e in lines) == MAX_CALLS
+    results = [e["status"] for e in lines if e["event"] == "result"]
+    assert set(results) <= {"cancelled", "done"} and len(results) == MAX_CALLS
+    assert len(ran) == results.count("done") == statuses.count(200) <= MAX_CALLS
+    assert statuses.count(403) == count - len(ran)
 
 
 # --- undo routes (P2.6) -------------------------------------------------------

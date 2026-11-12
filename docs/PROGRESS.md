@@ -26,12 +26,14 @@ Newest session entry goes at the top of the Session log.
   lock). Plan APPROVED 2026-11-12 at `docs/plans/P2.7.md`: A policy lock, B Stop cannot
   leave a queued action, C traversal and token sweeps (tests only). Commit A done
   (2026-11-12): `Policy.check`, `recheck` and `record` each run whole under one
-  `threading.Lock`, tested with barrier-forced interleavings. Next step: commit B on
-  Karthik's "go, commit B". Audit point 9 is closed, so it no longer blocks P3.
+  `threading.Lock`, tested with barrier-forced interleavings. Commit B done (2026-11-12):
+  `/tool` takes a just-queued action back out as `cancelled` (403 `task stopped`) if Stop
+  landed between the policy check and the queue. Next step: commit C on Karthik's
+  "go, commit C". Two plan-text test details are under Open questions. Audit point 9 is closed, so it no longer blocks P3.
   Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 220 passed, 1 skipped (2026-11-12, after P2.7 commit A). The skip is the
+- Tests: `uv run python -m pytest` -> 222 passed, 1 skipped (2026-11-12, after P2.7 commit B). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -43,6 +45,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
+- P2.7 commit B, two test details that differ from the plan text (no code beyond the plan):
+  (1) The plan said "exactly 8 answered 200" for 32 concurrent HTTP calls. Not true today:
+  the policy allows exactly 8, but the 9th call's budget refusal stops the task, and
+  `execute`'s stopped-check then cancels any allowed call that has not reached its handler
+  yet. So 200s are at most 8 (often 1). The test asserts from the audit log instead:
+  exactly 8 allowed, 8 results (`done` or `cancelled`), handler runs = 200s <= 8. Is
+  cancelling already-allowed calls when the budget runs out what you want? (It is the
+  stricter option; changing it would be a bridge change, so not done.)
+  (2) The plan said press Stop "just before `queue.add` returns". After the insert, Stop's
+  `clear` already drops the action, so that does not reproduce the race. The test presses
+  Stop before the insert (after the policy check), which is the real gap; without the fix
+  it fails. The `queued` line also carries `pending_id`, so the cancelled id is traceable.
 
 - (Resolved in P2.4 commit A: stale timed-out pending actions now expire and free their
   slot; the `denied` vs `expired` label is fixed. Eviction of `tasks`/`outcomes` is P3.6.)
