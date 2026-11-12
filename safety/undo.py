@@ -86,7 +86,9 @@ class UndoLog:
         folder = self._folder / record.id
         fd, name = tempfile.mkstemp(dir=folder, suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(asdict(record), handle, ensure_ascii=False)
+            # ASCII-escaped: a lone surrogate (legal in an NTFS name) cannot be written as
+            # UTF-8, and this runs AFTER the item moved (P2.9 R4).
+            json.dump(asdict(record), handle)
         os.replace(name, folder / "record.json")
 
     def quarantine(self, path: Path, tool: str) -> Record:

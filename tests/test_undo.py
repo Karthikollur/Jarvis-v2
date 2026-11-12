@@ -299,3 +299,19 @@ def test_linked_item_refused(env, dirs):
     refused(log, record.id, resolve, root, quarantine, match="link")
     assert (target / "item").read_text() == "not ours"
     assert not original.exists()
+
+
+def test_odd_file_name_never_strands_a_quarantined_item(env):
+    """P2.9 R4: a lone surrogate is legal in an NTFS name. The record must still be written
+    after the item moved, or the item sits in quarantine with no way back."""
+    log, root, quarantine, resolve = env
+    victim = root / "x\ud800.txt"
+    victim.write_text("keep")
+    record = log.quarantine(victim, "delete_file")
+    assert [r.id for r in log.list()] == [record.id]
+    assert log.get(record.id).path == str(victim)
+    assert (quarantine / record.id / "item").read_text() == "keep"
+    # The policy refuses unprintable paths (P2.9 B), so undo refuses rather than move;
+    # the item and its record stay for Karthik to restore by hand.
+    refused(log, record.id, resolve, root, quarantine, match="unprintable")
+    assert (quarantine / record.id / "item").exists()

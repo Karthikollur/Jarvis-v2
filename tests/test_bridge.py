@@ -1627,3 +1627,94 @@ def test_every_path_parameter_must_be_a_string(every_tool, tool, param, value):
     assert (response.status_code, response.json()["detail"]) == (403, f"{param}: not a path")
     assert ran == []
     assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []
+
+
+# --- odd names and results (P2.9 commit C) ---------------------------------------
+# A lone surrogate is legal in an NTFS name but cannot be sent as UTF-8. The path check
+# refuses such names (P2.9 B); these tests prove the bridge stays usable if one slips
+# past it anyway.
+
+ODD = "x\ud800.txt"
+
+
+def raw_call(client, task, tool, **args):
+    """`call`, with the body ASCII-escaped by hand: httpx cannot encode a lone surrogate."""
+    body = json.dumps({"task_id": task, "tool": tool, "args": args})
+    return client.post("/tool", content=body, headers={"content-type": "application/json"})
+
+
+def test_pending_list_survives_an_odd_name(sandbox, monkeypatch):
+    """P2.9 R5: one item the UI cannot encode must not hide every pending action."""
+    client, root, outside = sandbox
+    monkeypatch.setattr("safety.policy.resolve_inside", lambda raw, *rest: Path(raw))
+    queued = raw_call(client, new_task(client), "delete_file", path=str(root / ODD))
+    assert queued.status_code == 202
+    listed = client.get("/pending", headers=ui_headers(root))
+    assert listed.status_code == 200
+    assert listed.json()["pending"][0]["paths"] == {"path": str(root / ODD)}
+    pending_id = queued.json()["pending_id"]
+    assert deny(client, root, pending_id).json() == {"status": "denied"}
+
+
+def test_undo_list_survives_an_odd_name(sandbox):
+    client, root, outside = sandbox
+    (root / ODD).write_text("keep")
+    record = UndoLog(store(root) / "quarantine").quarantine(root / ODD, "delete_file")
+    listed = client.get("/undo", headers=ui_headers(root))
+    assert listed.status_code == 200
+    assert [(r["id"], r["path"]) for r in listed.json()["records"]] == [(record.id, str(root / ODD))]
+
+
+@pytest.fixture
+def unencodable(storage, clock):
+    """(client, root, ran): handlers that act, then return a result JSON cannot encode."""
+    root = Path(os.path.realpath(storage.parent / "root"))
+    root.mkdir()
+    ran = []
+
+    def handler(args):
+        ran.append(args["path"])
+        return {(1, 2): "tuple keys are not JSON"}
+
+    handlers = {"list_dir": handler, "delete_file": handler}
+    app = create_app(storage, roots=[root], handlers=handlers, clock=clock, protected=[])
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        yield client, root, ran
+
+
+def test_unencodable_result_is_logged_as_failed(unencodable):
+    """P2.9 R6: the handler ran, so a result line must exist even if the result cannot be
+    encoded; the call answers as a failure."""
+    client, root, ran = unencodable
+    response = call(client, fresh_task(client), "list_dir", path=str(root))
+    assert (response.status_code, response.json()["detail"]) == (500, "Tool failed")
+    assert ran == [root]
+    (result,) = [entry for entry in audit(root) if entry["event"] == "result"]
+    assert result["status"] == "failed" and "result" not in result
+
+
+def test_unencodable_result_gives_approve_a_final_outcome(unencodable):
+    client, root, ran = unencodable
+    (root / "v.txt").write_text("x")
+    pending_id = call(client, new_task(client), "delete_file", path=str(root / "v.txt")).json()["pending_id"]
+    assert approve(client, root, pending_id).status_code == 500
+    assert outcome(client, pending_id).json() == {"status": "failed"}  # not stuck at "pending"
+
+
+def test_any_audit_error_fails_closed(sandbox):
+    """P2.9 R6: an audit write that fails with something other than OSError still means
+    no line, so nothing runs; the route answers instead of crashing."""
+    client, root, outside = sandbox
+    task = fresh_task(client)
+    original = AuditLog.write
+
+    def write(self, event, **fields):
+        if event == "request":
+            raise ValueError("cannot serialise")
+        return original(self, event, **fields)
+
+    with patch.object(AuditLog, "write", write):
+        response = call(client, task, "create_folder", path=str(root / "new"))
+    assert (response.status_code, response.json()["detail"]) == (500, "Audit log unavailable")
+    assert not (root / "new").exists()

@@ -251,12 +251,16 @@ def create_app(
         """Write one audit line. False means it was not written: the caller fails closed."""
         try:
             audit.write(event, **fields)
-        except OSError:
+        except Exception:  # any failure means no line (P2.9 R6), not only a full disk
             return False
         return True
 
     def unavailable() -> JSONResponse:
         return JSONResponse({"detail": "Audit log unavailable"}, status_code=500)
+
+    def encoded(body: Any) -> Response:
+        """ASCII-escaped JSON: a lone surrogate in a file name cannot be sent as UTF-8."""
+        return Response(json.dumps(body, default=str), media_type="application/json")
 
     def execute(
         task_id: str, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path],
@@ -295,11 +299,15 @@ def create_app(
                         context_tainted = True
                         for other in list(tasks.values()):
                             other.tainted = True
-                # ASCII-escaped JSON: a lone surrogate in a result cannot be sent as UTF-8.
-                response = Response(
-                    json.dumps({"result": result}, default=str), media_type="application/json"
-                )
-                outcome = logged = {"status": "done", "result": result}
+                try:
+                    response = encoded({"result": result})
+                except Exception as error:  # e.g. tuple keys: it ran, but cannot be reported
+                    response = JSONResponse({"detail": "Tool failed"}, status_code=500)
+                    outcome = {"status": "failed"}
+                    reason = f"result not encodable: {type(error).__name__}: {error}"
+                    logged = {"status": "failed", "error": reason}
+                else:
+                    outcome = logged = {"status": "done", "result": result}
         ids = {"pending_id": pending_id} if pending_id else {}
         if not log("result", task_id=task_id, tool=tool, **ids, **logged):
             task.stopped = True  # nothing further runs unlogged
@@ -417,7 +425,7 @@ def create_app(
         if not expire():
             return unavailable()
         now = clock()
-        return {
+        return encoded({  # one odd name must not hide every pending action (P2.9 R5)
             "pending": [
                 {
                     "id": p.id,
@@ -430,7 +438,7 @@ def create_app(
                 }
                 for p in queue.list()
             ]
-        }
+        })
 
     @app.post("/approve")
     def approve(request: PendingRequest):
@@ -490,7 +498,7 @@ def create_app(
 
     @app.get("/undo")
     def list_undo():
-        return {"records": [asdict(record) for record in undo_log.list()]}
+        return encoded({"records": [asdict(record) for record in undo_log.list()]})
 
     @app.post("/undo")
     def undo(request: UndoRequest):

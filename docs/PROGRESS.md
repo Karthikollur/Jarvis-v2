@@ -55,11 +55,16 @@ Newest session entry goes at the top of the Session log.
   `target` (destination folder / source name); the root is now a valid destination folder;
   names and paths refuse unprintable and wildcard characters; `COM¹`–`LPT³` reserved.
   P3.2's `move_file` handler must move `source` to `target` and never build a path.
-- Next task: P2.9 commit C, on Karthik's go. P3.1 may start after the restore point (still
-  owed); P2.9 C must land before any P3.2 or P3.3 handler. Audit points 3, 4, 5, 6 stay open.
+- P2.9 commit C DONE 2026-11-12 (`P2.9: odd names and results`): undo records are
+  ASCII-escaped JSON; `GET /pending` and `GET /undo` answer ASCII-escaped JSON; a result
+  that cannot be encoded is logged and answered as `failed`; any audit write error fails
+  closed. Red run on 6 tests, then green. NOT DONE: mutation checks for C (usage limit);
+  run them first next session (remove each fix, the new tests must fail).
+- Next task: C's mutation checks, then P2.9 commit D on Karthik's go. P3.1 may start after
+  the restore point (still owed). Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 385 passed, 1 skipped (2026-11-12, after P2.9 B). The skip is the
+- Tests: `uv run python -m pytest` -> 391 passed, 1 skipped (2026-11-12, after P2.9 C). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12 after P2.9 B, unchanged; needs Ollama, takes about 1 minute). Live smoke test:
