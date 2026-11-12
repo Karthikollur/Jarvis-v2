@@ -452,3 +452,88 @@ def test_call_budget_under_thread_stress(policy):
         sys.setswitchinterval(old)
     assert actions.count("allow") == MAX_CALLS
     assert task.calls == MAX_CALLS
+
+
+# --- path rules (P2.8 commit A) ---------------------------------------------
+
+
+def test_path_on_a_drive_without_a_root_is_refused_before_resolution(dirs, monkeypatch):
+    # A mapped network drive must never be contacted: realpath may not run at all.
+    root = dirs[0]
+    other = "Q" if root.drive[0].upper() != "Q" else "R"
+
+    def never(path):
+        raise AssertionError(f"realpath was called for {path}")
+
+    monkeypatch.setattr(os.path, "realpath", never)
+    for raw in [f"{other}:\\x.txt", f"{other.lower()}:\\a\\..\\x.txt", f"{other}:/x.txt"]:
+        with pytest.raises(PathRefused, match="outside the allowed roots"):
+            resolve_inside(raw, [root])
+
+
+@pytest.fixture
+def nested(dirs, clock):
+    """(policy, root, keep): `keep` is a folder in the root that CONTAINS a protected folder."""
+    from safety.policy import Policy
+
+    root = dirs[0]
+    keep = root / "keep"
+    (keep / "secret").mkdir(parents=True)
+    return Policy([root], clock, [keep / "secret"]), root, keep
+
+
+def _decide(policy, tool, **args):
+    decision = policy.check(policy.new_task(), tool, args)
+    return decision.action, decision.reason
+
+
+def test_root_itself_cannot_be_changed(nested):
+    policy, root, keep = nested
+    inside = str(root / "x")
+    assert _decide(policy, "rename_file", path=str(root), new_name="Elsewhere") == (
+        "deny", "path: the root itself")
+    assert _decide(policy, "delete_file", path=str(root)) == ("deny", "path: the root itself")
+    assert _decide(policy, "create_folder", path=str(root)) == ("deny", "path: the root itself")
+    assert _decide(policy, "move_file", source=str(root), destination=inside) == (
+        "deny", "source: the root itself")
+    assert _decide(policy, "move_file", source=inside, destination=str(root)) == (
+        "deny", "destination: the root itself")
+    # Spelled differently, still the root.
+    assert _decide(policy, "delete_file", path=str(root).upper() + "\\a\\..")[0] == "deny"
+    assert _decide(policy, "list_dir", path=str(root)) == ("allow", "")  # reading is fine
+
+
+def test_folder_containing_a_protected_folder_cannot_be_changed(nested):
+    policy, root, keep = nested
+    refused = "contains a protected folder"
+    assert _decide(policy, "rename_file", path=str(keep), new_name="gone") == (
+        "deny", f"path: {refused}")
+    assert _decide(policy, "delete_file", path=str(keep)) == ("deny", f"path: {refused}")
+    assert _decide(policy, "move_file", source=str(keep), destination=str(root / "m")) == (
+        "deny", f"source: {refused}")
+    assert _decide(policy, "list_dir", path=str(keep)) == ("allow", "")
+    # A sibling whose name only starts the same is not an ancestor.
+    assert _decide(policy, "delete_file", path=str(root / "kee"))[0] == "confirm"
+    assert _decide(policy, "create_folder", path=str(keep / "other"))[0] == "allow"
+
+
+def test_rename_landing_place_is_checked_and_returned(nested):
+    policy, root, keep = nested
+    args = {"path": str(root / "a.txt"), "new_name": "b.txt"}
+    task = policy.new_task()
+    decision = policy.check(task, "rename_file", args)
+    assert decision.action == "allow"
+    assert decision.paths == {
+        "path": Path(os.path.realpath(root / "a.txt")),
+        "target": Path(os.path.realpath(root / "b.txt")),
+    }
+    # Landing on a protected folder's name (any case) is refused.
+    for name in ["secret", "SECRET"]:
+        assert _decide(policy, "rename_file", path=str(keep / "x"), new_name=name) == (
+            "deny", "new_name: protected folder"), name
+    # recheck validates the landing place too.
+    assert policy.recheck(task, "rename_file", args, decision.paths) is None
+    moved = {**decision.paths, "target": root / "elsewhere.txt"}
+    assert policy.recheck(task, "rename_file", args, moved) == "new_name: changed since the request"
+    assert policy.recheck(task, "rename_file", {**args, "path": str(root)}, decision.paths) == (
+        "path: the root itself")

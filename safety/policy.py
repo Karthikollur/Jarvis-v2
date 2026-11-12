@@ -80,10 +80,26 @@ def _within(folded: str, folder: Path) -> bool:
     return folded == base or folded.startswith(base + "\\")
 
 
-def resolve_inside(raw: Any, roots: list[Path], protected: list[Path] = ()) -> Path:
+def _refuse_mutation(folded: str, roots: list[Path], protected: list[Path]) -> None:
+    """Extra refusals for a path a tool may change (T1/T2 and undo). `folded` is the
+    resolved, normcased path; it is already inside a root and outside every protected
+    folder. Raise PathRefused("the root itself") or PathRefused("contains a protected
+    folder"); return None if the path may be changed."""
+    if any(folded == os.path.normcase(str(root)) for root in roots):
+        raise PathRefused("the root itself")
+    if any(_within(os.path.normcase(str(folder)), Path(folded)) for folder in protected):
+        raise PathRefused("contains a protected folder")
+
+
+def resolve_inside(
+    raw: Any, roots: list[Path], protected: list[Path] = (), mutating: bool = False
+) -> Path:
     """Return the fully resolved path, or raise PathRefused if it is not inside a root
     or is inside a protected folder (audit point 9). Roots and protected folders must
     already be realpath-resolved.
+
+    `mutating` is for a path the caller may move, rename, delete or create: the root
+    itself and a folder that contains a protected folder are refused too (P2.8).
 
     Callers must use the returned path, never the raw string.
     """
@@ -98,6 +114,10 @@ def resolve_inside(raw: Any, roots: list[Path], protected: list[Path] = ()) -> P
         raise PathRefused("alternate data streams are not allowed")
     if any(_bad_component(part) for part in text[3:].split("\\")):
         raise PathRefused("reserved or ambiguous file name")
+    # Before any file-system call: a drive with no root on it is never touched, so a
+    # mapped network drive is never contacted (P2.8).
+    if not any(str(root)[:2].upper() == text[:2].upper() for root in roots):
+        raise PathRefused("outside the allowed roots")
     # realpath collapses `..` and follows symlinks and junctions, also for a
     # path whose last components do not exist yet.
     resolved = os.path.realpath(text)
@@ -106,6 +126,8 @@ def resolve_inside(raw: Any, roots: list[Path], protected: list[Path] = ()) -> P
         raise PathRefused("outside the allowed roots")
     if any(_within(folded, folder) for folder in protected):
         raise PathRefused("protected folder")
+    if mutating:
+        _refuse_mutation(folded, roots, protected)
     return Path(resolved)
 
 
@@ -185,22 +207,10 @@ class Policy:
             return self._stop(task, f"{tool} failed {MAX_FAILURES} times")
         if not isinstance(args, dict):
             return Decision("deny", "arguments must be an object")
-        paths = {}
-        for name in rule.path_params:
-            try:
-                paths[name] = resolve_inside(args.get(name), self.roots, self.protected)
-            except PathRefused as refused:
-                return Decision("deny", f"{name}: {refused}")
-        for name in rule.name_params:
-            value = args.get(name)
-            if (
-                not isinstance(value, str)
-                or not value
-                or value in (".", "..")
-                or re.search(r'[\\/:\0]', value)
-                or _bad_component(value)
-            ):
-                return Decision("deny", f"{name}: must be a plain file name")
+        try:
+            paths = self._resolve(rule, args)
+        except PathRefused as refused:
+            return Decision("deny", str(refused))
         tier = Tier.T2 if rule.tier is Tier.T1 and task.tainted else rule.tier
         if tier is Tier.T2:
             reason = "T2" if rule.tier is Tier.T2 else "tainted T1"
@@ -230,14 +240,43 @@ class Policy:
         rule = TOOLS.get(tool)
         if rule is None:
             return "unknown tool"
+        try:
+            now = self._resolve(rule, args)
+        except PathRefused as refused:
+            return str(refused)
+        for name, path in now.items():
+            if path != paths.get(name):
+                label = rule.name_params[0] if name == "target" else name
+                return f"{label}: changed since the request"
+        return None
+
+    def _resolve(self, rule: Rule, args: dict[str, Any]) -> dict[str, Path]:
+        """Every path a call may touch, resolved and checked; PathRefused names the argument.
+        A name parameter also yields `target`: where the renamed item lands, next to the
+        first path parameter. Handlers use `target`, never build it themselves."""
+        mutating = rule.tier >= Tier.T1
+        paths = {}
         for name in rule.path_params:
             try:
-                now = resolve_inside(args.get(name), self.roots, self.protected)
+                paths[name] = resolve_inside(args.get(name), self.roots, self.protected, mutating)
             except PathRefused as refused:
-                return f"{name}: {refused}"
-            if now != paths.get(name):
-                return f"{name}: changed since the request"
-        return None
+                raise PathRefused(f"{name}: {refused}") from None
+        for name in rule.name_params:
+            value = args.get(name)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value in (".", "..")
+                or re.search(r'[\\/:\0]', value)
+                or _bad_component(value)
+            ):
+                raise PathRefused(f"{name}: must be a plain file name")
+            landing = paths[rule.path_params[0]].parent / value
+            try:
+                paths["target"] = resolve_inside(str(landing), self.roots, self.protected, True)
+            except PathRefused as refused:
+                raise PathRefused(f"{name}: {refused}") from None
+        return paths
 
     def record(self, task: Task, tool: str, ok: bool) -> None:
         """Report the outcome of a tool that ran."""

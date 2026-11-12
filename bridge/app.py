@@ -431,7 +431,7 @@ def create_app(
             return unavailable()
 
         def resolve(raw: str) -> Path:
-            return resolve_inside(raw, policy.roots, policy.protected)
+            return resolve_inside(raw, policy.roots, policy.protected, mutating=True)
 
         try:
             done = undo_log.undo(record_id, resolve)

@@ -29,12 +29,15 @@ Newest session entry goes at the top of the Session log.
 - Next task: P2.8 hardening (plan APPROVED 2026-11-12 at `docs/plans/P2.8.md`, six commits
   A to F, tests first, stop after each). It fixes the phase-review findings N1-N6, the
   hotkey liveness and audit encoding items, and adds the built-in tools guard; it absorbs
-  the former P3.0a and P3.0b. Touches `safety/` and `bridge/`. Next step: commit A (path
-  rules) on Karthik's "go, commit A". P3 cannot start until P2.8 is done and reviewed.
+  the former P3.0a and P3.0b. Touches `safety/` and `bridge/`. Commit A done
+  (2026-11-12): `resolve_inside` refuses a drive with no root before `realpath`; with
+  `mutating` (T1/T2 tools and undo) it refuses the root itself and a folder that contains
+  a protected folder; a rename's landing place is checked and handed to the handler as
+  `target`. Next step: commit B (argument rules) on Karthik's "go, commit B". P3 cannot start until P2.8 is done and reviewed.
   P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (2026-11-12, after P2.7). The skip is the
+- Tests: `uv run python -m pytest` -> 264 passed, 1 skipped (2026-11-12, after P2.8 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:

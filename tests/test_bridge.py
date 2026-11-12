@@ -1201,6 +1201,33 @@ def test_undo_refusals_over_http(undo_box):
     assert (root / "blocker.txt").read_text() == "in the way"
 
 
+def test_forged_undo_record_cannot_move_root_or_protected_ancestor(storage, clock):
+    """P2.8: record.json is editable by any same-user process. A forged `created` record
+    would quarantine the folder it names; the root itself and a folder that contains a
+    protected folder are refused."""
+    root = Path(os.path.realpath(storage.parent / "root"))
+    keep = root / "keep"
+    (keep / "secret").mkdir(parents=True)
+    app = create_app(storage, roots=[root], clock=clock, protected=[keep / "secret"])
+    core = {"x-jarvis-token": load_token(storage)}
+    ui = {"x-jarvis-token": load_token(storage, "ui.token")}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=core) as client:
+        for number, (victim, reason) in enumerate([
+            (root, "path: the root itself"),
+            (keep, "path: contains a protected folder"),
+        ]):
+            record_id = f"{number:032x}"
+            folder = storage / "quarantine" / record_id
+            folder.mkdir()
+            (folder / "record.json").write_text(json.dumps({
+                "id": record_id, "ts": "2026-11-12T00:00:00+00:00", "kind": "created",
+                "tool": "create_folder", "path": str(victim),
+            }), encoding="utf-8")
+            response = client.post("/undo", json={"record_id": record_id}, headers=ui)
+            assert (response.status_code, response.json()["detail"]) == (409, reason)
+            assert victim.is_dir() and (keep / "secret").is_dir()
+
+
 def test_undo_fails_closed_without_audit(undo_box):
     client, root = undo_box
     victim, record_id = quarantined(client, root)
