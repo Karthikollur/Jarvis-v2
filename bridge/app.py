@@ -12,6 +12,7 @@ import re
 import secrets
 import subprocess
 import tempfile
+import threading
 import time
 from typing import Any
 import uuid
@@ -218,9 +219,15 @@ def create_app(
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
     # Untrusted text stays in the model's context after the task that read it, so a new
-    # task starts tainted until the core declares `fresh_context` (P2.8).
+    # task starts tainted until the core declares `fresh_context` (P2.8). Every live task
+    # is tainted with it (P2.9 R1). A start knows nothing about the model's context, so it
+    # starts tainted: the core's first task after a start sends `fresh_context` (P2.9 R2).
     # ponytail: one flag = one conversation at a time; per-conversation ids if there are ever two
-    context_tainted = False
+    context_tainted = True
+    # Held while the flag is read or written and a task is inserted, so a taint arriving
+    # mid-`/task` cannot miss the new task or be overwritten by a fresh_context. Never held
+    # by `stop()`; never held across a handler.
+    taint_lock = threading.Lock()
     # Latch set by a Stop from the hotkey or the UI: no new task and no tool call until a
     # ui-only /resume (P2.8). A bridge restart also clears it.
     halted = False
@@ -283,7 +290,11 @@ def create_app(
                 logged = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
             else:
                 policy.record(task, tool, ok=True)
-                context_tainted = context_tainted or task.tainted
+                if task.tainted:
+                    with taint_lock:
+                        context_tainted = True
+                        for other in list(tasks.values()):
+                            other.tainted = True
                 # ASCII-escaped JSON: a lone surrogate in a result cannot be sent as UTF-8.
                 response = Response(
                     json.dumps({"result": result}, default=str), media_type="application/json"
@@ -342,12 +353,13 @@ def create_app(
                 return unavailable()
             return JSONResponse({"detail": "stopped"}, status_code=403)
         fresh = request is not None and request.fresh_context
-        tainted = context_tainted and not fresh
         task_id = uuid.uuid4().hex
-        if not log("task", task_id=task_id, tainted=tainted, fresh_context=fresh):
-            return unavailable()  # an unlogged fresh_context clears nothing
-        context_tainted = tainted
-        tasks[task_id] = policy.new_task(tainted)
+        with taint_lock:
+            tainted = context_tainted and not fresh
+            if not log("task", task_id=task_id, tainted=tainted, fresh_context=fresh):
+                return unavailable()  # an unlogged fresh_context clears nothing
+            context_tainted = tainted
+            tasks[task_id] = policy.new_task(tainted)
         return {"task_id": task_id}
 
     @app.post("/tool")

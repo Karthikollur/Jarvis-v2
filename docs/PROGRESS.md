@@ -48,11 +48,14 @@ Newest session entry goes at the top of the Session log.
 - P2.8 reviewed 2026-11-12 (Fable 5.2, read-only, adversarial): no way found outside the
   roots, without a token, or to a T2 action without a click; seven smaller gaps R1–R7 found
   and planned as P2.9 (`docs/plans/P2.9.md`, docs only, no code yet).
-- Next task: P2.9 commit A, on Karthik's go. P3.1 may start after the restore point (still
-  owed); P2.9 A–C must land before any P3.2 or P3.3 handler. Audit points 3, 4, 5, 6 stay open.
+- P2.9 commit A DONE 2026-11-12 (`P2.9: taint fails closed`): a taint now reaches every
+  live task, and the bridge starts tainted, so the core's first task after any start must
+  send `{"fresh_context": true}` (P3.5 requirement, unchanged).
+- Next task: P2.9 commit B, on Karthik's go. P3.1 may start after the restore point (still
+  owed); P2.9 B and C must land before any P3.2 or P3.3 handler. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 381 passed, 1 skipped (2026-11-12, after P2.8). The skip is the
+- Tests: `uv run python -m pytest` -> 382 passed, 1 skipped (2026-11-12, after P2.9 A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12 after P2.8, unchanged; needs Ollama, takes about 1 minute). Live smoke test:
