@@ -155,6 +155,9 @@ targets, network off.
       budget (`Policy`/`Task` need a lock).
 - [x] P2.8 Hardening from the P2 phase review (N1–N6, kill-switch liveness, audit encoding,
       built-in tools guard; absorbs the former P3.0a and P3.0b). Plan: `docs/plans/P2.8.md`.
+- [ ] P2.9 Fixes from the P2.8 review (R1–R7: taint fails closed, `move_file` landing place,
+      odd names and results, stop race). Plan: `docs/plans/P2.9.md`. Commits A–C must land
+      before any P3.2 or P3.3 handler; P3.1 may start after the restore point.
 
 **Done when:** all tests pass; a fake tool cannot act outside the sandbox or without a token by
 any tested route. Karthik has reviewed the diff.

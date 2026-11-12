@@ -45,9 +45,11 @@ Newest session entry goes at the top of the Session log.
   tool results survive a lone surrogate.
   F tests only: built-in tools guard (`tests/test_core_tools.py`), duplicate token and Host
   headers, wrong-role sweep, non-string path parameters.
-- Next task: Karthik reviews P2.8 (`git diff 1d341fd..HEAD`). The agent does not start P3.
-  After the review: P3.1, with the restore point created first (P3 precondition, still
-  owed). Audit points 3, 4, 5, 6 stay open.
+- P2.8 reviewed 2026-11-12 (Fable 5.2, read-only, adversarial): no way found outside the
+  roots, without a token, or to a T2 action without a click; seven smaller gaps R1–R7 found
+  and planned as P2.9 (`docs/plans/P2.9.md`, docs only, no code yet).
+- Next task: P2.9 commit A, on Karthik's go. P3.1 may start after the restore point (still
+  owed); P2.9 A–C must land before any P3.2 or P3.3 handler. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
 - Tests: `uv run python -m pytest` -> 381 passed, 1 skipped (2026-11-12, after P2.8). The skip is the
@@ -61,6 +63,12 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- P2.8 review (2026-11-12): fixes planned as P2.9, one go per commit. Decide when to start
+  commit A. Two untracked files in the repo root, `PowerShell 5.1` and
+  `oft Corporation. All rights reserved.`, hold `git diff` output and the `less` help
+  screen (a mis-typed PowerShell redirect, 19:17). No secrets seen. Delete them yourself?
+  The agent has not touched them.
 
 - (Decided 2026-11-12, see Decisions and `docs/plans/P2.8.md`: all fixed in P2.8 except the
   budget reset in N5, accepted.) P2 phase review, bypass audit (2026-11-12, Fable 5.2,
@@ -504,6 +512,22 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-12 — Agent: Claude Code (P2.8 adversarial review; P2.9 planned, docs only)
+
+- Did: start-of-session protocol; review of `git diff 1d341fd..HEAD` as someone else's
+  code. Probes and mutants ran in memory (stdin scripts), nothing committed but docs.
+- Found: R1 sibling task escapes taint; R2 restart clears taint; R3 `move_file` has no
+  checked landing place and cannot move into the root; R4 surrogate name strands a
+  quarantined file; R5 surrogate path makes `GET /pending` 500; R6 unencodable result
+  leaves no `result` line; R7 task created mid-Stop survives the latch. Details and fixes:
+  `docs/plans/P2.9.md`.
+- Commit B check: nine mutants of the argument rules, all killed by B's tests.
+- Tests: `uv run python -m pytest` -> 381 passed, 1 skipped. Evals `--only a` -> 4/5,
+  a03 fails on the scorer's `?` rule; the model made no tool call and asked for details.
+- Verdict: P2 safe to close; P3.1 safe after the restore point; P2.9 A–C before P3.2/P3.3.
+- Files: `docs/plans/P2.9.md` (new), `docs/PLAN.md`, `docs/PROGRESS.md`.
+- Stopped at: plan recorded. Next step: P2.9 commit A on Karthik's go.
 
 ### 2026-11-12 — Agent: Claude Code (P2.8 hardening implemented; awaits Karthik's review)
 
