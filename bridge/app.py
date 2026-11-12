@@ -17,7 +17,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, StrictBool
 from starlette.datastructures import Headers
 
 from bridge import hotkey as hotkeys
@@ -154,6 +154,12 @@ class ToolRequest(BaseModel):
     args: dict[str, Any] = {}
 
 
+class TaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # The core has dropped the model's conversation context. Strict: only a JSON true counts.
+    fresh_context: StrictBool = False
+
+
 class PendingRequest(BaseModel):
     pending_id: str
 
@@ -209,6 +215,10 @@ def create_app(
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
+    # Untrusted text stays in the model's context after the task that read it, so a new
+    # task starts tainted until the core declares `fresh_context` (P2.8).
+    # ponytail: one flag = one conversation at a time; per-conversation ids if there are ever two
+    context_tainted = False
     @asynccontextmanager
     async def lifespan(_app):
         # A combo that cannot be registered raises here: the bridge does not start.
@@ -240,6 +250,7 @@ def create_app(
         """The only place a tool handler is called. Reached from /tool and /approve only,
         always after the policy said yes and that was logged. Logs the result.
         Returns (response, outcome)."""
+        nonlocal context_tainted
         handler = handlers.get(tool)
         if task.stopped:  # Stop landed after the policy check (e.g. an approve past recheck)
             response = JSONResponse({"detail": "task stopped"}, status_code=403)
@@ -258,6 +269,7 @@ def create_app(
                 logged = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
             else:
                 policy.record(task, tool, ok=True)
+                context_tainted = context_tainted or task.tainted
                 response = {"result": result}
                 outcome = logged = {"status": "done", "result": result}
         ids = {"pending_id": pending_id} if pending_id else {}
@@ -299,11 +311,15 @@ def create_app(
         return {"stopped": stopped, "cancelled": len(dropped), "logged": logged}
 
     @app.post("/task")
-    def new_task():
+    def new_task(request: TaskRequest | None = None):
+        nonlocal context_tainted
+        fresh = request is not None and request.fresh_context
+        tainted = context_tainted and not fresh
         task_id = uuid.uuid4().hex
-        if not log("task", task_id=task_id):
-            return unavailable()
-        tasks[task_id] = policy.new_task()
+        if not log("task", task_id=task_id, tainted=tainted, fresh_context=fresh):
+            return unavailable()  # an unlogged fresh_context clears nothing
+        context_tainted = tainted
+        tasks[task_id] = policy.new_task(tainted)
         return {"task_id": task_id}
 
     @app.post("/tool")

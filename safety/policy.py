@@ -55,11 +55,11 @@ class Rule:
 # One entry per tool. A new tool gets a new entry at the strictest tier that works.
 TOOLS: dict[str, Rule] = {
     "get_time": Rule(Tier.T0),
-    "list_windows": Rule(Tier.T0),
+    "list_windows": Rule(Tier.T0, taints=True),  # window titles are set by web pages
     "system_stats": Rule(Tier.T0),
-    "list_dir": Rule(Tier.T0, ("path",)),
+    "list_dir": Rule(Tier.T0, ("path",), taints=True),  # file names are attacker-shaped
     "read_text_file": Rule(Tier.T0, ("path",), taints=True),
-    "recall_memory": Rule(Tier.T0, text_params=("query",)),
+    "recall_memory": Rule(Tier.T0, text_params=("query",), taints=True),
     "open_app": Rule(Tier.T1, choices=(("app", "apps"),)),
     "focus_window": Rule(Tier.T1, text_params=("title",)),
     "create_folder": Rule(Tier.T1, ("path",)),
@@ -202,8 +202,9 @@ class Policy:
         # ponytail: global lock, per-task locks if throughput matters
         self._lock = threading.Lock()
 
-    def new_task(self) -> Task:
-        return Task(started=self.clock())
+    def new_task(self, tainted: bool = False) -> Task:
+        """`tainted`: the model's context already holds untrusted text from an earlier task."""
+        return Task(started=self.clock(), tainted=tainted)
 
     def out_of_time(self, task: Task) -> bool:
         """Read-only: True once the task's wall-time budget is spent. Stops nothing."""

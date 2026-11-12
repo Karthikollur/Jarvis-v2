@@ -622,3 +622,27 @@ def test_load_names(dirs):
         (folder / "bad.toml").write_text(bad, encoding="utf-8")
         with pytest.raises(ValueError):
             load_names(folder / "bad.toml")
+
+
+# --- taint (P2.8 commit C) --------------------------------------------------
+
+
+def test_tools_that_return_untrusted_text_taint(policy):
+    # File contents, file names, window titles and stored memories are attacker-shaped.
+    tainting = {"read_text_file", "list_dir", "list_windows", "recall_memory"}
+    assert {name for name, rule in TOOLS.items() if rule.taints} == tainting
+    for tool in tainting:
+        failed = policy.new_task()
+        policy.record(failed, tool, ok=False)
+        assert not failed.tainted, tool
+        task = policy.new_task()
+        policy.record(task, tool, ok=True)
+        assert task.tainted, tool
+
+
+def test_new_task_can_start_tainted(policy, dirs):
+    folder = {"path": str(dirs[0] / "new")}
+    assert policy.check(policy.new_task(), "create_folder", folder).action == "allow"
+    inherited = policy.new_task(tainted=True)
+    decision = policy.check(inherited, "create_folder", folder)
+    assert (decision.action, decision.reason) == ("confirm", "tainted T1")
