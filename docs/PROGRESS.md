@@ -26,10 +26,10 @@ Newest session entry goes at the top of the Session log.
   and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
-- Next task: before P3.1, two should-fix items from the P2 gate review (Open questions,
-  top entry): (a) refuse a path whose drive letter matches no root BEFORE `realpath`
-  (touches `safety/`: plan mode, Karthik's OK first); (b) duplicate `x-jarvis-token` and
-  duplicate `Host` header tests. Then P3.1 (restore point first). Audit points 3, 4, 5, 6
+- Next task: P3.0a (PLAN.md; refuse a path whose drive letter matches no root BEFORE
+  `realpath`; touches `safety/`: plan mode, Karthik's OK first), then P3.0b (duplicate
+  `x-jarvis-token` and `Host` header tests). Both come from the P2 gate review (Open
+  questions, top entry). Then P3.1. P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6
   (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
@@ -45,8 +45,8 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- P2 gate review notes (2026-11-12). Not in PLAN.md yet: Karthik to say whether (a) and
-  (b) become task IDs there.
+- P2 gate review notes (2026-11-12). (a) and (b) are now PLAN.md tasks P3.0a and P3.0b
+  (Karthik, 2026-11-12); the nits (c), (d), (e) have no task yet.
   Should-fix, before P3.1:
   (a) `safety/policy.py` `resolve_inside`: `os.path.realpath` runs before the roots check,
   on any drive letter. A path on a mapped network drive (a `Z:` path) makes Windows contact
@@ -104,6 +104,9 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — PLAN.md changed: P3.0a (drive-letter check before `realpath`) and P3.0b
+  (duplicate-header tests) added before P3.1 — the two should-fix items of the P2 gate
+  review; existing task IDs kept stable — Karthik
 - 2026-11-12 — P2 gate PASSED. Budget breach keeps stopping the whole task (allowed calls
   not yet at their handler are cancelled and logged) — a 9th call means a runaway model,
   a real agent loop is sequential, and softening `_stop` would weaken `safety/` — Karthik,

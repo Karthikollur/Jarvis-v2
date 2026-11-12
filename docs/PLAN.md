@@ -162,6 +162,13 @@ any tested route. Karthik has reviewed the diff.
 Before starting: restore point created; P2 reviewed. P3 cannot start until audit point 9
 (see P2.6) is done and tested.
 
+- [ ] P3.0a `safety/policy.py` `resolve_inside`: refuse a path whose drive letter matches no
+      allowed root's drive BEFORE `os.path.realpath`, so a path on a mapped network drive
+      never makes Windows contact that share. Refusal test. (P2 gate review, should-fix.
+      Touches `safety/`: plan mode and Karthik's OK first.)
+- [ ] P3.0b Tests only: two `x-jarvis-token` headers (one valid, one wrong) and two `Host`
+      headers are refused on every route (add to the P2.7 token sweep). (P2 gate review,
+      should-fix.)
 - [ ] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
       `read_text_file` (size cap).
 - [ ] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
