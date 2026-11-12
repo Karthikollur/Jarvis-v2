@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 to P2.6 complete). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2 (P2.1 to P2.7 complete; P2 gate open, awaiting Karthik's review). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -14,26 +14,21 @@ Newest session entry goes at the top of the Session log.
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
   attempts. Not done with real Wi-Fi off by Karthik for P1. 9b comparison skipped by Karthik.
-- Last completed task: P2.6 (protected folders = audit point 9, quarantine, undo records;
-  plan `docs/plans/P2.6.md`, implemented in three commits). Bridge routes: `GET /health`;
+- Last completed task: P2.7 (policy lock, Stop vs queue race, traversal and token sweeps;
+  plan `docs/plans/P2.7.md`, implemented in three commits). `Policy.check`, `recheck` and
+  `record` each run whole under one lock; `/tool` cancels an action Stop overtook on its way
+  into the queue; sweeps prove every route needs a loopback peer and a valid token, and
+  every path parameter of every tool is refused for `..`, absolute outside, junction, UNC
+  and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
-  `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`. No tool can
-  reach the bridge storage folder (`%LOCALAPPDATA%\Jarvis`: tokens, audit log, quarantine)
-  or this repo, whatever roots are configured. `safety/undo.py` quarantines instead of
-  deleting and reverses records on a ui request; nothing is ever overwritten. P3 handlers
-  must call it (not wired yet: there are no real handlers). Details under Decisions.
-- Next task: P2.7 (path traversal, token, budget, taint, kill-switch tests; `Policy`/`Task`
-  lock). Plan APPROVED 2026-11-12 at `docs/plans/P2.7.md`: A policy lock, B Stop cannot
-  leave a queued action, C traversal and token sweeps (tests only). Commit A done
-  (2026-11-12): `Policy.check`, `recheck` and `record` each run whole under one
-  `threading.Lock`, tested with barrier-forced interleavings. Commit B done (2026-11-12):
-  `/tool` takes a just-queued action back out as `cancelled` (403 `task stopped`) if Stop
-  landed between the policy check and the queue. Next step: commit C on Karthik's
-  "go, commit C". Two plan-text test details are under Open questions. Audit point 9 is closed, so it no longer blocks P3.
-  Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
+  `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
+- Next task: P2 gate review by Karthik ("a fake tool cannot act outside the sandbox or
+  without a token by any tested route. Karthik has reviewed the diff"). The agent does not
+  close the gate. After it: P3 (restore point first). Audit points 3, 4, 5, 6 (session log,
+  P1 review entry) stay open. Two P2.7 test details are under Open questions.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 222 passed, 1 skipped (2026-11-12, after P2.7 commit B). The skip is the
+- Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (2026-11-12, after P2.7). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
@@ -91,6 +86,15 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — P2.7 policy lock: one `threading.Lock` in `Policy`; `check`, `recheck` and
+  `record` each run whole under it (`_stop`, `out_of_time` lock-free; not re-entrant;
+  never held across a handler). Global, not per task: one user, 8 calls per task. Stop
+  never takes it. The lock makes each decision atomic; it does not order a decision
+  against Stop: that is done by three stopped-checks (after queueing in `/tool`, in
+  `recheck` at approve, in `execute` before the handler). Still a limit: Stop after
+  `execute`'s last check does not interrupt a running handler. A budget refusal stops the
+  task, so allowed calls that had not reached their handler are cancelled (see Open
+  questions). — Claude Code, plan approved by Karthik
 - 2026-11-12 — P2.6 protected folders (audit point 9, CLOSED). `resolve_inside(raw, roots,
   protected)` refuses any path equal to or inside a protected folder, after the roots check,
   with the same realpath + normcase comparison; `Policy` realpath-resolves protected folders
@@ -138,8 +142,8 @@ Format: `YYYY-MM-DD — decision — reason — who`
   whole suite so tests never grab a real hotkey. — Claude Code, plan approved by Karthik
 - 2026-11-11 — P2.5 limits: a handler that is already running is not interrupted (Stop
   prevents everything after it; P3 handlers must be short or killable, P6 wants Stop within
-  1 s). `Policy`/`Task` have no lock yet (P2.7): a `/tool` racing Stop can queue an action
-  on a stopped task, which approve's recheck refuses. Any same-user process can press the
+  1 s). (Superseded 2026-11-12 by P2.7: `Policy` has a lock, and `/tool` cancels an action
+  Stop overtook on its way into the queue.) Any same-user process can press the
   hotkey or call `/stop`; that only stops things. — Claude Code
 
 - 2026-11-11 — P2.4 audit log. `safety/audit.py` `AuditLog.write(event, **fields)`
@@ -370,6 +374,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-12 — Agent: Claude Code (P2.7 implemented; P2 gate awaits Karthik)
+
+- Did: start-of-session protocol (tree clean at bdc6241, nothing to discard; the
+  interrupted commit A had left no changes). Then P2.7 in three commits, one per go:
+  013bc66 policy lock; fdf94dd Stop cannot leave a queued action; commit C traversal and
+  token sweeps (tests only) with P2.7 ticked.
+- Files: `safety/policy.py`, `bridge/app.py` (7 lines in `/tool`), `tests/test_policy.py`,
+  `tests/test_bridge.py`, `docs/PLAN.md`, `docs/PROGRESS.md`, `docs/plans/P2.7.md`.
+- Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (symlink test, as before).
+  Race tests use `threading.Barrier`, no sleeps; every thread is a daemon joined with a
+  timeout. Mutation checks, each failed the named tests and was restored: lock removed
+  from `check` / from `record`; `_stop` taking the lock (deadlock test); stopped-check
+  after `queue.add` removed; `destination` path check skipped (5 sweep cases).
+- Deviations from the plan text (tests only), logged under Open questions: concurrent
+  HTTP calls assert from the audit log instead of "exactly 8 answered 200"; the race test
+  presses Stop before the queue insert, not after.
+- Stopped at: P2.7 complete. Not done: P2 gate (Karthik reviews the diff
+  `git diff bdc6241..HEAD`).
+- Next step: Karthik's gate review and answers to the two Open questions; then P3.
 
 ### 2026-11-12 — Agent: Claude Code (P2.6 implemented; audit point 9 closed)
 

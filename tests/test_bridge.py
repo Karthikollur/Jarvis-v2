@@ -18,7 +18,7 @@ from bridge.app import create_app, load_token
 from bridge import app as bridge_app
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue
-from safety.policy import MAX_CALLS, Policy
+from safety.policy import MAX_CALLS, TOOLS, Policy
 from safety.undo import UndoLog
 
 BASE = "http://127.0.0.1:8765"
@@ -248,7 +248,11 @@ def test_tool_cannot_act_outside_root(sandbox):
         str(root / ".." / "outside" / "x"),
         str(outside / "x"),
         str(root / "jump" / "x"),
-        "\\?\\" + str(outside / "x"),
+        # Real device and UNC forms, refused before any resolution (no network lookup).
+        "\\\\?\\" + str(outside / "x"),
+        "\\\\.\\" + str(outside / "x"),
+        "\\\\server\\share\\x",
+        "//server/share/x",
     ]:
         response = call(client, new_task(client), "create_folder", path=path)
         assert response.status_code == 403, path
@@ -303,6 +307,92 @@ def test_dispatch_refusals(sandbox):
     assert call(client, task, "shell_exec", command="dir").status_code == 403
     assert call(client, task, "list_windows").status_code == 501  # in policy, no handler yet
     assert client.post("/tool", json={"tool": "get_time"}).status_code == 422
+
+
+# --- sweeps (P2.7): driven by the live tables, so a route or tool added later is covered
+
+
+BAD_TOKENS = [
+    None,  # no header
+    "",
+    "wrong",
+    "0" * 64,  # right length and alphabet, wrong value
+]
+
+
+def test_every_route_needs_a_token_and_loopback(sandbox, storage):
+    client, root, outside = sandbox
+    app = client.app
+    task = new_task(client)
+    tokens = {"core": load_token(storage), "ui": load_token(storage, "ui.token")}
+    before = (storage / "audit.jsonl").read_bytes()
+    routes = [(method, route.path) for route in app.routes for method in sorted(route.methods)]
+    assert {path for _, path in routes} == set(bridge_app.ROUTE_ROLES)  # nothing skipped
+    body = {"task_id": task, "tool": "get_time", "args": {}, "pending_id": "x", "record_id": "x"}
+    for method, path in routes:
+        for bad in BAD_TOKENS:
+            headers = {} if bad is None else {"x-jarvis-token": bad}
+            with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as anyone:
+                response = anyone.request(method, path, json=body)
+            assert response.status_code == 401, (method, path, bad)
+        role = sorted(bridge_app.ROUTE_ROLES[path])[0]  # a token this route accepts
+        valid = {"x-jarvis-token": tokens[role]}
+        with TestClient(app, base_url=BASE, client=LAN_PEER, headers=valid) as remote:
+            response = remote.request(method, path, json=body)
+        assert response.status_code == 403, (method, path, "non-loopback")
+    # Nothing ran and nothing was logged: the task is still live and can still call.
+    assert (storage / "audit.jsonl").read_bytes() == before
+    assert call(client, task, "get_time").status_code == 200
+
+
+@pytest.fixture
+def every_tool(storage, clock):
+    """(client, root, outside, protected, ran): every tool in TOOLS has a handler that
+    records it ran, so a refusal that leaks through is visible."""
+    root = Path(os.path.realpath(storage.parent / "root"))
+    outside = storage.parent / "outside"
+    protected = root / "protected"
+    for folder in (root, outside, protected):
+        folder.mkdir()
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    ran = []
+    handlers = {name: (lambda args, name=name: ran.append(name)) for name in TOOLS}
+    app = create_app(storage, roots=[root], handlers=handlers, clock=clock, protected=[protected])
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        yield client, root, outside, protected, ran
+
+
+ESCAPES = {
+    "dotdot": lambda root, outside, protected: str(root / ".." / "outside" / "x"),
+    "absolute": lambda root, outside, protected: str(outside / "x"),
+    "junction": lambda root, outside, protected: str(root / "jump" / "x"),
+    "unc": lambda root, outside, protected: "\\\\server\\share\\x",
+    "protected": lambda root, outside, protected: str(protected / "x"),
+}
+PATH_PARAMS = [(tool, name) for tool, rule in TOOLS.items() for name in rule.path_params]
+
+
+def test_path_sweep_is_not_vacuous():
+    assert {tool for tool, _ in PATH_PARAMS} == {t for t, r in TOOLS.items() if r.path_params}
+    assert ("move_file", "destination") in PATH_PARAMS
+    assert any(TOOLS[tool].tier.name == "T2" for tool, _ in PATH_PARAMS)
+
+
+@pytest.mark.parametrize("escape", ESCAPES)
+@pytest.mark.parametrize("tool, param", PATH_PARAMS)
+def test_every_path_parameter_is_checked(every_tool, tool, param, escape):
+    client, root, outside, protected, ran = every_tool
+    rule = TOOLS[tool]
+    args = {name: str(root / f"ok-{name}") for name in rule.path_params}  # other params valid
+    args |= {name: "ok.txt" for name in rule.name_params}
+    args[param] = ESCAPES[escape](root, outside, protected)
+    response = call(client, new_task(client), tool, **args)
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"].startswith(f"{param}: ")
+    assert ran == []
+    assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []  # T2 too
+    assert list(outside.iterdir()) == [] and list(protected.iterdir()) == []
 
 
 # --- protected folders (P2.6, audit point 9) -----------------------------------
