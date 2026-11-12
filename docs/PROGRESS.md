@@ -5,11 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2 (P2.1 to P2.7 complete; P2 gate open, awaiting Karthik's review). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P3, not started (P2 complete, gate passed). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
   covers the Python process only, not Ollama's own process.
+- Phase gate P2: PASSED 2026-11-12, closed by Karthik after a review of
+  `git diff bdc6241..HEAD` (Fable 5.2, same session as the implementation: PASS WITH
+  NOTES, no blockers; mutation checks were not repeated in the review). 259 passed,
+  1 skipped. Notes are under Open questions.
 - Phase gate P1: PASSED 2026-11-11, closed by Karthik. Tool selection 25/25 (need >= 90%),
   must-refuse 10/10, median latency 1.0 s (targets 3 s / 5 s), and the full eval run repeated
   with non-loopback sockets and DNS blocked in the Python process: same 39/40, zero outbound
@@ -22,10 +26,11 @@ Newest session entry goes at the top of the Session log.
   and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
-- Next task: P2 gate review by Karthik ("a fake tool cannot act outside the sandbox or
-  without a token by any tested route. Karthik has reviewed the diff"). The agent does not
-  close the gate. After it: P3 (restore point first). Audit points 3, 4, 5, 6 (session log,
-  P1 review entry) stay open. Two P2.7 test details are under Open questions.
+- Next task: before P3.1, two should-fix items from the P2 gate review (Open questions,
+  top entry): (a) refuse a path whose drive letter matches no root BEFORE `realpath`
+  (touches `safety/`: plan mode, Karthik's OK first); (b) duplicate `x-jarvis-token` and
+  duplicate `Host` header tests. Then P3.1 (restore point first). Audit points 3, 4, 5, 6
+  (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
 - Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (2026-11-12, after P2.7). The skip is the
@@ -33,25 +38,38 @@ Newest session entry goes at the top of the Session log.
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
-- Uncommitted work: untracked `.claude/settings.local.json` (local agent permissions; preserved untouched and excluded from commits).
+- Uncommitted work: none. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
 - Blockers: none
 - Run OpenJarvis with (PowerShell, from repo root; both env vars required):
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
 
-- P2.7 commit B, two test details that differ from the plan text (no code beyond the plan):
-  (1) The plan said "exactly 8 answered 200" for 32 concurrent HTTP calls. Not true today:
-  the policy allows exactly 8, but the 9th call's budget refusal stops the task, and
-  `execute`'s stopped-check then cancels any allowed call that has not reached its handler
-  yet. So 200s are at most 8 (often 1). The test asserts from the audit log instead:
-  exactly 8 allowed, 8 results (`done` or `cancelled`), handler runs = 200s <= 8. Is
-  cancelling already-allowed calls when the budget runs out what you want? (It is the
-  stricter option; changing it would be a bridge change, so not done.)
-  (2) The plan said press Stop "just before `queue.add` returns". After the insert, Stop's
-  `clear` already drops the action, so that does not reproduce the race. The test presses
-  Stop before the insert (after the policy check), which is the real gap; without the fix
-  it fails. The `queued` line also carries `pending_id`, so the cancelled id is traceable.
+- P2 gate review notes (2026-11-12). Not in PLAN.md yet: Karthik to say whether (a) and
+  (b) become task IDs there.
+  Should-fix, before P3.1:
+  (a) `safety/policy.py` `resolve_inside`: `os.path.realpath` runs before the roots check,
+  on any drive letter. A path on a mapped network drive (a `Z:` path) makes Windows contact
+  that share (runtime rule: no outbound calls) and holds the global policy lock until the
+  lookup returns; Stop still works. Older than P2.7. Fix: refuse a path whose drive letter
+  matches no root's drive before `realpath`, with a refusal test.
+  (b) No test sends two `x-jarvis-token` headers (one valid, one wrong) or two `Host`
+  headers. The code refuses both (`len(...) == 1`); nothing guards it. Add to `BAD_TOKENS`.
+  Nits:
+  (c) Token sweep has no wrong-role case (every route x the role not in `ROUTE_ROLES`
+  -> 403); role checks are per-route tests only.
+  (d) `ESCAPES` has no missing-parameter or non-string case over HTTP (policy level only).
+  (e) A task stopped by a budget breach keeps its pending action in the UI list until it
+  expires (only `stop()` clears the queue; approve refuses it). Fix in P3.6 or P6: drop a
+  stopped task's pending action in `expire()`.
+  For P3: `open_app`, `focus_window`, `run_named_script` have no path parameters, so the
+  path sweep does not cover them; validate their arguments against `config/apps.toml` and
+  `config/scripts.toml` with refusal tests when the handlers are written.
+
+- (Resolved 2026-11-12 by Karthik at the P2 gate, P2.7 commit B test details: (1) KEEP: a
+  budget breach stops the task and cancels allowed calls that have not reached their
+  handler; the audit-log assertions stand. (2) OK: the race test presses Stop before the
+  queue insert; `pending_id` on the `queued` line stays.)
 
 - (Resolved in P2.4 commit A: stale timed-out pending actions now expire and free their
   slot; the `denied` vs `expired` label is fixed. Eviction of `tasks`/`outcomes` is P3.6.)
@@ -86,6 +104,10 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — P2 gate PASSED. Budget breach keeps stopping the whole task (allowed calls
+  not yet at their handler are cancelled and logged) — a 9th call means a runaway model,
+  a real agent loop is sequential, and softening `_stop` would weaken `safety/` — Karthik,
+  on Fable 5.2's review
 - 2026-11-12 — P2.7 policy lock: one `threading.Lock` in `Policy`; `check`, `recheck` and
   `record` each run whole under it (`_stop`, `out_of_time` lock-free; not re-entrant;
   never held across a handler). Global, not per task: one user, 8 calls per task. Stop
@@ -394,6 +416,10 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 - Stopped at: P2.7 complete. Not done: P2 gate (Karthik reviews the diff
   `git diff bdc6241..HEAD`).
 - Next step: Karthik's gate review and answers to the two Open questions; then P3.
+- Later the same session: gate review done (Fable 5.2, read-only, suite re-run 259/1);
+  Karthik passed the P2 gate and answered both questions (KEEP, OK). Docs-only commit.
+  Next: should-fix (a) and (b) under Open questions, (a) needs plan mode and Karthik's OK;
+  then P3.1.
 
 ### 2026-11-12 — Agent: Claude Code (P2.6 implemented; audit point 9 closed)
 
