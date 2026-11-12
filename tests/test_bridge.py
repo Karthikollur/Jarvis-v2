@@ -179,7 +179,10 @@ def sandbox(storage, clock):
         "system_stats": broken,
         "run_named_script": broken,
     }
-    app = create_app(storage, roots=[root], handlers=handlers, clock=clock, protected=[])
+    app = create_app(
+        storage, roots=[root], handlers=handlers, clock=clock, protected=[],
+        apps={"notepad"}, scripts={"x"},
+    )
     headers = {"x-jarvis-token": load_token(storage)}
     with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
         yield client, root, outside
@@ -357,7 +360,10 @@ def every_tool(storage, clock):
     _winapi.CreateJunction(str(outside), str(root / "jump"))
     ran = []
     handlers = {name: (lambda args, name=name: ran.append(name)) for name in TOOLS}
-    app = create_app(storage, roots=[root], handlers=handlers, clock=clock, protected=[protected])
+    app = create_app(
+        storage, roots=[root], handlers=handlers, clock=clock, protected=[protected],
+        apps={"notepad"}, scripts={"x"},
+    )
     headers = {"x-jarvis-token": load_token(storage)}
     with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
         yield client, root, outside, protected, ran
@@ -1239,3 +1245,52 @@ def test_undo_fails_closed_without_audit(undo_box):
     with failing("undo_result"):  # it ran; the undo line without a result shows that
         assert undo(client, root, record_id).status_code == 500
     assert victim.read_text() == "keep"
+
+
+# --- argument rules (P2.8 commit B) -------------------------------------------
+
+
+def valid_args(tool, root):
+    """Arguments the policy accepts for `tool` (fixture allowlists: notepad, x)."""
+    rule = TOOLS[tool]
+    args = {name: str(root / f"ok-{name}") for name in rule.path_params}
+    args |= {name: "ok.txt" for name in rule.name_params}
+    args |= {name: {"apps": "notepad", "scripts": "x"}[listed] for name, listed in rule.choices}
+    args |= {name: "hello" for name in rule.text_params}
+    return args
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_undeclared_argument_never_reaches_a_handler(every_tool, tool):
+    client, root, outside, protected, ran = every_tool
+    args = valid_args(tool, root)
+    refused = call(client, new_task(client), tool, **args, overwrite=True)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "unknown argument")
+    assert ran == []
+    assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []
+    # The same call without the extra argument is accepted, so the refusal was the argument.
+    assert call(client, new_task(client), tool, **args).status_code in (200, 202)
+
+
+def test_allowlists_come_from_the_config_folder(storage, clock, monkeypatch):
+    """apps.toml present, scripts.toml missing: listed apps open, no script can be queued."""
+    config = storage.parent / "config"
+    config.mkdir()
+    (config / "apps.toml").write_text("[notepad]\n", encoding="utf-8")
+    monkeypatch.setattr(bridge_app, "CONFIG", config)
+    ran = []
+    handlers = {name: (lambda args, name=name: ran.append((name, args))) for name in TOOLS}
+    app = create_app(storage, roots=[], handlers=handlers, clock=clock, hotkey=None, protected=[])
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        assert call(client, new_task(client), "open_app", app="notepad").status_code == 200
+        for tool, args in [
+            ("open_app", {"app": "calculator"}),
+            ("open_app", {"app": "C:/Windows/System32/cmd.exe"}),
+            ("run_named_script", {"name": "notepad"}),
+            ("run_named_script", {"name": "x"}),
+        ]:
+            response = call(client, new_task(client), tool, **args)
+            assert response.status_code == 403, (tool, args)
+            assert "not on the allowlist" in response.json()["detail"]
+    assert ran == [("open_app", {"app": "notepad"})]

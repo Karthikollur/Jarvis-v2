@@ -33,11 +33,16 @@ Newest session entry goes at the top of the Session log.
   (2026-11-12): `resolve_inside` refuses a drive with no root before `realpath`; with
   `mutating` (T1/T2 tools and undo) it refuses the root itself and a folder that contains
   a protected folder; a rename's landing place is checked and handed to the handler as
-  `target`. Next step: commit B (argument rules) on Karthik's "go, commit B". P3 cannot start until P2.8 is done and reviewed.
+  `target`. Commit B done (2026-11-12): every rule declares its
+  arguments (`Rule.params`); an undeclared argument is refused; `open_app` and
+  `run_named_script` values must be names in `config/apps.toml` / `config/scripts.toml`
+  (neither file exists yet, so both tools refuse everything until P3.2 / P3.3 add
+  entries); `focus_window` and `recall_memory` take one short printable string.
+  Next step: commit C (taint survives a new task) on Karthik's "go, commit C". P3 cannot start until P2.8 is done and reviewed.
   P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 264 passed, 1 skipped (2026-11-12, after P2.8 commit A). The skip is the
+- Tests: `uv run python -m pytest` -> 296 passed, 1 skipped (2026-11-12, after P2.8 commit B). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:
@@ -153,6 +158,13 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — P2.8 B allowlist file format: `config/apps.toml` and `config/scripts.toml`
+  hold one `[lower_case_name]` table per entry (name: `[a-z0-9_]{1,32}`); the policy reads
+  only the names, what a table contains is P3.2 / P3.3's business; a bad name stops the
+  bridge at start; a missing file allows nothing; read once at start (edit = restart).
+  Allowlist and text values are checked in `check` only, not again in `recheck`: queued
+  arguments are a private copy and the allowlists cannot change while the bridge runs.
+  — Claude Code, within the approved P2.8 plan
 - 2026-11-12 — PLAN.md changed: P2.8 hardening added (plan `docs/plans/P2.8.md`); P3.0a and
   P3.0b folded into it; P3 start now needs P2.8 done and reviewed; P3.2 gains a batch
   confirmation; P3.5 gains one-task-per-request and `fresh_context` tests — every

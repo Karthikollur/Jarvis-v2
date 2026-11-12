@@ -117,6 +117,8 @@ def test_tool_table_matches_eval_stubs():
     from evals.stub_tools import SPECS
 
     assert set(TOOLS) == set(SPECS)
+    for name, rule in TOOLS.items():  # P2.8: the model is offered exactly what the policy accepts
+        assert set(SPECS[name][1]["properties"]) == set(rule.params), name
 
 
 def test_unknown_tool_denied(policy):
@@ -537,3 +539,86 @@ def test_rename_landing_place_is_checked_and_returned(nested):
     assert policy.recheck(task, "rename_file", args, moved) == "new_name: changed since the request"
     assert policy.recheck(task, "rename_file", {**args, "path": str(root)}, decision.paths) == (
         "path: the root itself")
+
+
+# --- argument rules (P2.8 commit B) -----------------------------------------
+
+
+def valid_args(tool, root):
+    """Arguments the policy accepts for `tool` (fixture allowlists: notepad, x)."""
+    rule = TOOLS[tool]
+    args = {name: str(root / f"ok-{name}") for name in rule.path_params}
+    args |= {name: "ok.txt" for name in rule.name_params}
+    args |= {name: {"apps": "notepad", "scripts": "x"}[listed] for name, listed in rule.choices}
+    args |= {name: "hello" for name in rule.text_params}
+    return args
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_only_declared_arguments_are_accepted(policy, dirs, tool):
+    args = valid_args(tool, dirs[0])
+    assert set(args) == set(TOOLS[tool].params)
+    assert policy.check(policy.new_task(), tool, args).action in ("allow", "confirm")
+    for extra in ["overwrite", "permanent", "recursive", "target", ""]:
+        decision = policy.check(policy.new_task(), tool, {**args, extra: True})
+        assert (decision.action, decision.reason) == ("deny", "unknown argument"), extra
+    for missing in args:
+        without = {name: value for name, value in args.items() if name != missing}
+        decision = policy.check(policy.new_task(), tool, without)
+        assert decision.action == "deny" and decision.reason.startswith(f"{missing}: "), missing
+
+
+@pytest.mark.parametrize("tool, param", [("open_app", "app"), ("run_named_script", "name")])
+def test_app_and_script_must_be_on_the_allowlist(policy, tool, param):
+    listed = valid_args(tool, Path("unused"))[param]
+    assert policy.check(policy.new_task(), tool, {param: listed}).action in ("allow", "confirm")
+    for value in [
+        "C:/Windows/System32/cmd.exe",
+        "powershell -enc AAAA",
+        listed + " /c calc",
+        listed.upper(),
+        "../" + listed,
+        "unknown",
+        "",
+        None,
+        7,
+        [listed],
+        {"name": listed},
+    ]:
+        decision = policy.check(policy.new_task(), tool, {param: value})
+        assert (decision.action, decision.reason) == (
+            "deny", f"{param}: not on the allowlist"), repr(value)
+
+
+def test_no_allowlist_means_nothing_runs(dirs, clock):
+    from safety.policy import Policy
+
+    bare = Policy([dirs[0]], clock)  # no apps.toml, no scripts.toml
+    for tool, args in [("open_app", {"app": "notepad"}), ("run_named_script", {"name": "x"})]:
+        assert bare.check(bare.new_task(), tool, args).action == "deny", tool
+
+
+def test_text_arguments_are_short_plain_text(policy):
+    from safety.policy import MAX_TEXT
+
+    for tool, param in [("focus_window", "title"), ("recall_memory", "query")]:
+        assert policy.check(policy.new_task(), tool, {param: "x" * MAX_TEXT}).action == "allow"
+        for value in [
+            "", "x" * (MAX_TEXT + 1), "a\nb", "a\x00", "a\x7f", "a\u202eb", None, 5, ["Notepad"],
+        ]:
+            decision = policy.check(policy.new_task(), tool, {param: value})
+            assert (decision.action, decision.reason) == (
+                "deny", f"{param}: must be short plain text"), repr(value)
+
+
+def test_load_names(dirs):
+    from safety.policy import load_names
+
+    folder = dirs[0]
+    assert load_names(folder / "missing.toml") == frozenset()  # no file: nothing allowed
+    (folder / "apps.toml").write_text("[notepad]\n[vs_code]\ncommand = 'code'\n", encoding="utf-8")
+    assert load_names(folder / "apps.toml") == {"notepad", "vs_code"}
+    for bad in ["['Not Pad']\n", "['../x']\n", "[UPPER]\n", "name = 'top-level value'\n"]:
+        (folder / "bad.toml").write_text(bad, encoding="utf-8")
+        with pytest.raises(ValueError):
+            load_names(folder / "bad.toml")

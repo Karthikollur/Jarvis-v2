@@ -17,7 +17,7 @@ import re
 import threading
 import time
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
@@ -26,6 +26,7 @@ from typing import Any
 MAX_CALLS = 8  # tool calls per task
 MAX_SECONDS = 120  # wall time per task
 MAX_FAILURES = 3  # failures of one tool per task
+MAX_TEXT = 200  # characters in a free-text argument
 
 
 class Tier(IntEnum):
@@ -40,6 +41,15 @@ class Rule:
     path_params: tuple[str, ...] = ()  # arguments that must resolve inside an allowed root
     name_params: tuple[str, ...] = ()  # arguments that must be a bare file name
     taints: bool = False  # a successful call brings untrusted text into the task
+    # (argument, allowlist): the value must be a name on that allowlist ("apps" or "scripts")
+    choices: tuple[tuple[str, str], ...] = ()
+    text_params: tuple[str, ...] = ()  # short plain text: MAX_TEXT, printable only
+
+    @property
+    def params(self) -> tuple[str, ...]:
+        """Every argument the tool takes. All are required; anything else is refused."""
+        listed = tuple(name for name, _ in self.choices)
+        return (*self.path_params, *self.name_params, *listed, *self.text_params)
 
 
 # One entry per tool. A new tool gets a new entry at the strictest tier that works.
@@ -49,14 +59,14 @@ TOOLS: dict[str, Rule] = {
     "system_stats": Rule(Tier.T0),
     "list_dir": Rule(Tier.T0, ("path",)),
     "read_text_file": Rule(Tier.T0, ("path",), taints=True),
-    "recall_memory": Rule(Tier.T0),
-    "open_app": Rule(Tier.T1),
-    "focus_window": Rule(Tier.T1),
+    "recall_memory": Rule(Tier.T0, text_params=("query",)),
+    "open_app": Rule(Tier.T1, choices=(("app", "apps"),)),
+    "focus_window": Rule(Tier.T1, text_params=("title",)),
     "create_folder": Rule(Tier.T1, ("path",)),
     "move_file": Rule(Tier.T1, ("source", "destination")),
     "rename_file": Rule(Tier.T1, ("path",), ("new_name",)),
     "delete_file": Rule(Tier.T2, ("path",)),
-    "run_named_script": Rule(Tier.T2),
+    "run_named_script": Rule(Tier.T2, choices=(("name", "scripts"),)),
 }
 
 _RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
@@ -142,6 +152,18 @@ def load_roots(config: Path) -> list[Path]:
     return roots
 
 
+def load_names(config: Path) -> frozenset[str]:
+    """Read an allowlist (config/apps.toml, config/scripts.toml): one `[name]` table per
+    entry. A missing file allows nothing. Only Karthik edits those files."""
+    if not config.exists():
+        return frozenset()
+    entries = tomllib.loads(config.read_text(encoding="utf-8"))
+    for name, entry in entries.items():
+        if not re.fullmatch(r"[a-z0-9_]{1,32}", name) or not isinstance(entry, dict):
+            raise ValueError(f"{config.name}: every entry must be a [lower_case_name] table: {name!r}")
+    return frozenset(entries)
+
+
 @dataclass
 class Task:
     started: float
@@ -165,9 +187,13 @@ class Policy:
         roots: list[Path],
         clock: Callable[[], float] = time.monotonic,
         protected: list[Path] = (),
+        apps: Iterable[str] = (),
+        scripts: Iterable[str] = (),
     ) -> None:
         self.roots = roots
         self.clock = clock
+        # Names the model may pass to open_app / run_named_script. Empty = nothing allowed.
+        self.allowed = {"apps": frozenset(apps), "scripts": frozenset(scripts)}
         # Resolved once, like roots, so a junction or 8.3 name in the given path cannot dodge it.
         self.protected = [Path(os.path.realpath(folder)) for folder in protected]
         # Routes run in a thread pool: check, recheck and record each run whole under
@@ -207,10 +233,21 @@ class Policy:
             return self._stop(task, f"{tool} failed {MAX_FAILURES} times")
         if not isinstance(args, dict):
             return Decision("deny", "arguments must be an object")
+        if set(args) - set(rule.params):  # undeclared: a handler must never see it
+            return Decision("deny", "unknown argument")
         try:
             paths = self._resolve(rule, args)
         except PathRefused as refused:
             return Decision("deny", str(refused))
+        for name, listed in rule.choices:
+            value = args.get(name)
+            if not isinstance(value, str) or value not in self.allowed[listed]:
+                return Decision("deny", f"{name}: not on the allowlist")
+        for name in rule.text_params:
+            value = args.get(name)
+            # isprintable: no control, format (e.g. right-to-left override) or separator characters
+            if not isinstance(value, str) or not 0 < len(value) <= MAX_TEXT or not value.isprintable():
+                return Decision("deny", f"{name}: must be short plain text")
         tier = Tier.T2 if rule.tier is Tier.T1 and task.tainted else rule.tier
         if tier is Tier.T2:
             reason = "T2" if rule.tier is Tier.T2 else "tainted T1"

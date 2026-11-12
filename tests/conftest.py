@@ -34,7 +34,7 @@ def clock():
 
 @pytest.fixture
 def policy(dirs, clock):
-    return Policy([dirs[0]], clock)
+    return Policy([dirs[0]], clock, apps={"notepad"}, scripts={"x"})
 
 
 class FakeListener:

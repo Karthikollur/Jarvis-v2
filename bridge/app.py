@@ -23,7 +23,7 @@ from starlette.datastructures import Headers
 from bridge import hotkey as hotkeys
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue, QueueRefused
-from safety.policy import Policy, Task, load_roots, resolve_inside
+from safety.policy import Policy, Task, load_names, load_roots, resolve_inside
 from safety.undo import UndoLog, UndoRefused, UnknownRecord
 
 
@@ -173,15 +173,23 @@ def create_app(
     clock: Callable[[], float] = time.monotonic,
     hotkey: str | None = FROM_CONFIG,
     protected: list[Path] | None = None,
+    apps: set[str] | None = None,
+    scripts: set[str] | None = None,
 ) -> FastAPI:
     """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it.
     `hotkey` is the kill-switch combo; None (tests only) runs without one.
     `protected`: folders no tool may reach besides `storage`, which is always protected.
-    None (production) means this repo folder; tests pass [] because their sandbox is in it."""
+    None (production) means this repo folder; tests pass [] because their sandbox is in it.
+    `apps`, `scripts`: names open_app / run_named_script accept. None (production) reads
+    config/apps.toml and config/scripts.toml; a missing file allows nothing."""
     if storage is None:
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
     if roots is None:
         roots = load_roots(CONFIG / "allowed_roots.toml")
+    if apps is None:
+        apps = load_names(CONFIG / "apps.toml")
+    if scripts is None:
+        scripts = load_names(CONFIG / "scripts.toml")
     if hotkey is FROM_CONFIG:
         hotkey = hotkeys.load(CONFIG / "hotkey.toml")
     elif hotkey is not None:
@@ -195,7 +203,7 @@ def create_app(
     audit = AuditLog(audit_path)
     audit.write("start")  # in-memory pending actions from an earlier run are gone
     repo = [CONFIG.parent] if protected is None else list(protected)
-    policy = Policy(roots, clock, [storage, *repo])
+    policy = Policy(roots, clock, [storage, *repo], apps, scripts)
     queue = ConfirmQueue(clock)
     undo_log = UndoLog(storage / "quarantine")  # inside storage: protected, user-only ACL
     handlers = dict(handlers or {})
