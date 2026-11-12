@@ -74,8 +74,15 @@ def _bad_component(part: str) -> bool:
     return part.endswith((".", " ")) or part.split(".")[0].strip().upper() in _RESERVED
 
 
-def resolve_inside(raw: Any, roots: list[Path]) -> Path:
-    """Return the fully resolved path, or raise PathRefused if it is not inside a root.
+def _within(folded: str, folder: Path) -> bool:
+    base = os.path.normcase(str(folder))
+    return folded == base or folded.startswith(base + "\\")
+
+
+def resolve_inside(raw: Any, roots: list[Path], protected: list[Path] = ()) -> Path:
+    """Return the fully resolved path, or raise PathRefused if it is not inside a root
+    or is inside a protected folder (audit point 9). Roots and protected folders must
+    already be realpath-resolved.
 
     Callers must use the returned path, never the raw string.
     """
@@ -94,11 +101,11 @@ def resolve_inside(raw: Any, roots: list[Path]) -> Path:
     # path whose last components do not exist yet.
     resolved = os.path.realpath(text)
     folded = os.path.normcase(resolved)
-    for root in roots:
-        base = os.path.normcase(str(root))
-        if folded == base or folded.startswith(base + "\\"):
-            return Path(resolved)
-    raise PathRefused("outside the allowed roots")
+    if not any(_within(folded, root) for root in roots):
+        raise PathRefused("outside the allowed roots")
+    if any(_within(folded, folder) for folder in protected):
+        raise PathRefused("protected folder")
+    return Path(resolved)
 
 
 def load_roots(config: Path) -> list[Path]:
@@ -130,9 +137,16 @@ class Decision:
 
 
 class Policy:
-    def __init__(self, roots: list[Path], clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        roots: list[Path],
+        clock: Callable[[], float] = time.monotonic,
+        protected: list[Path] = (),
+    ) -> None:
         self.roots = roots
         self.clock = clock
+        # Resolved once, like roots, so a junction or 8.3 name in the given path cannot dodge it.
+        self.protected = [Path(os.path.realpath(folder)) for folder in protected]
 
     def new_task(self) -> Task:
         return Task(started=self.clock())
@@ -164,7 +178,7 @@ class Policy:
         paths = {}
         for name in rule.path_params:
             try:
-                paths[name] = resolve_inside(args.get(name), self.roots)
+                paths[name] = resolve_inside(args.get(name), self.roots, self.protected)
             except PathRefused as refused:
                 return Decision("deny", f"{name}: {refused}")
         for name in rule.name_params:
@@ -202,7 +216,7 @@ class Policy:
             return "unknown tool"
         for name in rule.path_params:
             try:
-                now = resolve_inside(args.get(name), self.roots)
+                now = resolve_inside(args.get(name), self.roots, self.protected)
             except PathRefused as refused:
                 return f"{name}: {refused}"
             if now != paths.get(name):

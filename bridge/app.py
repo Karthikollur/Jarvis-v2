@@ -165,9 +165,12 @@ def create_app(
     handlers: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
     clock: Callable[[], float] = time.monotonic,
     hotkey: str | None = FROM_CONFIG,
+    protected: list[Path] | None = None,
 ) -> FastAPI:
     """`handlers` maps a tool name from safety.policy.TOOLS to the function that performs it.
-    `hotkey` is the kill-switch combo; None (tests only) runs without one."""
+    `hotkey` is the kill-switch combo; None (tests only) runs without one.
+    `protected`: folders no tool may reach besides `storage`, which is always protected.
+    None (production) means this repo folder; tests pass [] because their sandbox is in it."""
     if storage is None:
         storage = Path(os.environ["LOCALAPPDATA"]) / "Jarvis"
     if roots is None:
@@ -184,7 +187,8 @@ def create_app(
     protect(audit_path)
     audit = AuditLog(audit_path)
     audit.write("start")  # in-memory pending actions from an earlier run are gone
-    policy = Policy(roots, clock)
+    repo = [CONFIG.parent] if protected is None else list(protected)
+    policy = Policy(roots, clock, [storage, *repo])
     queue = ConfirmQueue(clock)
     handlers = dict(handlers or {})
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in

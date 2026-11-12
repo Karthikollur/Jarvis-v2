@@ -26,11 +26,15 @@ Newest session entry goes at the top of the Session log.
   APPROVED 2026-11-12 at `docs/plans/P2.6.md`, with four review fixes: 32-hex record ids and
   quarantine paths derived from the id; `os.rename` only (never overwrite, refuse across
   drives); only user-side paths go through `resolve`; protected folders realpath-resolved,
-  8.3 short-name test. Next step: commit A (protected folders) on Karthik's "go, commit A".
-  Then P2.7. Audit point 9 blocks P3. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
+  8.3 short-name test. Commit A (protected folders) DONE: `resolve_inside`/`Policy` refuse
+  any path in a protected folder (`path: protected folder`); the bridge always protects its
+  storage folder and, by default, the whole repo (`create_app(protected=None)`; tests pass
+  `[]` because their sandbox is in the repo). Bridge test sandboxes now put roots beside
+  storage, not inside it. Next step: commit B (`safety/undo.py`) on Karthik's
+  "go, commit B". Then commit C, then P2.7. Audit point 9 blocks P3 until C lands. Audit points 3, 4, 5, 6 (session log, P1 review entry) stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 179 passed, 1 skipped (2026-11-11, after P2.5). The skip is the
+- Tests: `uv run python -m pytest` -> 194 passed, 1 skipped (2026-11-12, after P2.6 commit A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (needs Ollama, takes about 1 minute). Live smoke test:

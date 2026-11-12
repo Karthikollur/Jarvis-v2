@@ -224,3 +224,95 @@ def test_retry_budget(policy):
     assert policy.check(task, "system_stats", {}).action == "deny"
     assert task.stopped
     assert policy.check(task, "get_time", {}).action == "deny"
+
+
+# --- protected folders (P2.6, audit point 9) --------------------------------
+
+
+@pytest.fixture
+def guarded(dirs):
+    """(root, protected): a root that contains a protected folder."""
+    root = dirs[0]
+    protected = root / "prot"
+    protected.mkdir()
+    return root, protected
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda r, p: str(p / "x.txt"),
+        lambda r, p: str(p),  # the folder itself
+        lambda r, p: str(r / "a" / ".." / "prot" / "x.txt"),
+        lambda r, p: str(p / "x.txt").upper(),
+        lambda r, p: str(p / "deeper" / "new.txt"),
+    ],
+)
+def test_protected_folder_refused(guarded, make):
+    root, protected = guarded
+    with pytest.raises(PathRefused, match="protected folder"):
+        resolve_inside(make(root, protected), [root], [protected])
+
+
+def test_protected_folder_via_junction_refused(guarded):
+    root, protected = guarded
+    _winapi.CreateJunction(str(protected), str(root / "jump"))
+    with pytest.raises(PathRefused, match="protected folder"):
+        resolve_inside(str(root / "jump" / "x.txt"), [root], [protected])
+
+
+def test_rest_of_root_still_allowed(guarded):
+    root, protected = guarded
+    for path in [root / "x.txt", root / "prot2" / "x.txt", root / "protected.txt"]:
+        assert resolve_inside(str(path), [root], [protected]) == Path(os.path.realpath(path))
+
+
+def test_root_inside_protected_folder_allows_nothing(dirs):
+    root = dirs[0]
+    for path in [root, root / "x.txt"]:
+        with pytest.raises(PathRefused, match="protected folder"):
+            resolve_inside(str(path), [root], [root.parent])
+
+
+def test_protected_folder_given_through_junction(guarded, clock):
+    """Fix (d): Policy realpath-resolves protected folders once, when built."""
+    from safety.policy import Policy
+
+    root, protected = guarded
+    alias = root.parent / "alias"
+    _winapi.CreateJunction(str(protected), str(alias))
+    policy = Policy([root], clock, [alias])
+    decision = policy.check(policy.new_task(), "list_dir", {"path": str(protected / "x")})
+    assert (decision.action, decision.reason) == ("deny", "path: protected folder")
+
+
+def test_protected_folder_via_short_name_refused(guarded):
+    import ctypes
+
+    root, protected = guarded
+    long_name = root / "protected-folder-with-long-name"
+    long_name.mkdir()
+    buffer = ctypes.create_unicode_buffer(1024)
+    ctypes.windll.kernel32.GetShortPathNameW(str(long_name), buffer, 1024)
+    if not buffer.value or Path(buffer.value).name == long_name.name:
+        pytest.skip("this volume does not create 8.3 short names")
+    with pytest.raises(PathRefused, match="protected folder"):
+        resolve_inside(buffer.value + "\\x.txt", [root], [long_name])
+
+
+def test_check_and_recheck_refuse_protected(guarded, clock):
+    from safety.policy import Policy
+
+    root, protected = guarded
+    policy = Policy([root], clock, [protected])
+    decision = policy.check(policy.new_task(), "delete_file", {"path": str(protected / "x")})
+    assert (decision.action, decision.reason) == ("deny", "path: protected folder")
+    # Queued while `d` is a plain folder; a junction to the protected folder is swapped in.
+    (root / "d").mkdir()
+    args = {"path": str(root / "d" / "x.txt")}
+    task = policy.new_task()
+    decision = policy.check(task, "delete_file", args)
+    assert decision.action == "confirm"
+    (root / "d").rmdir()
+    _winapi.CreateJunction(str(protected), str(root / "d"))
+    assert policy.recheck(task, "delete_file", args, decision.paths) == "path: protected folder"

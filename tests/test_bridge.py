@@ -28,7 +28,14 @@ def storage():
     root = Path(__file__).resolve().parents[1] / ".test-storage"
     root.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=root) as directory:
-        yield Path(directory)
+        # Storage is a subfolder: sandbox roots sit beside it, never inside (it is protected).
+        (Path(directory) / "storage").mkdir()
+        yield Path(directory) / "storage"
+
+
+def store(root):
+    """The storage folder of a sandbox bridge, which sits beside its root."""
+    return root.parent / "storage"
 
 
 def test_real_acl_and_persistence(storage):
@@ -149,8 +156,8 @@ def test_foreign_ace_in_verification_refused(storage):
 @pytest.fixture
 def sandbox(storage, clock):
     """(client, root, outside): a bridge with fake tools and one allowed root."""
-    root = Path(os.path.realpath(storage / "root"))
-    outside = storage / "outside"
+    root = Path(os.path.realpath(storage.parent / "root"))
+    outside = storage.parent / "outside"
     root.mkdir()
     outside.mkdir()
 
@@ -169,7 +176,7 @@ def sandbox(storage, clock):
         "system_stats": broken,
         "run_named_script": broken,
     }
-    app = create_app(storage, roots=[root], handlers=handlers, clock=clock)
+    app = create_app(storage, roots=[root], handlers=handlers, clock=clock, protected=[])
     headers = {"x-jarvis-token": load_token(storage)}
     with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
         yield client, root, outside
@@ -203,8 +210,8 @@ def test_route_table_is_exact(storage):
 
 def test_ui_token_cannot_request_tools(sandbox):
     client, root, outside = sandbox
-    core = load_token(root.parent)
-    ui = {"x-jarvis-token": load_token(root.parent, "ui.token")}
+    core = load_token(store(root))
+    ui = {"x-jarvis-token": load_token(store(root), "ui.token")}
     assert core != ui["x-jarvis-token"]
     assert client.get("/health", headers=ui).status_code == 200
     assert client.post("/task", headers=ui).status_code == 403
@@ -215,7 +222,7 @@ def test_ui_token_cannot_request_tools(sandbox):
 
 def test_core_token_cannot_use_ui_only_route(sandbox):
     client, root, outside = sandbox
-    ui = {"x-jarvis-token": load_token(root.parent, "ui.token")}
+    ui = {"x-jarvis-token": load_token(store(root), "ui.token")}
     with patch.dict(bridge_app.ROUTE_ROLES, {"/health": {"ui"}}):
         assert client.get("/health").status_code == 403  # client default is the core token
         assert client.get("/health", headers=ui).status_code == 200
@@ -293,11 +300,93 @@ def test_dispatch_refusals(sandbox):
     assert client.post("/tool", json={"tool": "get_time"}).status_code == 422
 
 
+# --- protected folders (P2.6, audit point 9) -----------------------------------
+
+
+def acting_handlers(ran):
+    """Handlers that really act, so a refusal is visible on disk."""
+    def run(name, action):
+        def handler(args):
+            ran.append(name)
+            return action(args["path"])
+        return handler
+
+    return {
+        "read_text_file": run("read", lambda path: path.read_text()),
+        "delete_file": run("delete", lambda path: path.unlink()),
+        "create_folder": run("create", lambda path: path.mkdir()),
+        "list_dir": run("list", lambda path: [p.name for p in path.iterdir()]),
+    }
+
+
+@pytest.mark.parametrize("protected", [[], None])
+def test_storage_is_always_protected(storage, protected):
+    """A root that contains the storage folder still cannot reach it, even with protected=[]."""
+    root = Path(os.path.realpath(storage.parent))
+    ran = []
+    app = create_app(storage, roots=[root], handlers=acting_handlers(ran), protected=protected)
+    token = load_token(storage)
+    audit_before = (storage / "audit.jsonl").read_bytes()
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers={"x-jarvis-token": token}) as client:
+        for tool, path in [
+            ("read_text_file", storage / "bridge.token"),
+            ("read_text_file", storage / "ui.token"),
+            ("delete_file", storage / "audit.jsonl"),
+            ("create_folder", storage / "quarantine"),
+            ("list_dir", storage),
+            ("read_text_file", root / "storage" / ".." / "storage" / "bridge.token"),
+        ]:
+            response = call(client, new_task(client), tool, path=str(path))
+            assert response.status_code == 403, (tool, path)
+            assert response.json()["detail"] == "path: protected folder"
+        if protected == []:  # outside storage the root still works
+            assert call(client, new_task(client), "create_folder", path=str(root / "ok")).status_code == 200
+    assert ran == ([] if protected is None else ["create"])
+    assert load_token(storage) == token
+    assert not (storage / "quarantine").exists()
+    assert (storage / "audit.jsonl").read_bytes().startswith(audit_before)
+
+
+def test_junction_into_storage_refused(storage):
+    """The root contains storage, so only the protected check can refuse the junction."""
+    root = Path(os.path.realpath(storage.parent))
+    (root / "sub").mkdir()
+    _winapi.CreateJunction(str(storage), str(root / "sub" / "jump"))
+    ran = []
+    app = create_app(storage, roots=[root], handlers=acting_handlers(ran), protected=[])
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers={"x-jarvis-token": load_token(storage)}) as client:
+        response = call(client, new_task(client), "read_text_file", path=str(root / "sub" / "jump" / "bridge.token"))
+    assert response.status_code == 403
+    assert response.json()["detail"] == "path: protected folder"
+    assert ran == []
+
+
+def test_repo_is_protected_by_default(storage):
+    """protected=None (production) adds the whole repo folder, whatever the roots say."""
+    repo = Path(__file__).resolve().parents[1]
+    ran = []
+    app = create_app(storage, roots=[repo], handlers=acting_handlers(ran))
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers={"x-jarvis-token": load_token(storage)}) as client:
+        for tool, path in [
+            ("read_text_file", repo / "safety" / "policy.py"),
+            ("read_text_file", repo / "config" / "allowed_roots.toml"),
+            ("delete_file", repo / "bridge" / "app.py"),
+            ("create_folder", repo / "config" / "new"),
+            ("list_dir", repo),
+        ]:
+            response = call(client, new_task(client), tool, path=str(path))
+            assert response.status_code == 403, (tool, path)
+            assert response.json()["detail"] == "path: protected folder"
+    assert ran == []
+    assert (repo / "bridge" / "app.py").exists()
+    assert not (repo / "config" / "new").exists()
+
+
 # --- confirm queue (P2.3) ----------------------------------------------------
 
 
 def ui_headers(root):
-    return {"x-jarvis-token": load_token(root.parent, "ui.token")}
+    return {"x-jarvis-token": load_token(store(root), "ui.token")}
 
 
 def approve(client, root, pending_id):
@@ -453,7 +542,7 @@ def test_expiry_found_by_tool_call(sandbox, clock):
 
 
 def test_outcome_is_pending_while_handler_runs(storage, clock):
-    root = Path(os.path.realpath(storage / "root"))
+    root = Path(os.path.realpath(storage.parent / "root"))
     root.mkdir()
     seen = {}
 
@@ -461,7 +550,7 @@ def test_outcome_is_pending_while_handler_runs(storage, clock):
         seen["during"] = outcome(client, seen["id"]).json()  # core polls mid-run
         args["path"].unlink()
 
-    app = create_app(storage, roots=[root], handlers={"delete_file": delete_file}, clock=clock)
+    app = create_app(storage, roots=[root], handlers={"delete_file": delete_file}, clock=clock, protected=[])
     headers = {"x-jarvis-token": load_token(storage)}
     with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
         victim, seen["id"] = queue_delete(client, root)
@@ -507,8 +596,8 @@ def test_failing_handler_on_approve_counts_as_failure(sandbox):
 
 
 def audit(root):
-    """Every line of the audit log of the sandbox bridge (storage is root.parent)."""
-    text = (root.parent / "audit.jsonl").read_text(encoding="utf-8")
+    """Every line of the audit log of the sandbox bridge (storage sits beside root)."""
+    text = (store(root) / "audit.jsonl").read_text(encoding="utf-8")
     return [json.loads(line) for line in text.splitlines()]
 
 
@@ -779,14 +868,14 @@ def test_stop_works_when_audit_log_fails(sandbox):
 
 def test_stop_mid_task(storage, clock):
     """The handler presses Stop while it runs: it finishes, nothing after it runs."""
-    root = Path(os.path.realpath(storage / "root"))
+    root = Path(os.path.realpath(storage.parent / "root"))
     root.mkdir()
 
     def get_time(args):
         assert client.post("/stop").json()["stopped"] == 1
         return "now"
 
-    app = create_app(storage, roots=[root], handlers={"get_time": get_time}, clock=clock)
+    app = create_app(storage, roots=[root], handlers={"get_time": get_time}, clock=clock, protected=[])
     headers = {"x-jarvis-token": load_token(storage)}
     with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
         task = new_task(client)
