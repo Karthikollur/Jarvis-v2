@@ -96,6 +96,7 @@ ROUTE_ROLES: dict[str, set[str]] = {
     "/deny": {"ui"},
     "/stop": {"core", "ui"},  # stopping is the safe direction; core relays a spoken "stop"
     "/undo": {"ui"},  # only Karthik undoes; no model-facing undo tool
+    "/resume": {"ui"},  # only Karthik lifts the latch a hotkey or UI Stop sets
 }
 
 
@@ -219,6 +220,9 @@ def create_app(
     # task starts tainted until the core declares `fresh_context` (P2.8).
     # ponytail: one flag = one conversation at a time; per-conversation ids if there are ever two
     context_tainted = False
+    # Latch set by a Stop from the hotkey or the UI: no new task and no tool call until a
+    # ui-only /resume (P2.8). A bridge restart also clears it.
+    halted = False
     @asynccontextmanager
     async def lifespan(_app):
         # A combo that cannot be registered raises here: the bridge does not start.
@@ -298,7 +302,13 @@ def create_app(
     def stop(source: str) -> dict[str, Any]:
         """Kill switch: stop every task and cancel every pending action. The only stop path.
         Stops FIRST, logs after: stopping must never depend on the audit log (the one
-        exception to write-before-run, since it only prevents actions)."""
+        exception to write-before-run, since it only prevents actions).
+        A Stop from anything but the core (hotkey, ui) also latches: see `halted`. A Stop the
+        core relays (a spoken "stop") ends current tasks only."""
+        nonlocal halted
+        latched = source != "core"
+        if latched:
+            halted = True  # first, so a task created during the loop below is refused
         stopped = 0
         for task in list(tasks.values()):
             if not task.stopped:
@@ -307,12 +317,17 @@ def create_app(
         dropped = queue.clear()
         for pending in dropped:
             outcomes[pending.id] = {"status": "cancelled"}
-        logged = log("stop", source=source, tasks=stopped, cancelled=[p.id for p in dropped])
+        cancelled = [p.id for p in dropped]
+        logged = log("stop", source=source, tasks=stopped, cancelled=cancelled, latched=latched)
         return {"stopped": stopped, "cancelled": len(dropped), "logged": logged}
 
     @app.post("/task")
     def new_task(request: TaskRequest | None = None):
         nonlocal context_tainted
+        if halted:
+            if not log("task", refused="stopped"):
+                return unavailable()
+            return JSONResponse({"detail": "stopped"}, status_code=403)
         fresh = request is not None and request.fresh_context
         tainted = context_tainted and not fresh
         task_id = uuid.uuid4().hex
@@ -327,6 +342,10 @@ def create_app(
         if not expire():
             return unavailable()
         request_line = {"task_id": request.task_id, "tool": request.tool, "args": request.args}
+        if halted:
+            if not log("request", **request_line, decision="deny", reason="stopped"):
+                return unavailable()
+            return JSONResponse({"detail": "stopped"}, status_code=403)
         task = tasks.get(request.task_id)
         if task is None:
             if not log("request", **request_line, decision="deny", reason="unknown task"):
@@ -434,6 +453,15 @@ def create_app(
     @app.post("/stop")
     def stop_route(request: Request):
         return stop(request.state.role)
+
+    @app.post("/resume")
+    def resume():
+        """Lift the latch. Stopped tasks stay stopped; only new tasks can run."""
+        nonlocal halted
+        if not log("resume"):
+            return unavailable()  # an unlogged resume resumes nothing
+        halted = False
+        return {"status": "resumed"}
 
     @app.get("/undo")
     def list_undo():

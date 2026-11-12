@@ -26,7 +26,8 @@ Newest session entry goes at the top of the Session log.
   and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
-  (P2.8 C: `POST /task` now takes an optional body `{"fresh_context": true}`.)
+  (P2.8 C: `POST /task` now takes an optional body `{"fresh_context": true}`.
+  P2.8 D: new ui-only route `POST /resume`.)
 - Next task: P2.8 hardening (plan APPROVED 2026-11-12 at `docs/plans/P2.8.md`, six commits
   A to F, tests first, stop after each). It fixes the phase-review findings N1-N6, the
   hotkey liveness and audit encoding items, and adds the built-in tools guard; it absorbs
@@ -43,11 +44,16 @@ Newest session entry goes at the top of the Session log.
   `list_windows` and `recall_memory` taint; the bridge keeps one conversation taint flag,
   so `POST /task` creates a tainted task after any successful tainting call, until the
   core sends `{"fresh_context": true}` (core only, strict boolean, audited) or the bridge
-  restarts. Next step: commit D (stop latch) on Karthik's "go, commit D". P3 cannot start until P2.8 is done and reviewed.
+  restarts. Commit D done (2026-11-12): a Stop from the hotkey or
+  the ui latches the bridge (`/task` and `/tool` answer 403 `stopped`, logged) until a
+  ui-only `POST /resume`; a Stop relayed by the core ends current tasks only; a restart
+  also clears the latch. Until P6 has a button, resume = restart the bridge or call
+  `/resume` with the ui token. Next step: commit E (kill-switch liveness, audit encoding)
+  on Karthik's "go, commit E". P3 cannot start until P2.8 is done and reviewed.
   P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 304 passed, 1 skipped (2026-11-12, after P2.8 commit C). The skip is the
+- Tests: `uv run python -m pytest` -> 310 passed, 1 skipped (2026-11-12, after P2.8 commit D). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12; needs Ollama, takes about 1 minute). Live smoke test:

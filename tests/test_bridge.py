@@ -210,6 +210,7 @@ def test_route_table_is_exact(storage):
         ("POST", "/deny"),
         ("POST", "/outcome"),
         ("POST", "/stop"),
+        ("POST", "/resume"),
         ("GET", "/undo"),
         ("POST", "/undo"),
     }
@@ -905,12 +906,12 @@ def test_stop_stops_live_tasks_and_new_tasks_work(sandbox):
     client, root, outside = sandbox
     task = new_task(client)
     assert call(client, task, "get_time").status_code == 200
-    response = stop(client, ui_headers(root))
+    response = stop(client)  # relayed by the core: ends current tasks, does not latch
     assert response.json() == {"stopped": 1, "cancelled": 0, "logged": True}
     refused = call(client, task, "create_folder", path=str(root / "new"))
     assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
     assert not (root / "new").exists()
-    # No halted state: a new task runs straight away.
+    # No latch after a core Stop: a new task runs straight away.
     assert call(client, new_task(client), "get_time").json() == {"result": "now"}
     assert stop(client).json() == {"stopped": 1, "cancelled": 0, "logged": True}
     assert stop(client).json() == {"stopped": 0, "cancelled": 0, "logged": True}  # harmless
@@ -993,7 +994,7 @@ def test_hotkey_from_config_stops_tasks(storage, fake_hotkey):
         assert listener.combo == "Ctrl+Alt+End"
         task = new_task(client)
         assert listener.callback() == {"stopped": 1, "cancelled": 0, "logged": True}
-        assert call(client, task, "get_time").json()["detail"] == "task stopped"
+        assert call(client, task, "get_time").json()["detail"] == "stopped"
         assert not listener.closed
     assert listener.closed  # shutdown releases the hotkey
     lines = map(json.loads, (storage / "audit.jsonl").read_text(encoding="utf-8").splitlines())
@@ -1381,3 +1382,92 @@ def test_bridge_restart_starts_untainted(storage, clock):
         assert call(client, new_task(client), "create_folder", path=str(root / "a")).status_code == 202
     with bridge() as client:  # pending actions and taint are both gone
         assert call(client, new_task(client), "create_folder", path=str(root / "a")).status_code == 200
+
+
+# --- stop latch (P2.8 commit D) ------------------------------------------------
+# A Stop from the hotkey or the UI is a panic button: nothing new starts until Karthik
+# resumes in the UI. A Stop relayed by the core (a spoken "stop") ends current tasks only.
+
+
+def resume(client, headers=None):
+    return client.post("/resume", headers=headers)
+
+
+def halted(client):
+    """True if the bridge refuses new work."""
+    response = client.post("/task")
+    assert response.status_code in (200, 403)
+    return response.status_code == 403
+
+
+def test_ui_stop_latches_until_ui_resume(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert stop(client, ui_headers(root)).status_code == 200
+    refused = client.post("/task")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "stopped")
+    refused = call(client, task, "get_time")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "stopped")
+    # The core cannot resume itself.
+    assert resume(client).status_code == 403
+    assert halted(client)
+    assert resume(client, ui_headers(root)).json() == {"status": "resumed"}
+    assert call(client, new_task(client), "get_time").json() == {"result": "now"}
+    # Resuming does not revive what was stopped.
+    assert call(client, task, "get_time").json()["detail"] == "task stopped"
+
+
+def test_hotkey_stop_latches(sandbox, fake_hotkey):
+    client, root, outside = sandbox
+    (listener,) = fake_hotkey
+    listener.callback()
+    assert halted(client)
+    assert resume(client, ui_headers(root)).status_code == 200
+    assert not halted(client)
+
+
+def test_core_stop_does_not_latch(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert stop(client).status_code == 200  # the core relays a spoken "stop"
+    assert call(client, task, "get_time").json()["detail"] == "task stopped"
+    assert not halted(client)
+    # A core Stop while latched does not unlatch either.
+    stop(client, ui_headers(root))
+    stop(client)
+    assert halted(client)
+
+
+def test_latch_and_resume_are_audited(sandbox):
+    client, root, outside = sandbox
+    stop(client)
+    assert audit(root)[-1]["latched"] is False
+    stop(client, ui_headers(root))
+    assert (audit(root)[-1]["event"], audit(root)[-1]["latched"]) == ("stop", True)
+    client.post("/task")
+    assert audit(root)[-1] | {"ts": None} == {"ts": None, "event": "task", "refused": "stopped"}
+    call(client, "any-task", "get_time")
+    line = audit(root)[-1]
+    assert (line["event"], line["decision"], line["reason"]) == ("request", "deny", "stopped")
+    resume(client, ui_headers(root))
+    assert audit(root)[-1] | {"ts": None} == {"ts": None, "event": "resume"}
+
+
+def test_latch_holds_when_the_audit_log_fails(sandbox):
+    client, root, outside = sandbox
+    with failing("stop"):
+        assert stop(client, ui_headers(root)).json()["logged"] is False
+    assert halted(client)  # stopping never depends on the log
+    with failing("resume"):
+        assert resume(client, ui_headers(root)).status_code == 500
+    assert halted(client)  # an unlogged resume resumes nothing
+    with failing("task", "request"):
+        assert client.post("/task").status_code == 500
+        assert call(client, "any-task", "get_time").status_code == 500
+
+
+def test_resume_when_not_halted_is_harmless(sandbox):
+    client, root, outside = sandbox
+    assert resume(client, ui_headers(root)).json() == {"status": "resumed"}
+    assert not halted(client)
+    assert client.get("/resume", headers=ui_headers(root)).status_code == 405
