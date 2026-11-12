@@ -153,30 +153,28 @@ targets, network off.
 - [x] P2.7 Tests: path traversal (`..\`, absolute, junction, UNC), missing/wrong token, budget
       breach, tainted T1 upgraded to T2, kill switch mid-task, concurrent calls cannot exceed a
       budget (`Policy`/`Task` need a lock).
+- [ ] P2.8 Hardening from the P2 phase review (N1–N6, kill-switch liveness, audit encoding,
+      built-in tools guard; absorbs the former P3.0a and P3.0b). Plan: `docs/plans/P2.8.md`.
 
 **Done when:** all tests pass; a fake tool cannot act outside the sandbox or without a token by
 any tested route. Karthik has reviewed the diff.
 
 ### P3 — Windows control tools (~1 week)
 
-Before starting: restore point created; P2 reviewed. P3 cannot start until audit point 9
+Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by Karthik. P3 cannot start until audit point 9
 (see P2.6) is done and tested.
 
-- [ ] P3.0a `safety/policy.py` `resolve_inside`: refuse a path whose drive letter matches no
-      allowed root's drive BEFORE `os.path.realpath`, so a path on a mapped network drive
-      never makes Windows contact that share. Refusal test. (P2 gate review, should-fix.
-      Touches `safety/`: plan mode and Karthik's OK first.)
-- [ ] P3.0b Tests only: two `x-jarvis-token` headers (one valid, one wrong) and two `Host`
-      headers are refused on every route (add to the P2.7 token sweep). (P2 gate review,
-      should-fix.)
 - [ ] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
       `read_text_file` (size cap).
 - [ ] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
-      `move_file`, `rename_file`, all with undo records.
+      `move_file`, `rename_file`, all with undo records. One batch confirmation for a
+      multi-file move on a tainted task (P2.8: `list_dir` taints).
 - [ ] P3.3 T2 tools: `delete_file` (to quarantine), `run_named_script` (only entries in
       `config/scripts.toml`).
 - [ ] P3.4 Prefer CLIs and app APIs (e.g. `code <path>`) over UI clicking; pywinauto only where needed.
-- [ ] P3.5 Register tools in core; rerun evals against real tools in the sandbox.
+- [ ] P3.5 Register tools in core; rerun evals against real tools in the sandbox. The core
+      opens exactly one task per user request and sends `fresh_context` only when it has
+      dropped the model's context (also after a bridge restart); tests for both.
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
       (history stays in the audit log).
 

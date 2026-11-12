@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P3, not started (P2 complete, gate passed). P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P2.8 hardening (added after the P2 gate passed; P3 waits for it). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -26,13 +26,12 @@ Newest session entry goes at the top of the Session log.
   and protected folder. Bridge routes are unchanged since P2.6: `GET /health`;
   core: `POST /task`, `POST /tool`, `POST /outcome`; ui only: `GET /pending`,
   `POST /approve`, `POST /deny`, `GET /undo`, `POST /undo`; both: `POST /stop`.
-- Before any P3 handler: Karthik's decisions on the P2 phase-review findings N1-N6 (Open
-  questions, top entry).
-- Next task: P3.0a (PLAN.md; refuse a path whose drive letter matches no root BEFORE
-  `realpath`; touches `safety/`: plan mode, Karthik's OK first), then P3.0b (duplicate
-  `x-jarvis-token` and `Host` header tests). Both come from the P2 gate review (Open
-  questions, top entry). Then P3.1. P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6
-  (session log, P1 review entry) stay open.
+- Next task: P2.8 hardening (plan APPROVED 2026-11-12 at `docs/plans/P2.8.md`, six commits
+  A to F, tests first, stop after each). It fixes the phase-review findings N1-N6, the
+  hotkey liveness and audit encoding items, and adds the built-in tools guard; it absorbs
+  the former P3.0a and P3.0b. Touches `safety/` and `bridge/`. Next step: commit A (path
+  rules) on Karthik's "go, commit A". P3 cannot start until P2.8 is done and reviewed.
+  P3 precondition still owed: restore point created. Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
 - Tests: `uv run python -m pytest` -> 259 passed, 1 skipped (2026-11-12, after P2.7). The skip is the
@@ -47,7 +46,9 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- P2 phase review, bypass audit (2026-11-12, Fable 5.2, read-only; nothing fixed). All
+- (Decided 2026-11-12, see Decisions and `docs/plans/P2.8.md`: all fixed in P2.8 except the
+  budget reset in N5, accepted.) P2 phase review, bypass audit (2026-11-12, Fable 5.2,
+  read-only; nothing fixed). All
   three P2 "Done when" criteria pass. None of the gaps below is reachable today: there
   are no real handlers. Each needs a decision (which task, or accept) before P3 handlers
   are written. N1-N5 were confirmed by calling `Policy.check` directly.
@@ -90,8 +91,8 @@ Newest session entry goes at the top of the Session log.
     The core has no bridge client yet; OpenJarvis built-ins (`shell_exec`) are kept out
     only by the `tools=[...]` list on each call. Largest bypass; belongs to P3.5.
 
-- P2 gate review notes (2026-11-12). (a) and (b) are now PLAN.md tasks P3.0a and P3.0b
-  (Karthik, 2026-11-12); the nits (c), (d), (e) have no task yet.
+- P2 gate review notes (2026-11-12). (a) and (b) were PLAN.md tasks P3.0a and P3.0b and are
+  now P2.8 commits A and F; nits (c) and (d) are in P2.8 F; nit (e) has no task yet.
   Should-fix, before P3.1:
   (a) `safety/policy.py` `resolve_inside`: `os.path.realpath` runs before the roots check,
   on any drive letter. A path on a mapped network drive (a `Z:` path) makes Windows contact
@@ -149,6 +150,23 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-12 — PLAN.md changed: P2.8 hardening added (plan `docs/plans/P2.8.md`); P3.0a and
+  P3.0b folded into it; P3 start now needs P2.8 done and reviewed; P3.2 gains a batch
+  confirmation; P3.5 gains one-task-per-request and `fresh_context` tests — every
+  phase-review gap becomes reachable the moment a real handler exists — Karthik
+- 2026-11-12 — Phase-review decisions. Fix in the policy engine, fail closed: N1 (root
+  itself, rename landing place), N2 (path containing a protected folder), N3 (undeclared
+  arguments refused), N4 (`open_app`/`run_named_script` values must be keys of
+  `config/apps.toml`/`scripts.toml`; missing file = nothing allowed). Fix in the bridge:
+  N5 taint is inherited by new tasks until the core declares `fresh_context`;
+  `list_dir`, `list_windows`, `recall_memory` taint; N6 a hotkey or ui Stop latches until
+  a ui-only `/resume` (a core-relayed Stop does not latch); a dead hotkey thread stops
+  everything (503); the audit file is written with `backslashreplace`. ACCEPTED: budgets
+  reset with a new task — they bound one request's loop, the model cannot open a task,
+  the core opens one per request (P3.5 test). Built-ins are NOT unregistered (no remove
+  in the registry; fragile); a tests-only guard checks every `tools=` list instead.
+  Trust model: the model is untrusted, core code is trusted — Karthik, on Fable 5.2's
+  analysis
 - 2026-11-12 — PLAN.md changed: P3.0a (drive-letter check before `realpath`) and P3.0b
   (duplicate-header tests) added before P3.1 — the two should-fix items of the P2 gate
   review; existing task IDs kept stable — Karthik
@@ -473,6 +491,9 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   1.2 s; a03 fails as in the baseline). Six new policy gaps N1-N6 logged under Open
   questions (top entry) with the known ones. Nothing fixed: Karthik reviews first.
   Next: Karthik decides per finding; then P3.0a (plan mode).
+- Later again: analysis of N1-N6 and three more items; Karthik approved P2.8 hardening as
+  proposed. Plan saved at `docs/plans/P2.8.md`, PLAN.md changed, decisions recorded. Docs
+  only, no code. Next step: P2.8 commit A (path rules) on Karthik's go.
 
 ### 2026-11-12 — Agent: Claude Code (P2.6 implemented; audit point 9 closed)
 
