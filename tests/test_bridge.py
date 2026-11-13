@@ -1595,6 +1595,25 @@ def test_surrogate_in_a_result_is_logged_and_returned(storage, clock):
     assert lines[-1]["status"] == "done" and "report" in lines[-1]["result"]
 
 
+def test_surrogate_in_an_outcome_is_returned(storage, clock):
+    """P3.1b G1: the action ran, so the core must be able to learn its outcome."""
+    root = Path(os.path.realpath(storage.parent / "root"))
+    root.mkdir()
+    (root / "victim.txt").write_text("keep")
+    app = create_app(
+        storage, roots=[root], handlers={"delete_file": lambda args: "gone \ud800"},
+        clock=clock, hotkey=None, protected=[],  # as `sandbox`: test storage is inside the repo
+    )
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers={"x-jarvis-token": load_token(storage)}) as client:
+        response = call(client, fresh_task(client), "delete_file", path=str(root / "victim.txt"))
+        assert response.status_code == 202
+        pending_id = response.json()["pending_id"]
+        assert approve(client, root, pending_id).status_code == 200
+        response = outcome(client, pending_id)
+        assert response.status_code == 200
+        assert response.json() == {"status": "done", "result": "gone \ud800"}
+
+
 # --- sweep additions (P2.8 commit F) -------------------------------------------
 
 

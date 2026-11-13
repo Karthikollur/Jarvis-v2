@@ -487,7 +487,7 @@ def create_app(
         if not expire():
             return unavailable()
         if request.pending_id in outcomes:
-            return outcomes[request.pending_id]
+            return encoded(outcomes[request.pending_id])
         if any(p.id == request.pending_id for p in queue.list()):
             return {"status": "pending"}
         return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
