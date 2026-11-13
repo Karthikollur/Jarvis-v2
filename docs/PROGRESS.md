@@ -60,14 +60,17 @@ Newest session entry goes at the top of the Session log.
   that cannot be encoded is logged and answered as `failed`; any audit write error fails
   closed. Red run on 6 tests, then green. Mutation checks done 2026-11-13: 5 mutants
   (one per fix), each killed by at least one C test; table in `docs/plans/P2.9.md`.
-- Next task: P2.9 commit D on Karthik's go. P3.1 may start after
-  the restore point (still owed). Audit points 3, 4, 5, 6 stay open.
+- P2.9 commit D DONE 2026-11-13 (`P2.9: stop race`): a task created while a latching Stop
+  runs is marked stopped and answered 403 `stopped`; the clarify scorer accepts a fixed
+  ask-phrase as well as `?`. P2.9 is complete and ticked in PLAN.md.
+- Next task: P3.1 after the restore point (still owed; Karthik's call). Audit points
+  3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
-- Tests: `uv run python -m pytest` -> 391 passed, 1 skipped (2026-11-12, after P2.9 C). The skip is the
+- Tests: `uv run python -m pytest` -> 394 passed, 1 skipped (2026-11-13, after P2.9 D). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
-  `uv run python evals/run.py` -> 39/40 (re-run 2026-11-12 after P2.9 B, unchanged; needs Ollama, takes about 1 minute). Live smoke test:
+  `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
 - Uncommitted work: none. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
 - Blockers: none
@@ -524,6 +527,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-13 — Agent: Claude Code (P2.9 C mutation checks; P2.9 D implemented)
+
+- Start: tree clean (two untracked root files `PowerShell 5.1` and `oft Corporation. All
+  rights reserved.` left untouched, as Karthik asked), HEAD 93bcfff, 391 passed, 1 skipped.
+- C mutation checks (commit 7dc3343): 5 in-memory mutants (mutated source exec'd into
+  `sys.modules`, then pytest.main; no repo file edited), all killed. Table in
+  `docs/plans/P2.9.md`. A run of four mutants back to back hit the 600 s tool timeout;
+  that was the timeout, not a hang (each run takes about 150 s).
+- D (plan approved by Karthik, two choices: raced task answers 403; scorer takes `?` or an
+  ask-phrase). Files: `bridge/app.py` (`POST /task` re-checks `halted` after the insert),
+  `evals/run.py` (`score`), `tests/test_bridge.py` (2 tests + helper
+  `stop_during_task_insert`), `tests/test_eval_scoring.py` (1 test), docs.
+- Red run: latching test got 200 with a task id; scorer test failed. Core-Stop test passed
+  before and after (it pins that a core Stop does not latch).
+- Green: `rtk proxy uv run python -m pytest` -> 394 passed, 1 skipped. Mutants D1 (no
+  re-check), D2 (403 but task not marked stopped), D3 (scorer `?` only): each killed.
+  Evals `uv run python evals/run.py` -> 40/40 (clarifying 5/5, median 1.1 s).
+- Stopped at: P2.9 complete. P3 not started. Next concrete step: Karthik's restore point,
+  then P3.1 on his go.
 
 ### 2026-11-12 — Agent: Claude Code (P2.8 adversarial review; P2.9 planned, docs only)
 

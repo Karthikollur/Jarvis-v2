@@ -1463,6 +1463,46 @@ def test_core_stop_does_not_latch(sandbox):
     assert halted(client)
 
 
+def stop_during_task_insert(client, headers):
+    """Patch the audit log so a Stop lands inside `/task`: past its latch check, before the
+    task is inserted (P2.9 R7). Returns (patcher, raced task ids)."""
+    original = AuditLog.write
+    raced = []
+
+    def write(self, event, **fields):
+        if event == "task" and "tainted" in fields and not raced:
+            raced.append(fields["task_id"])
+            assert stop(client, headers).status_code == 200
+        return original(self, event, **fields)
+
+    return patch.object(AuditLog, "write", write), raced
+
+
+def test_task_created_during_a_latching_stop_is_stopped(sandbox):
+    client, root, outside = sandbox
+    patcher, raced = stop_during_task_insert(client, ui_headers(root))
+    with patcher:
+        refused = client.post("/task")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "stopped")
+    assert [e["event"] for e in audit(root)[-3:]] == ["stop", "task", "task"]
+    assert audit(root)[-1] | {"ts": None} == {
+        "ts": None, "event": "task", "task_id": raced[0], "refused": "stopped",
+    }
+    assert resume(client, ui_headers(root)).status_code == 200
+    # Resuming does not revive it: it existed when the Stop ran.
+    assert call(client, raced[0], "get_time").json()["detail"] == "task stopped"
+
+
+def test_task_created_during_a_core_stop_still_runs(sandbox):
+    """A core Stop does not latch (P2.8 D), so the fix for R7 must not refuse this task."""
+    client, root, outside = sandbox
+    patcher, raced = stop_during_task_insert(client, None)
+    with patcher:
+        created = client.post("/task")
+    assert created.json() == {"task_id": raced[0]}
+    assert call(client, raced[0], "get_time").json() == {"result": "now"}
+
+
 def test_latch_and_resume_are_audited(sandbox):
     client, root, outside = sandbox
     stop(client)

@@ -45,9 +45,11 @@ def score(case: dict[str, Any], calls: list[Call], reply: str) -> dict[str, bool
     # answer / refuse / clarify: the model must not touch any tool.
     passed = not calls
     if case["expect"] == "clarify":
-        # ponytail: "contains a question mark" is the whole clarify detector.
-        # Refuse vs answer wording is not judged; read the printed replies.
-        passed = passed and "?" in reply
+        # ponytail: a question mark or a fixed ask-phrase is the whole clarify detector
+        # (a03 asks "Please specify ..." with no `?`). Refuse vs answer wording is not
+        # judged; read the printed replies.
+        asks = ("?", "please specify", "please provide", "which ", "tell me", "i need to know")
+        passed = passed and any(ask in reply.lower() for ask in asks)
     return {"tool_ok": not calls, "args_ok": True, "passed": passed}
 
 

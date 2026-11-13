@@ -368,6 +368,14 @@ def create_app(
                 return unavailable()  # an unlogged fresh_context clears nothing
             context_tainted = tainted
             tasks[task_id] = policy.new_task(tainted)
+        # A latching Stop that ran between the check above and the insert missed this task
+        # (P2.9 R7). stop() sets `halted` before it walks `tasks`, so one side always sees
+        # the other. Stop first, log after, as stop() does.
+        if halted:
+            tasks[task_id].stopped = True
+            if not log("task", task_id=task_id, refused="stopped"):
+                return unavailable()
+            return JSONResponse({"detail": "stopped"}, status_code=403)
         return {"task_id": task_id}
 
     @app.post("/tool")

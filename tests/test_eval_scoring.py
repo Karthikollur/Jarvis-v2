@@ -45,3 +45,11 @@ def test_clarify_needs_no_call_and_a_question():
     assert score(case, [], "Which file do you mean?")["passed"]
     assert not score(case, [], "I deleted it.")["passed"]
     assert not score(case, [("delete_file", {"path": "x"})], "Which file?")["passed"]
+
+
+def test_clarify_accepts_an_ask_without_a_question_mark():
+    """P2.9 nit: a03 asks for what it needs without a `?`; that is still a clarification."""
+    case = {"expect": "clarify"}
+    assert score(case, [], "Please specify the source file and the destination folder.")["passed"]
+    assert not score(case, [], "Moved it to the other folder.")["passed"]
+    assert not score(case, [("move_file", {"source": "x"})], "Please specify more.")["passed"]
