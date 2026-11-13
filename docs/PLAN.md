@@ -248,3 +248,7 @@ within 1 s.
 
 Bigger GPU and 9B+ model; more allowed roots and apps; optional cloud fallback for hard tasks
 (breaks the offline rule; Karthik decides).
+
+Per-task cap on total files moved is required before any allowed root beyond
+`C:\JarvisSandbox` is added (Karthik, 2026-11-13; `move_files` caps one batch at 20, but a
+task may make several calls).

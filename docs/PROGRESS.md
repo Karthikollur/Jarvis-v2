@@ -26,8 +26,10 @@ Newest session entry goes at the top of the Session log.
   if Windows refuses; result `{"focused": True}` only, no title). 480 passed, 3 skipped
   (a skip: symlink test, account cannot create symlinks). Pending: Karthik's manual
   checks through a running bridge ("open notepad", then focus it). Commit F
-  (`move_files`) needs its own detailed plan in `docs/plans/P3.2.md` section F, shown
-  to Karthik before any code (it changes `safety/policy.py` and the confirm path). P0 and P1 are complete, every task ticked in PLAN.md.
+  (`move_files`) is planned and approved, not implemented: `docs/plans/P3.2.md`
+  "Section F", two commits. Next: F1 `P3.2: move_files policy` (touches
+  `safety/policy.py` and `evals/stub_tools.py`; evals re-run, needs Ollama), then F2
+  `P3.2: move_files` (handler and `/pending`), each on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -250,6 +252,13 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-13 — P3.2 F (`move_files`): one batch moves at most 20 files; a failure
+  part-way stops and reports, nothing is moved back automatically. No per-task cap on
+  total files moved for now: per-task cap on total files moved is required before any
+  allowed root beyond `C:\JarvisSandbox` is added (also PLAN.md section 6). — the sandbox
+  is the only root today, so the blast radius is bounded; 20 keeps the approval list
+  readable. — Karthik
 
 - 2026-11-13 — P3.2 D: `config/apps.toml` lists notepad, calculator, explorer and vscode
   with fixed absolute commands (vscode at the per-user path, so the Windows user name is
