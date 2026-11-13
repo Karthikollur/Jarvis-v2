@@ -35,8 +35,12 @@ Newest session entry goes at the top of the Session log.
   a real folder, every source a plain file, every landing free, before the first move;
   a failure part-way stops with `complete: False`, nothing moved back; one undo record
   per file; `GET /pending` lists every source and landing). 518 passed, 3 skipped.
-  P3.2 COMPLETE, ticked in PLAN.md, plan marked Implemented. Next: P3.3 (T2 tools), only
-  on Karthik's go; not started. P0 and P1 are complete, every task ticked in PLAN.md.
+  P3.2 COMPLETE, ticked in PLAN.md, plan marked Implemented. P3.2b planned and approved
+  2026-11-13 (`docs/plans/P3.2b.md`, docs only, no code): `focus_window` retries under
+  `AttachThreadInput` when Windows refuses, skips the attach if the foreground window is
+  hung, always detaches, and judges success by `GetForegroundWindow`. One commit,
+  `P3.2b: focus_window gets the foreground`, on Karthik's go; then his manual check.
+  Next: P3.2b on Karthik's go, or P3.3 (T2 tools); neither started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -150,7 +154,10 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- P3.2 manual check (2026-11-13, by Karthik through a running bridge, audit lines read
+- (Karthik, 2026-11-13) Should focus_window be limited to windows of allowlisted apps?
+  Decide before any keyboard-input tool exists.
+
+- (Decided 2026-11-13: option (a), planned as P3.2b; see Decisions.) P3.2 manual check (2026-11-13, by Karthik through a running bridge, audit lines read
   by the agent): `open_app` notepad PASS (`opened`, pid 27772, window appeared);
   `open_app` cmd PASS (403 `app: not on the allowlist`); an expired task refused
   (`time budget exceeded (120 s)`). `focus_window` notepad FAIL: the window was found,
@@ -288,6 +295,13 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-13 — P3.2b: `focus_window` gets the foreground by attaching to the foreground
+  thread's input (`AttachThreadInput`) when the plain call is refused; no attach if that
+  window is hung (`IsHungAppWindow`); no simulated key presses, no system-setting change,
+  no minimise-then-restore fallback. If Windows still refuses: stop and ask. — the manual
+  check showed Windows' foreground lock refuses a background process; attaching is the
+  standard, smallest fix and grants no new right. — Karthik
 
 - 2026-11-13 — P3.2 F1: the eval set grows to 41 cases (new t24, `move_files`, arguments
   checked); `tests/test_eval_set.py` count 40 -> 41 (refuse 10, clarify 5 unchanged);
