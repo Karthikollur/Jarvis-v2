@@ -58,9 +58,9 @@ Newest session entry goes at the top of the Session log.
 - P2.9 commit C DONE 2026-11-12 (`P2.9: odd names and results`): undo records are
   ASCII-escaped JSON; `GET /pending` and `GET /undo` answer ASCII-escaped JSON; a result
   that cannot be encoded is logged and answered as `failed`; any audit write error fails
-  closed. Red run on 6 tests, then green. NOT DONE: mutation checks for C (usage limit);
-  run them first next session (remove each fix, the new tests must fail).
-- Next task: C's mutation checks, then P2.9 commit D on Karthik's go. P3.1 may start after
+  closed. Red run on 6 tests, then green. Mutation checks done 2026-11-13: 5 mutants
+  (one per fix), each killed by at least one C test; table in `docs/plans/P2.9.md`.
+- Next task: P2.9 commit D on Karthik's go. P3.1 may start after
   the restore point (still owed). Audit points 3, 4, 5, 6 stay open.
 - Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
   creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
