@@ -79,8 +79,15 @@ Newest session entry goes at the top of the Session log.
   `C:\Windows\System32\nvidia-smi.exe` (fixed arguments, no shell, 2 s timeout), `gpu: null`
   if it fails. P3.1 is complete and ticked in PLAN.md. All four T0 tools now run for real
   through `bridge/tools.py` `HANDLERS`.
-- Next task: P3.2 (T1 tools) on Karthik's go; it needs a plan first, and
-  `C:\JarvisSandbox` (still not created: ask Karthik) for any manual check. Audit points 3, 4, 5, 6
+- P3.2 planned and approved by Karthik 2026-11-13 (`docs/plans/P3.2.md`, docs only, no
+  code). Implement with Opus 5.5. Six commits, a go per commit: A `create_folder`,
+  B `rename_file`, C `move_file`, D `open_app` (+ `config/apps.toml`, Karthik approves the
+  file), E `focus_window`, F `move_files` (batch; own detailed plan first, it changes
+  `safety/`). Decisions: batch is a new tool built last; `open_app` / `focus_window` write
+  no undo record; allowlist is notepad, calculator, explorer, vscode (no browser).
+- Next task: P3.2 commit A (`P3.2: create_folder`, which also adds the
+  `tools.mutating(undo_log, commands)` wiring in `create_app`) on Karthik's go.
+  `C:\JarvisSandbox` is still not created: ask Karthik before any manual check. Audit points 3, 4, 5, 6
   stay open.
 - Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
   stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
