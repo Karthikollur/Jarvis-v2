@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P2.8 hardening complete, awaiting Karthik's review; P3 not started. P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13; P3.2 not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -74,13 +74,18 @@ Newest session entry goes at the top of the Session log.
 - P3.1 commit C DONE 2026-11-13 (`P3.1: list_windows`): visible, titled, unowned
   top-level windows (ctypes `EnumWindows`); `{"title", "pid", "app"}`, titles cut to 200
   characters, 50-window cap, no window handles.
-- Next task: P3.1 commit D (`system_stats`) on Karthik's go; needs his answers on the GPU
-  source and the caps (`docs/plans/P3.1.md`, Questions). Audit points 3, 4, 5, 6
+- P3.1 commit D DONE 2026-11-13 (`P3.1: system_stats`): CPU % from two `GetSystemTimes`
+  samples 0.2 s apart; RAM from `GlobalMemoryStatusEx`; GPU from
+  `C:\Windows\System32\nvidia-smi.exe` (fixed arguments, no shell, 2 s timeout), `gpu: null`
+  if it fails. P3.1 is complete and ticked in PLAN.md. All four T0 tools now run for real
+  through `bridge/tools.py` `HANDLERS`.
+- Next task: P3.2 (T1 tools) on Karthik's go; it needs a plan first, and
+  `C:\JarvisSandbox` (still not created: ask Karthik) for any manual check. Audit points 3, 4, 5, 6
   stay open.
 - Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
   stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
 - Windows restore point created by Karthik 2026-11-13 (PLAN.md 4.3, the P3 precondition).
-- Tests: `uv run python -m pytest` -> 416 passed, 2 skipped (2026-11-13, after P3.1 C). Both skips are symlink tests
+- Tests: `uv run python -m pytest` -> 423 passed, 2 skipped (2026-11-13, after P3.1 D). Both skips are symlink tests
   (bridge escape test, `read_text_file` symlink test): this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
@@ -540,6 +545,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-13 — Agent: Claude Code (P3.1 T0 tools, four commits)
+
+- Start: HEAD 202d7b2, tree clean except the two untracked root files (left alone),
+  394 passed, 1 skipped. Recorded Karthik's restore point and his real Ctrl+Alt+End check
+  (572c94f, with the P3.1 plan `docs/plans/P3.1.md`).
+- Commits, each on Karthik's go, each with a red run against a stub, then green, then
+  in-memory mutants: A `list_dir` (593999d, A1-A6), B `read_text_file` (7f31ec7, B1-B8),
+  C `list_windows` (bf1d669, C1-C7), D `system_stats` (this commit, S1-S9; S9 first
+  survived and got a test). Every mutant killed; tables in `docs/plans/P3.1.md`.
+- Files: new `bridge/tools.py` (handlers + `HANDLERS`), `bridge/app.py` (`handlers=None`
+  means `tools.HANDLERS`), new `tests/test_tools.py`, one comment in
+  `tests/test_bridge.py`, docs.
+- Deviations from the plan, all recorded in it: no `lstat` check in `read_text_file` (the
+  final-path check covers every followed link; a junction test proves it); the two old
+  "501" tests keep `list_windows`; no CPU clamp.
+- Tests: see Current state. Evals not re-run: the core still uses stub tools until P3.5.
+- No dependency added (stdlib + ctypes; `nvidia-smi` is already on the machine).
+  `C:\JarvisSandbox` not created.
+- Stopped at: P3.1 complete. Next concrete step: plan P3.2 (T1 tools, undo records,
+  batch confirmation) on Karthik's go.
 
 ### 2026-11-13 — Agent: Claude Code (P2.9 C mutation checks; P2.9 D implemented)
 

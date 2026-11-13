@@ -235,6 +235,83 @@ def test_list_windows_cap(monkeypatch):
     assert_plain(result)
 
 
+# --- system_stats -----------------------------------------------------------------
+
+
+def test_system_stats_on_this_machine():
+    result = tools.system_stats({})
+    assert set(result) == {"cpu_percent", "ram_used_gb", "ram_total_gb", "ram_percent", "gpu"}
+    assert 0 <= result["cpu_percent"] <= 100
+    assert 0 < result["ram_used_gb"] <= result["ram_total_gb"]
+    assert 0 < result["ram_percent"] <= 100
+    gpu = result["gpu"]
+    assert gpu is None or set(gpu) == {"name", "percent", "vram_used_gb", "vram_total_gb"}
+    assert_plain(result)
+
+
+def test_ram_numbers_from_fixed_memory_status(monkeypatch):
+    def status(pointer):
+        pointer._obj.ullTotalPhys, pointer._obj.ullAvailPhys = 16 * 1024**3, 4 * 1024**3
+        return 1
+
+    monkeypatch.setattr(tools._kernel32, "GlobalMemoryStatusEx", status)
+    monkeypatch.setattr(tools, "_cpu_percent", lambda: 0.0)
+    monkeypatch.setattr(tools, "_gpu", lambda: None)
+    result = tools.system_stats({})
+    assert (result["ram_used_gb"], result["ram_total_gb"], result["ram_percent"]) == (12.0, 16.0, 75.0)
+
+
+def test_cpu_percent_is_busy_share_between_two_samples(monkeypatch):
+    samples = iter([(1000, 4000), (1050, 4200)])  # (idle, kernel + user): 50 idle of 200
+    slept = []
+    monkeypatch.setattr(tools, "_cpu_times", lambda: next(samples))
+    monkeypatch.setattr(tools.time, "sleep", slept.append)
+    assert tools._cpu_percent() == 75.0
+    assert slept == [0.2]
+
+
+def test_gpu_line_parsed():
+    line = "NVIDIA GeForce RTX 3050 6GB Laptop GPU, 7, 512, 6144\n"
+    assert tools._parse_gpu(line) == {
+        "name": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+        "percent": 7.0,
+        "vram_used_gb": 0.5,
+        "vram_total_gb": 6.0,
+    }
+    for junk in ["", "\n", "GPU, [N/A], 1, 2", "only, three, fields", "x, 1, 2, 3, 4"]:
+        assert tools._parse_gpu(junk) is None
+
+
+def test_gpu_is_none_when_nvidia_smi_fails(monkeypatch, folders):
+    root, outside = folders
+    monkeypatch.setattr(tools, "NVIDIA_SMI", root / "missing.exe")
+    assert tools._gpu() is None
+    for error in [
+        tools.subprocess.TimeoutExpired("nvidia-smi", 2),
+        tools.subprocess.CalledProcessError(9, "nvidia-smi"),
+    ]:
+        def fail(*args, error=error, **kwargs):
+            raise error
+        monkeypatch.setattr(tools.subprocess, "run", fail)
+        assert tools._gpu() is None
+    # The rest still answers.
+    result = tools.system_stats({})
+    assert result["gpu"] is None and result["ram_total_gb"] > 0
+
+
+def test_nvidia_smi_is_run_fixed_without_a_shell(monkeypatch):
+    seen = {}
+
+    def run(command, **kwargs):
+        seen.update(command=command, **kwargs)
+        return tools.subprocess.CompletedProcess(command, 0, stdout="G, 1, 1024, 2048\n")
+
+    monkeypatch.setattr(tools.subprocess, "run", run)
+    assert tools._gpu()["vram_total_gb"] == 2.0
+    assert seen["command"][0] == str(tools.NVIDIA_SMI)
+    assert not seen.get("shell") and seen["timeout"] <= 2 and seen["check"]
+
+
 # --- through the bridge, with the production handler table ----------------------
 
 
@@ -302,6 +379,16 @@ def test_list_windows_taints_so_a_following_t1_call_waits(bridge):
     assert response.status_code == 200 and "windows" in response.json()["result"]
     queued = call(client, task, "create_folder", path=str(root / "b"))
     assert queued.status_code == 202 and "pending_id" in queued.json()
+
+
+def test_system_stats_does_not_taint(bridge):
+    """Numbers and a vendor GPU name only: a following T1 call passes the policy (no
+    create_folder handler yet: 501, not 202)."""
+    client, root = bridge
+    task = fresh_task(client)
+    response = call(client, task, "system_stats")
+    assert response.status_code == 200 and "cpu_percent" in response.json()["result"]
+    assert call(client, task, "create_folder", path=str(root / "b")).status_code == 501
 
 
 def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):

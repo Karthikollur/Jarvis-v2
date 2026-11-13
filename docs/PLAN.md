@@ -167,7 +167,7 @@ any tested route. Karthik has reviewed the diff.
 Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by Karthik. P3 cannot start until audit point 9
 (see P2.6) is done and tested.
 
-- [ ] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
+- [x] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
       `read_text_file` (size cap).
 - [ ] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
       `move_file`, `rename_file`, all with undo records. One batch confirmation for a

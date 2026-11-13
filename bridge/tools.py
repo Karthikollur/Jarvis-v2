@@ -8,6 +8,8 @@ import ctypes
 from ctypes import wintypes
 import msvcrt
 import os
+import subprocess
+import time
 from typing import Any
 
 from safety.policy import MAX_TEXT
@@ -147,8 +149,89 @@ def list_windows(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Fixed path and arguments, no shell, never reachable by the model (Karthik, 2026-11-13).
+NVIDIA_SMI = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe")
+_GPU_QUERY = [
+    "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+    "--format=csv,noheader,nounits",
+]
+
+
+class _MemoryStatus(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", wintypes.DWORD), ("dwMemoryLoad", wintypes.DWORD),
+        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
+
+
+_kernel32.GetSystemTimes.argtypes = [ctypes.POINTER(ctypes.c_ulonglong)] * 3
+_kernel32.GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(_MemoryStatus)]
+
+
+def _cpu_times() -> tuple[int, int]:
+    """(idle, total) in 100 ns units since boot. Kernel time includes idle time."""
+    idle, kernel, user = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+    if not _kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return idle.value, kernel.value + user.value
+
+
+def _cpu_percent() -> float:
+    idle1, total1 = _cpu_times()
+    time.sleep(0.2)  # ponytail: blocks the call 0.2 s; a background sampler if that matters
+    idle2, total2 = _cpu_times()
+    total = total2 - total1
+    return 0.0 if total <= 0 else 100 * (1 - (idle2 - idle1) / total)
+
+
+def _parse_gpu(text: str) -> dict[str, Any] | None:
+    """First line of nvidia-smi's CSV (ponytail: first GPU only). None if it is not
+    exactly name + three numbers."""
+    try:
+        name, *numbers = (part.strip() for part in text.strip().splitlines()[0].split(","))
+        percent, used, total = (float(number) for number in numbers)
+    except (IndexError, ValueError):  # no line, wrong field count, or e.g. "[N/A]"
+        return None
+    return {
+        "name": name,
+        "percent": round(percent, 1),
+        "vram_used_gb": round(used / 1024, 1),  # nvidia-smi reports MiB
+        "vram_total_gb": round(total / 1024, 1),
+    }
+
+
+def _gpu() -> dict[str, Any] | None:
+    """None when there is no NVIDIA GPU or nvidia-smi fails: the rest still answers."""
+    try:
+        done = subprocess.run(
+            [str(NVIDIA_SMI), *_GPU_QUERY], capture_output=True, encoding="utf-8",
+            errors="replace", timeout=2, check=True, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _parse_gpu(done.stdout)
+
+
+def system_stats(args: dict[str, Any]) -> dict[str, Any]:
+    memory = _MemoryStatus(dwLength=ctypes.sizeof(_MemoryStatus))
+    if not _kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    used = memory.ullTotalPhys - memory.ullAvailPhys
+    return {
+        "cpu_percent": round(_cpu_percent(), 1),
+        "ram_used_gb": round(used / 1024**3, 1),
+        "ram_total_gb": round(memory.ullTotalPhys / 1024**3, 1),
+        "ram_percent": round(100 * used / memory.ullTotalPhys, 1),
+        "gpu": _gpu(),
+    }
+
+
 HANDLERS = {
     "list_dir": list_dir,
     "read_text_file": read_text_file,
     "list_windows": list_windows,
+    "system_stats": system_stats,
 }
