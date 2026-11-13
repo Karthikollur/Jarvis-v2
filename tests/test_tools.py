@@ -223,13 +223,13 @@ def test_app_name_is_the_image_file_name_only():
 
 
 def test_list_windows_keeps_only_taskbar_windows(monkeypatch):
-    # (title, pid, visible, owned)
+    # (title, pid, visible, owned, hwnd)
     raw = [
-        ("Editor", 1, True, False),
-        ("hidden", 2, False, False),
-        ("dialog", 3, True, True),  # owned: a dialog of another window
-        ("", 4, True, False),
-        ("x" * 300, 5, True, False),
+        ("Editor", 1, True, False, 11),
+        ("hidden", 2, False, False, 12),
+        ("dialog", 3, True, True, 13),  # owned: a dialog of another window
+        ("", 4, True, False, 14),
+        ("x" * 300, 5, True, False, 15),
     ]
     monkeypatch.setattr(tools, "_all_windows", lambda: raw)
     monkeypatch.setattr(tools, "_app", lambda pid: f"app{pid}.exe")
@@ -244,7 +244,7 @@ def test_list_windows_keeps_only_taskbar_windows(monkeypatch):
 
 
 def test_list_windows_cap(monkeypatch):
-    raw = [(f"w{i}", i, True, False) for i in range(tools.MAX_WINDOWS + 1)]
+    raw = [(f"w{i}", i, True, False, 100 + i) for i in range(tools.MAX_WINDOWS + 1)]
     monkeypatch.setattr(tools, "_all_windows", lambda: raw)
     monkeypatch.setattr(tools, "_app", lambda pid: None)
     result = tools.list_windows({})
@@ -823,3 +823,109 @@ def test_open_app_on_a_tainted_task_waits_for_approval(bridge, fake_popen):
     assert queued.status_code == 202 and fake_popen == []
     approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
     assert approved.status_code == 200 and len(fake_popen) == 1
+
+
+# --- focus_window (P3.2 E) --------------------------------------------------------
+
+# (title, pid, visible, owned, hwnd), in EnumWindows order: topmost first.
+WINDOWS = [
+    ("", 1, True, False, 101),  # untitled: never a candidate
+    ("Secret notepad dialog", 2, True, True, 102),  # owned (a dialog): never a candidate
+    ("Hidden notepad", 3, False, False, 103),  # invisible: never a candidate
+    ("Untitled - Notepad", 4, True, False, 104),
+    ("main.py - Jarvis_v2", 5, True, False, 105),
+    ("notes.txt - Notepad", 6, True, False, 106),
+]
+APPS_BY_PID = {4: "Notepad.exe", 5: "Code.exe", 6: "Notepad.exe"}
+
+
+class FakeUser32:
+    def __init__(self, minimised=(), refuses=False):
+        self.minimised, self.refuses, self.calls = set(minimised), refuses, []
+
+    def IsIconic(self, hwnd):
+        return hwnd in self.minimised
+
+    def ShowWindow(self, hwnd, command):
+        self.calls.append(("show", hwnd, command))
+        return True
+
+    def SetForegroundWindow(self, hwnd):
+        self.calls.append(("foreground", hwnd))
+        return not self.refuses
+
+
+@pytest.fixture
+def desktop(monkeypatch):
+    """Fake windows and a fake user32: no real window is ever touched by these tests."""
+    user32 = FakeUser32()
+    monkeypatch.setattr(tools, "_all_windows", lambda: WINDOWS)
+    monkeypatch.setattr(tools, "_app", APPS_BY_PID.get)
+    monkeypatch.setattr(tools, "_user32", user32)
+    return user32
+
+
+def focus(title):
+    return tools.mutating(None, {})["focus_window"]({"title": title})
+
+
+def test_focus_window_title_contains_case_insensitive_topmost_wins(desktop):
+    result = focus("NOTEPAD")
+    assert result == {"focused": True}  # no title: the tool does not taint (rule 5)
+    assert_plain(result)
+    assert desktop.calls == [("foreground", 104)]  # topmost match, not 106 or a skipped one
+
+
+def test_focus_window_matches_the_app_name_without_exe(desktop):
+    focus("code")
+    assert desktop.calls == [("foreground", 105)]
+
+
+@pytest.mark.parametrize("title", ["code.exe", "cod", "secret", "hidden", "nothing like it"])
+def test_focus_window_no_match_fails_and_touches_nothing(desktop, title):
+    with pytest.raises(LookupError):
+        focus(title)
+    assert desktop.calls == []
+
+
+def test_focus_window_restores_a_minimised_window(desktop):
+    desktop.minimised = {105}
+    focus("jarvis_v2")
+    assert desktop.calls == [("show", 105, tools.SW_RESTORE), ("foreground", 105)]
+    assert tools.SW_RESTORE == 9
+
+
+def test_focus_window_refused_by_windows_fails(desktop):
+    desktop.refuses = True
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+
+
+def test_all_windows_on_this_desktop_carries_a_handle():
+    """Real call; read only."""
+    for title, pid, visible, owned, hwnd in tools._all_windows():
+        assert isinstance(hwnd, int) and hwnd
+
+
+def test_focus_window_through_the_bridge(bridge, desktop):
+    client, root = bridge
+    response = call(client, fresh_task(client), "focus_window", title="notepad")
+    assert response.status_code == 200 and response.json() == {"result": {"focused": True}}
+    assert desktop.calls == [("foreground", 104)]
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []  # audit line only
+
+
+def test_focus_window_on_a_tainted_task_waits_for_approval(bridge, desktop):
+    client, root = bridge
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "focus_window", title="notepad")
+    assert queued.status_code == 202 and desktop.calls == []
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and desktop.calls == [("foreground", 104)]
+
+
+def test_focus_window_refuses_odd_titles(bridge, desktop):
+    client, root = bridge
+    for title in ["", "a\nb", "a\u202eb", "x" * 10_000]:
+        assert call(client, fresh_task(client), "focus_window", title=title).status_code == 403
+    assert desktop.calls == []

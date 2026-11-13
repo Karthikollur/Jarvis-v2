@@ -116,8 +116,8 @@ _kernel32.QueryFullProcessImageNameW.argtypes = [
 _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 
-def _all_windows() -> list[tuple[str, int, bool, bool]]:
-    """Every top-level window: (title, pid, visible, owned)."""
+def _all_windows() -> list[tuple[str, int, bool, bool, int]]:
+    """Every top-level window, topmost first: (title, pid, visible, owned, hwnd)."""
     found = []
 
     def visit(hwnd, _):
@@ -126,7 +126,8 @@ def _all_windows() -> list[tuple[str, int, bool, bool]]:
         pid = wintypes.DWORD()
         _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         visible = bool(_user32.IsWindowVisible(hwnd))
-        found.append((buffer.value, pid.value, visible, bool(_user32.GetWindow(hwnd, GW_OWNER))))
+        owned = bool(_user32.GetWindow(hwnd, GW_OWNER))
+        found.append((buffer.value, pid.value, visible, owned, hwnd))
         return True
 
     if not _user32.EnumWindows(_WNDENUMPROC(visit), 0):
@@ -149,11 +150,16 @@ def _app(pid: int) -> str | None:
         _kernel32.CloseHandle(handle)
 
 
+def _candidates() -> list[tuple[str, int, int]]:
+    """What the taskbar shows: visible, titled, not owned (not a dialog). (title, pid, hwnd)."""
+    return [(title, pid, hwnd) for title, pid, visible, owned, hwnd in _all_windows()
+            if visible and not owned and title]
+
+
 def list_windows(args: dict[str, Any]) -> dict[str, Any]:
     """What the taskbar shows: visible, titled, not owned by another window (not a dialog).
     No window handles: focus_window (P3.2) takes a title."""
-    shown = [(title, pid) for title, pid, visible, owned in _all_windows()
-             if visible and not owned and title]
+    shown = [(title, pid) for title, pid, hwnd in _candidates()]
     return {
         "windows": [
             {"title": title[:MAX_TEXT], "pid": pid, "app": _app(pid)}
@@ -243,6 +249,31 @@ def system_stats(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+SW_RESTORE = 9
+_user32.IsIconic.argtypes = [wintypes.HWND]
+_user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+_user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+
+
+def focus_window(args: dict[str, Any]) -> dict[str, Any]:
+    """Bring forward the topmost taskbar window whose title contains the text, or whose
+    app file name without .exe equals it (both case-insensitive). The result carries no
+    title: the tool does not taint, so it must not hand untrusted text back (rule 5)."""
+    wanted = args["title"].casefold()
+    for title, pid, hwnd in _candidates():  # EnumWindows order: the first match is topmost
+        app = _app(pid) or ""
+        if wanted in title.casefold() or app.casefold().removesuffix(".exe") == wanted:
+            break
+    else:
+        raise LookupError("no matching window")
+    if _user32.IsIconic(hwnd):
+        _user32.ShowWindow(hwnd, SW_RESTORE)
+    # ponytail: Windows may refuse to hand over the foreground; a fix is proposed, not improvised.
+    if not _user32.SetForegroundWindow(hwnd):
+        raise OSError("Windows refused to bring the window forward")
+    return {"focused": True}
+
+
 HANDLERS = {
     "list_dir": list_dir,
     "read_text_file": read_text_file,
@@ -320,5 +351,5 @@ def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
 
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
-        "open_app": open_app,
+        "open_app": open_app, "focus_window": focus_window,
     }

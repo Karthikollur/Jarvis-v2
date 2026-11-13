@@ -21,9 +21,13 @@ Newest session entry goes at the top of the Session log.
   inside `destination`). Commit D done (`open_app`: new `config/apps.toml`, approved by
   Karthik; `tools.load_commands` stops the bridge on a bad entry; handler runs the fixed
   command with `shell=False` and DEVNULL handles, model supplies only the name; no undo
-  record). 467 passed, 3 skipped (a skip: symlink test, account cannot create symlinks).
-  Pending: Karthik's manual "open notepad" check through a running bridge. Commit E
-  (`P3.2: focus_window`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  record). Commit E done (`focus_window`: topmost taskbar window whose title contains the
+  text or whose app name without `.exe` equals it; restores a minimised window; fails
+  if Windows refuses; result `{"focused": True}` only, no title). 480 passed, 3 skipped
+  (a skip: symlink test, account cannot create symlinks). Pending: Karthik's manual
+  checks through a running bridge ("open notepad", then focus it). Commit F
+  (`move_files`) needs its own detailed plan in `docs/plans/P3.2.md` section F, shown
+  to Karthik before any code (it changes `safety/policy.py` and the confirm path). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
