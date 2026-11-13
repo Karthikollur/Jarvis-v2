@@ -24,7 +24,8 @@ Newest session entry goes at the top of the Session log.
   record). Commit E done (`focus_window`: topmost taskbar window whose title contains the
   text or whose app name without `.exe` equals it; restores a minimised window; fails
   if Windows refuses; result `{"focused": True}` only, no title). 480 passed, 3 skipped
-  (a skip: symlink test, account cannot create symlinks). Pending: Karthik's manual
+  (a skip: symlink test, account cannot create symlinks). Manual check done 2026-11-13:
+  `open_app` works, `focus_window` is refused by Windows (Open questions). Was pending: manual
   checks through a running bridge ("open notepad", then focus it). Commit F
   (`move_files`, `docs/plans/P3.2.md` "Section F"): F1 done (`P3.2: move_files policy`:
   `MAX_BATCH = 20`, `Rule.list_params`, `_resolve_batch` checks every source and every
@@ -148,6 +149,19 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- P3.2 manual check (2026-11-13, by Karthik through a running bridge, audit lines read
+  by the agent): `open_app` notepad PASS (`opened`, pid 27772, window appeared);
+  `open_app` cmd PASS (403 `app: not on the allowlist`); an expired task refused
+  (`time budget exceeded (120 s)`). `focus_window` notepad FAIL: the window was found,
+  then `OSError: Windows refused to bring the window forward` (500 `Tool failed`).
+  Cause: Windows' foreground lock; the bridge is a background process, so
+  `SetForegroundWindow` is refused. The handler fails honestly (E7), but the tool does
+  not work for a non-minimised window in real use. Not fixed. Needs a decision and a
+  small plan (it changes `bridge/tools.py`): (a) attach to the foreground thread's input
+  (`AttachThreadInput`) around the call; (b) minimise then restore the window (crude,
+  no extra rights); (c) accept, and let the UI (P6, a foreground process) do the focus.
+  Not tried by hand: a minimised Notepad (restore path).
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
