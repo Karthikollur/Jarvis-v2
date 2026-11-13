@@ -63,10 +63,11 @@ Newest session entry goes at the top of the Session log.
 - P2.9 commit D DONE 2026-11-13 (`P2.9: stop race`): a task created while a latching Stop
   runs is marked stopped and answered 403 `stopped`; the clarify scorer accepts a fixed
   ask-phrase as well as `?`. P2.9 is complete and ticked in PLAN.md.
-- Next task: P3.1 after the restore point (still owed; Karthik's call). Audit points
+- Next task: P3.1 (plan `docs/plans/P3.1.md`, waits for Karthik's go). Audit points
   3, 4, 5, 6 stay open.
-- Not yet checked by a human: a real bridge start and a real `Ctrl+Alt+End` press (Karthik;
-  creates `%LOCALAPPDATA%\Jarvis`). Expect a `stop` line with `"source": "hotkey"`.
+- Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
+  stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
+- Windows restore point created by Karthik 2026-11-13 (PLAN.md 4.3, the P3 precondition).
 - Tests: `uv run python -m pytest` -> 394 passed, 1 skipped (2026-11-13, after P2.9 D). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
