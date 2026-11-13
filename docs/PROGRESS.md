@@ -14,8 +14,11 @@ Newest session entry goes at the top of the Session log.
   P3.5 now carries the runtime tools guard. P3.2 in progress (plan
   `docs/plans/P3.2.md`): commit A done (`create_folder` runs for real: `os.mkdir`, then an
   undo record; an unrecorded folder is left and the call fails; `tools.mutating(undo_log)`
-  wired into `create_app` when `handlers is None`). 435 passed, 2 skipped. Commit B
-  (`P3.2: rename_file`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  wired into `create_app` when `handlers is None`); commit B done (`rename_file`
+  via shared `_move`: `lstat` must say plain file, `os.rename` to the policy's `target`,
+  then an undo `moved` record; an unrecorded move is renamed back and the call fails).
+  443 passed, 3 skipped (new skip: symlink test, account cannot create symlinks). Commit C
+  (`P3.2: move_file`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it

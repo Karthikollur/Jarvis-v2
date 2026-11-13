@@ -10,6 +10,8 @@ import ctypes
 from ctypes import wintypes
 import msvcrt
 import os
+from pathlib import Path
+import stat
 import subprocess
 import time
 from typing import Any
@@ -261,4 +263,19 @@ def mutating(undo_log) -> dict[str, Any]:
             raise OSError(f"folder created but not recorded, left in place: {error}") from error
         return {"created": True, "undo_id": record.id}
 
-    return {"create_folder": create_folder}
+    def _move(source: Path, target: Path, tool: str) -> str:
+        """Move one plain file to the policy's `target`; returns the undo record id."""
+        if not stat.S_ISREG(os.lstat(source).st_mode):  # lstat: a link is never followed
+            raise OSError("not a plain file")  # files only in v1 (P3.2 rule 3)
+        os.rename(source, target)  # refuses an existing target and a cross-drive move
+        try:
+            return undo_log.moved(source, target, tool).id
+        except Exception as error:
+            # Act, then record (rule 4): an unrecorded move is put back; the call fails.
+            os.rename(target, source)
+            raise OSError(f"moved but not recorded, moved back: {error}") from error
+
+    def rename_file(args: dict[str, Any]) -> dict[str, Any]:
+        return {"renamed": True, "undo_id": _move(args["path"], args["target"], "rename_file")}
+
+    return {"create_folder": create_folder, "rename_file": rename_file}

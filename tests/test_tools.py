@@ -3,6 +3,7 @@
 import _winapi
 import json
 import os
+import stat
 from pathlib import Path
 import tempfile
 
@@ -420,6 +421,9 @@ class BrokenLog:
     def created(self, path, tool):
         raise OSError("disk full")
 
+    def moved(self, source, destination, tool):
+        raise OSError("disk full")
+
 
 @pytest.fixture
 def undo_log(folders):
@@ -503,3 +507,111 @@ def test_create_folder_outside_the_root_is_refused(bridge):
     assert response.status_code == 403
     assert not (outside / "new").exists()
     assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+# --- rename_file (P3.2 B) ---------------------------------------------------------
+
+
+def rename(undo_log, source, target, **extra):
+    return tools.mutating(undo_log)["rename_file"]({"path": source, "target": target, **extra})
+
+
+def test_rename_file_renames_and_records(folders, undo_log):
+    root, outside = folders
+    (root / "a.txt").write_text("keep")
+    # A doctored new_name is ignored: only the policy's `target` is used (rule 1).
+    result = rename(undo_log, root / "a.txt", root / "b.txt", new_name="evil.txt")
+    assert (root / "b.txt").read_text() == "keep"
+    assert not (root / "a.txt").exists() and not (root / "evil.txt").exists()
+    [record] = undo_log.list()
+    assert result == {"renamed": True, "undo_id": record.id}
+    assert (record.kind, record.tool, record.source, record.destination) == (
+        "moved", "rename_file", str(root / "a.txt"), str(root / "b.txt"),
+    )
+    assert_plain(result)
+
+
+def test_rename_file_never_overwrites(folders, undo_log):
+    root, outside = folders
+    (root / "a.txt").write_text("a")
+    (root / "b.txt").write_text("b")
+    with pytest.raises(OSError):
+        rename(undo_log, root / "a.txt", root / "b.txt")
+    assert (root / "a.txt").read_text() == "a" and (root / "b.txt").read_text() == "b"
+    assert undo_log.list() == []
+
+
+def test_rename_file_refuses_a_folder(folders, undo_log):
+    root, outside = folders
+    (root / "dir").mkdir()
+    with pytest.raises(OSError, match="not a plain file"):
+        rename(undo_log, root / "dir", root / "dir2")
+    assert (root / "dir").is_dir() and not (root / "dir2").exists() and undo_log.list() == []
+
+
+def test_rename_file_refuses_a_link(folders, undo_log):
+    root, outside = folders
+    (outside / "secret.txt").write_text("secret")
+    try:
+        os.symlink(outside / "secret.txt", root / "link.txt")
+    except OSError:
+        pytest.skip("this account may not create symlinks")
+    with pytest.raises(OSError, match="not a plain file"):
+        rename(undo_log, root / "link.txt", root / "moved.txt")
+    assert os.path.lexists(root / "link.txt") and not os.path.lexists(root / "moved.txt")
+    assert undo_log.list() == []
+
+
+def test_rename_file_unrecorded_is_moved_back(folders):
+    """Rule 4: a move that cannot be recorded is renamed back and the call fails."""
+    root, outside = folders
+    (root / "a.txt").write_text("keep")
+    with pytest.raises(OSError, match="not recorded"):
+        rename(BrokenLog(), root / "a.txt", root / "b.txt")
+    assert (root / "a.txt").read_text() == "keep" and not (root / "b.txt").exists()
+
+
+def test_rename_file_through_the_bridge_is_undoable(bridge):
+    client, root = bridge
+    (root / "a.txt").write_text("keep")
+    response = call(client, fresh_task(client), "rename_file", path=str(root / "a.txt"), new_name="b.txt")
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["renamed"] is True and (root / "b.txt").read_text() == "keep"
+    undone = client.post("/undo", json={"record_id": result["undo_id"]}, headers=ui(root))
+    assert undone.status_code == 200
+    assert (root / "a.txt").read_text() == "keep" and not (root / "b.txt").exists()
+
+
+def test_rename_file_on_a_tainted_task_waits_for_approval(bridge):
+    client, root = bridge
+    (root / "a.txt").write_text("keep")
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "rename_file", path=str(root / "a.txt"), new_name="b.txt")
+    assert queued.status_code == 202 and (root / "a.txt").exists()
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and (root / "b.txt").read_text() == "keep"
+
+
+def test_rename_file_new_name_cannot_leave_the_folder(bridge):
+    client, root = bridge
+    (root / "a.txt").write_text("keep")
+    for new_name in ["..\b.txt", "sub/b.txt", "C:b.txt"]:
+        response = call(client, fresh_task(client), "rename_file", path=str(root / "a.txt"), new_name=new_name)
+        assert response.status_code == 403, new_name
+    assert (root / "a.txt").read_text() == "keep"
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+def test_rename_file_trusts_lstat_not_the_name(folders, undo_log, monkeypatch):
+    """Where symlinks cannot be made (skip above), pin that a link as `lstat` reports it
+    is refused: the check reads the item itself, never follows it."""
+    root, outside = folders
+    (root / "a.txt").write_text("keep")
+    real = os.lstat(root / "a.txt")
+    as_link = os.stat_result((stat.S_IFLNK | 0o777, *tuple(real)[1:]))
+    # Undone on leaving the block, even on failure: the temp folder's cleanup needs the real lstat.
+    with monkeypatch.context() as patch, pytest.raises(OSError, match="not a plain file"):
+        patch.setattr(tools.os, "lstat", lambda path: as_link)
+        rename(undo_log, root / "a.txt", root / "b.txt")
+    assert (root / "a.txt").exists() and undo_log.list() == []
