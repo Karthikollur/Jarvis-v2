@@ -5,7 +5,7 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13; P3.2 not started. P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13; P3.1b planned, then P3.2 (neither started). P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -85,7 +85,22 @@ Newest session entry goes at the top of the Session log.
   file), E `focus_window`, F `move_files` (batch; own detailed plan first, it changes
   `safety/`). Decisions: batch is a new tool built last; `open_app` / `focus_window` write
   no undo record; allowlist is notepad, calculator, explorer, vscode (no browser).
-- Next task: P3.2 commit A (`P3.2: create_folder`, which also adds the
+- Reviewed 2026-11-13 (Opus 5.5, read-only, adversarial, `git diff 1d341fd..HEAD -- safety
+  bridge` plus tests; probes and the red run in a scratch folder, nothing committed): no
+  way found outside the roots, without a token, or to a T2 action without a click. P2.8
+  commit B's tests fail on behaviour against the pre-B code (33 of 34; the 34th is the
+  stub-name drift check). Three gaps: G1 `POST /outcome` answers 500 when a result holds
+  a lone surrogate; G2 `read_text_file` reads a hard link inside the root whose other name
+  is outside it; G3 the built-in tools guard scans only the top level of `core/` and
+  `evals/` and misses `**` unpacking. Evals `--only a` -> 5/5.
+- P3.1b planned and approved by Karthik 2026-11-13 (`docs/plans/P3.1b.md`, docs only, no
+  code). Implement with Opus 5.5. Three commits, a go per commit: A `/outcome` uses
+  `encoded()`; B `_single_name(fd)` in `bridge/tools.py` refuses `st_nlink != 1`, and
+  becomes a rule for every handler that opens content (no P3.2 handler does; table in the
+  plan; rule 7 added to `docs/plans/P3.2.md` in that commit); C tests only: `rglob` and
+  no `**` in calls, plus the P3.5 runtime-guard requirement in PLAN.md.
+- Next task: P3.1b commit A (`P3.1b: outcome survives odd results`) on Karthik's go, then
+  B and C. After P3.1b: P3.2 commit A (`P3.2: create_folder`, which also adds the
   `tools.mutating(undo_log, commands)` wiring in `create_app`) on Karthik's go.
   `C:\JarvisSandbox` is still not created: ask Karthik before any manual check. Audit points 3, 4, 5, 6
   stay open.
