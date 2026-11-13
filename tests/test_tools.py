@@ -106,6 +106,84 @@ def test_list_dir_on_a_file_fails(folders):
         tools.list_dir({"path": root / "f.txt"})
 
 
+# --- read_text_file ---------------------------------------------------------------
+
+
+def read(path):
+    return tools.read_text_file({"path": path})
+
+
+def test_read_text_file_small(folders):
+    root, outside = folders
+    (root / "a.txt").write_bytes(b"hello\nworld")
+    result = read(root / "a.txt")
+    assert result == {"text": "hello\nworld", "bytes": 11, "truncated": False}
+    assert_plain(result)
+
+
+def test_read_text_file_cap(folders):
+    root, outside = folders
+    (root / "exact.txt").write_bytes(b"a" * tools.MAX_BYTES)
+    exact = read(root / "exact.txt")
+    assert (len(exact["text"]), exact["bytes"], exact["truncated"]) == (16384, 16384, False)
+    (root / "over.txt").write_bytes(b"a" * tools.MAX_BYTES + b"bcd")
+    over = read(root / "over.txt")
+    assert (over["text"], over["bytes"], over["truncated"]) == ("a" * 16384, 16387, True)
+    assert_plain(over)
+
+
+def test_read_text_file_empty_bom_and_bad_utf8(folders):
+    root, outside = folders
+    (root / "e.txt").write_bytes(b"")
+    assert read(root / "e.txt") == {"text": "", "bytes": 0, "truncated": False}
+    (root / "bom.txt").write_bytes(b"\xef\xbb\xbfhi")
+    assert read(root / "bom.txt")["text"] == "hi"
+    (root / "bad.txt").write_bytes(b"ab\xffcd")
+    result = read(root / "bad.txt")
+    assert result["text"] == "ab�cd"
+    assert_plain(result)
+
+
+def test_read_text_file_refuses_binary_and_folders(folders):
+    root, outside = folders
+    (root / "bin.dat").write_bytes(b"ab\x00cd")
+    with pytest.raises(ValueError):
+        read(root / "bin.dat")
+    with pytest.raises(OSError):
+        read(root)
+
+
+def test_read_text_file_refuses_what_it_did_not_check(folders, monkeypatch):
+    """If what was opened is not the checked path (a link swapped in after the policy
+    check), the read is refused, not followed."""
+    root, outside = folders
+    (root / "a.txt").write_text("x")
+    monkeypatch.setattr(tools, "_final_path", lambda fd: str(outside / "a.txt"))
+    with pytest.raises(OSError, match="not the checked path"):
+        read(root / "a.txt")
+
+
+def test_read_text_file_never_reads_through_a_junction(folders):
+    """A real link, no privilege needed: the open itself would succeed through the junction,
+    so only the final-path check stands between the model and the target."""
+    root, outside = folders
+    (outside / "secret.txt").write_text("secret")
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    with pytest.raises(OSError, match="not the checked path"):
+        read(root / "jump" / "secret.txt")
+
+
+def test_read_text_file_never_follows_a_symlink(folders):
+    root, outside = folders
+    (outside / "secret.txt").write_text("secret")
+    try:
+        os.symlink(outside / "secret.txt", root / "link.txt")
+    except OSError:
+        pytest.skip("this account may not create symlinks")
+    with pytest.raises(OSError):
+        read(root / "link.txt")
+
+
 # --- through the bridge, with the production handler table ----------------------
 
 
@@ -155,5 +233,21 @@ def test_list_dir_taints_so_a_following_t1_call_waits(bridge):
     assert call(client, clean, "create_folder", path=str(root / "a")).status_code == 501
     task = fresh_task(client)
     assert call(client, task, "list_dir", path=str(root)).status_code == 200
+    queued = call(client, task, "create_folder", path=str(root / "b"))
+    assert queued.status_code == 202 and "pending_id" in queued.json()
+
+
+def test_bridge_uses_the_real_read_text_file(bridge):
+    client, root = bridge
+    (root / "a.txt").write_text("hi")
+    response = call(client, fresh_task(client), "read_text_file", path=str(root / "a.txt"))
+    assert response.json() == {"result": {"text": "hi", "bytes": 2, "truncated": False}}
+
+
+def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):
+    client, root = bridge
+    (root / "a.txt").write_text("hi")
+    task = fresh_task(client)
+    assert call(client, task, "read_text_file", path=str(root / "a.txt")).status_code == 200
     queued = call(client, task, "create_folder", path=str(root / "b"))
     assert queued.status_code == 202 and "pending_id" in queued.json()

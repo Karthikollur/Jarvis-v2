@@ -67,13 +67,17 @@ Newest session entry goes at the top of the Session log.
   `list_dir` (links reported as `link`, never followed; 200-entry cap; folders first) and
   `HANDLERS`; `create_app(handlers=None)` now uses `tools.HANDLERS` (production). Tests in
   `tests/test_tools.py` (incl. `assert_plain`, taint -> 202).
-- Next task: P3.1 commit B (`read_text_file`) on Karthik's go. Audit points 3, 4, 5, 6
+- P3.1 commit B DONE 2026-11-13 (`P3.1: read_text_file`): 16 KiB cap (`truncated`,
+  `bytes` = file size); NUL byte = binary, refused; UTF-8 with BOM stripped, bad bytes
+  replaced; after opening, the handle's final path must equal the checked path, so a
+  link is never read through.
+- Next task: P3.1 commit C (`list_windows`) on Karthik's go. Audit points 3, 4, 5, 6
   stay open.
 - Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
   stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
 - Windows restore point created by Karthik 2026-11-13 (PLAN.md 4.3, the P3 precondition).
-- Tests: `uv run python -m pytest` -> 403 passed, 1 skipped (2026-11-13, after P3.1 A). The skip is the
-  symlink escape test: this account may not create symlinks. The junction test covers the
+- Tests: `uv run python -m pytest` -> 411 passed, 2 skipped (2026-11-13, after P3.1 B). Both skips are symlink tests
+  (bridge escape test, `read_text_file` symlink test): this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
