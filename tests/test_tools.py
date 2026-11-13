@@ -184,6 +184,57 @@ def test_read_text_file_never_follows_a_symlink(folders):
         read(root / "link.txt")
 
 
+# --- list_windows -----------------------------------------------------------------
+
+
+def test_list_windows_on_this_desktop():
+    """Real call. The list may be empty in a session without a desktop; the shape may not."""
+    result = tools.list_windows({})
+    assert set(result) == {"windows", "truncated"}
+    for window in result["windows"]:
+        assert set(window) == {"title", "pid", "app"}
+        assert window["title"] and len(window["title"]) <= 200
+        assert window["app"] is None or "\\" not in window["app"]
+    assert_plain(result)
+
+
+def test_app_name_is_the_image_file_name_only():
+    assert tools._app(os.getpid()).lower() == "python.exe"
+    assert tools._app(0) is None  # the idle process cannot be opened
+
+
+def test_list_windows_keeps_only_taskbar_windows(monkeypatch):
+    # (title, pid, visible, owned)
+    raw = [
+        ("Editor", 1, True, False),
+        ("hidden", 2, False, False),
+        ("dialog", 3, True, True),  # owned: a dialog of another window
+        ("", 4, True, False),
+        ("x" * 300, 5, True, False),
+    ]
+    monkeypatch.setattr(tools, "_all_windows", lambda: raw)
+    monkeypatch.setattr(tools, "_app", lambda pid: f"app{pid}.exe")
+    result = tools.list_windows({})
+    assert result == {
+        "windows": [
+            {"title": "Editor", "pid": 1, "app": "app1.exe"},
+            {"title": "x" * 200, "pid": 5, "app": "app5.exe"},
+        ],
+        "truncated": False,
+    }
+
+
+def test_list_windows_cap(monkeypatch):
+    raw = [(f"w{i}", i, True, False) for i in range(tools.MAX_WINDOWS + 1)]
+    monkeypatch.setattr(tools, "_all_windows", lambda: raw)
+    monkeypatch.setattr(tools, "_app", lambda pid: None)
+    result = tools.list_windows({})
+    assert (len(result["windows"]), result["truncated"]) == (50, True)
+    monkeypatch.setattr(tools, "_all_windows", lambda: raw[:-1])
+    assert tools.list_windows({})["truncated"] is False
+    assert_plain(result)
+
+
 # --- through the bridge, with the production handler table ----------------------
 
 
@@ -242,6 +293,15 @@ def test_bridge_uses_the_real_read_text_file(bridge):
     (root / "a.txt").write_text("hi")
     response = call(client, fresh_task(client), "read_text_file", path=str(root / "a.txt"))
     assert response.json() == {"result": {"text": "hi", "bytes": 2, "truncated": False}}
+
+
+def test_list_windows_taints_so_a_following_t1_call_waits(bridge):
+    client, root = bridge
+    task = fresh_task(client)
+    response = call(client, task, "list_windows")
+    assert response.status_code == 200 and "windows" in response.json()["result"]
+    queued = call(client, task, "create_folder", path=str(root / "b"))
+    assert queued.status_code == 202 and "pending_id" in queued.json()
 
 
 def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):

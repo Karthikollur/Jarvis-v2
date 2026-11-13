@@ -71,12 +71,16 @@ Newest session entry goes at the top of the Session log.
   `bytes` = file size); NUL byte = binary, refused; UTF-8 with BOM stripped, bad bytes
   replaced; after opening, the handle's final path must equal the checked path, so a
   link is never read through.
-- Next task: P3.1 commit C (`list_windows`) on Karthik's go. Audit points 3, 4, 5, 6
+- P3.1 commit C DONE 2026-11-13 (`P3.1: list_windows`): visible, titled, unowned
+  top-level windows (ctypes `EnumWindows`); `{"title", "pid", "app"}`, titles cut to 200
+  characters, 50-window cap, no window handles.
+- Next task: P3.1 commit D (`system_stats`) on Karthik's go; needs his answers on the GPU
+  source and the caps (`docs/plans/P3.1.md`, Questions). Audit points 3, 4, 5, 6
   stay open.
 - Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
   stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
 - Windows restore point created by Karthik 2026-11-13 (PLAN.md 4.3, the P3 precondition).
-- Tests: `uv run python -m pytest` -> 411 passed, 2 skipped (2026-11-13, after P3.1 B). Both skips are symlink tests
+- Tests: `uv run python -m pytest` -> 416 passed, 2 skipped (2026-11-13, after P3.1 C). Both skips are symlink tests
   (bridge escape test, `read_text_file` symlink test): this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
