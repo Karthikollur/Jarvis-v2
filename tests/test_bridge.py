@@ -317,7 +317,7 @@ def test_dispatch_refusals(sandbox):
     assert call(client, "no-such-task", "get_time").status_code == 404
     task = new_task(client)
     assert call(client, task, "shell_exec", command="dir").status_code == 403
-    assert call(client, task, "list_windows").status_code == 501  # in policy, no handler yet
+    assert call(client, task, "list_windows").status_code == 501  # in policy, not in this fixture's handlers
     assert client.post("/tool", json={"tool": "get_time"}).status_code == 422
 
 

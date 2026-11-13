@@ -63,12 +63,16 @@ Newest session entry goes at the top of the Session log.
 - P2.9 commit D DONE 2026-11-13 (`P2.9: stop race`): a task created while a latching Stop
   runs is marked stopped and answered 403 `stopped`; the clarify scorer accepts a fixed
   ask-phrase as well as `?`. P2.9 is complete and ticked in PLAN.md.
-- Next task: P3.1 (plan `docs/plans/P3.1.md`, waits for Karthik's go). Audit points
-  3, 4, 5, 6 stay open.
+- P3.1 commit A DONE 2026-11-13 (`P3.1: list_dir`): new `bridge/tools.py` with the real
+  `list_dir` (links reported as `link`, never followed; 200-entry cap; folders first) and
+  `HANDLERS`; `create_app(handlers=None)` now uses `tools.HANDLERS` (production). Tests in
+  `tests/test_tools.py` (incl. `assert_plain`, taint -> 202).
+- Next task: P3.1 commit B (`read_text_file`) on Karthik's go. Audit points 3, 4, 5, 6
+  stay open.
 - Checked by Karthik 2026-11-13: a real `Ctrl+Alt+End` press against a running bridge
   stopped it (reported by Karthik; the audit line itself was not re-read by an agent).
 - Windows restore point created by Karthik 2026-11-13 (PLAN.md 4.3, the P3 precondition).
-- Tests: `uv run python -m pytest` -> 394 passed, 1 skipped (2026-11-13, after P2.9 D). The skip is the
+- Tests: `uv run python -m pytest` -> 403 passed, 1 skipped (2026-11-13, after P3.1 A). The skip is the
   symlink escape test: this account may not create symlinks. The junction test covers the
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
