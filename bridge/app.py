@@ -444,7 +444,10 @@ def create_app(
                     "task_id": p.task_id,
                     "tool": p.tool,
                     "args": p.args,
-                    "paths": {name: str(path) for name, path in p.paths.items()},
+                    "paths": {  # a batch (move_files) shows every source and landing
+                        name: [str(item) for item in path] if isinstance(path, tuple) else str(path)
+                        for name, path in p.paths.items()
+                    },
                     "reason": p.reason,
                     "age": now - p.created,
                 }

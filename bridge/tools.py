@@ -338,6 +338,30 @@ def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
     def move_file(args: dict[str, Any]) -> dict[str, Any]:
         return {"moved": True, "undo_id": _move(args["source"], args["target"], "move_file")}
 
+    def move_files(args: dict[str, Any]) -> dict[str, Any]:
+        """P3.2 F: up to 20 files into one folder. Every check runs before the first move;
+        a failure part-way stops and reports (nothing is moved back). No names in the result."""
+        pairs = list(zip(args["sources"], args["target"], strict=True))
+        folder = os.lstat(args["destination"])  # missing -> FileNotFoundError
+        # A reparse point is a junction or symlink swapped in after the policy check.
+        if not stat.S_ISDIR(folder.st_mode) or folder.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise NotADirectoryError("destination is not a real folder")
+        for source, target in pairs:
+            if not stat.S_ISREG(os.lstat(source).st_mode):
+                raise OSError("not a plain file")
+            if os.path.lexists(target):
+                raise FileExistsError("landing name taken")
+        undo_ids: list[str] = []
+        for source, target in pairs:
+            try:
+                undo_ids.append(_move(source, target, "move_files"))
+            except Exception as error:
+                if not undo_ids:
+                    raise  # nothing moved: a plain failure
+                return {"moved": len(undo_ids), "requested": len(pairs), "complete": False,
+                        "undo_ids": undo_ids, "failed": type(error).__name__}
+        return {"moved": len(undo_ids), "requested": len(pairs), "complete": True, "undo_ids": undo_ids}
+
     def open_app(args: dict[str, Any]) -> dict[str, Any]:
         # The model supplies only the name (the policy checked it against apps.toml); the
         # command line is fixed in apps.toml. No shell, no inherited console handles.
@@ -351,5 +375,5 @@ def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
 
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
-        "open_app": open_app, "focus_window": focus_window,
+        "move_files": move_files, "open_app": open_app, "focus_window": focus_window,
     }

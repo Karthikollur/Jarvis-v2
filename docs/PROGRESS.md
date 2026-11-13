@@ -30,8 +30,12 @@ Newest session entry goes at the top of the Session log.
   `MAX_BATCH = 20`, `Rule.list_params`, `_resolve_batch` checks every source and every
   landing, refuses duplicates and a source already in the destination; recheck compares
   whole tuples; stub `move_files` plus eval case t24; 509 passed, 3 skipped; 8 mutants
-  killed; evals 41/41). Through the bridge `move_files` answers 501 until F2. Next: F2
-  `P3.2: move_files` (handler and `/pending` lists), on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  killed; evals 41/41). F2 done (`P3.2: move_files`: handler checks the destination is
+  a real folder, every source a plain file, every landing free, before the first move;
+  a failure part-way stops with `complete: False`, nothing moved back; one undo record
+  per file; `GET /pending` lists every source and landing). 518 passed, 3 skipped.
+  P3.2 COMPLETE, ticked in PLAN.md, plan marked Implemented. Next: P3.3 (T2 tools), only
+  on Karthik's go; not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -282,7 +286,8 @@ Format: `YYYY-MM-DD — decision — reason — who`
   total files moved for now: per-task cap on total files moved is required before any
   allowed root beyond `C:\JarvisSandbox` is added (also PLAN.md section 6). — the sandbox
   is the only root today, so the blast radius is bounded; 20 keeps the approval list
-  readable. — Karthik
+  readable. — Karthik (Implemented in F2 as decided; `move_files` is the 14th tool the
+  model sees, see the F1 eval decision above.)
 
 - 2026-11-13 — P3.2 D: `config/apps.toml` lists notepad, calculator, explorer and vscode
   with fixed absolute commands (vscode at the per-user path, so the Windows user name is
@@ -643,6 +648,23 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-13 — Agent: Claude Code, Opus 5.5 (P3.2 F: move_files, two commits)
+
+- Start: HEAD fcd6e1c (`docs: P3.2 F plan`), tree clean except the two untracked root
+  files (left alone), 480 passed, 3 skipped. Note: pytest from Git Bash fails to import
+  `safety`; run it through PowerShell as the Commands section says.
+- F1 `P3.2: move_files policy` (fc1b9f3): `safety/policy.py` (`MAX_BATCH`,
+  `Rule.list_params`, `_resolve_batch`), stub spec, eval case t24 (Karthik's call after
+  two plan gaps, logged under Open questions and Decisions), `_norm` for lists, sweeps
+  extended. 509 passed; 8 mutants killed; evals 41/41.
+- F2 `P3.2: move_files`: `bridge/tools.py` `move_files`, `bridge/app.py` `/pending`
+  renders tuples as lists, 9 tests in `tests/test_tools.py` (temp folders only). Red: 8
+  of 9 failed. 518 passed, 3 skipped. 9 mutants killed (table in `docs/plans/P3.2.md`).
+- Stopped at: P3.2 complete and ticked; plan marked Implemented. Still open: Karthik's
+  manual checks of `open_app` / `focus_window` through a running bridge;
+  `C:\JarvisSandbox` not created. Next concrete step: P3.3 plan or commit, on Karthik's
+  go only. Not started.
 
 ### 2026-11-13 — Agent: Claude Code (P3.1b, three commits)
 

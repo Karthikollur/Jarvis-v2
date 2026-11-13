@@ -710,6 +710,170 @@ def test_move_file_cannot_leave_the_root(bridge):
     assert client.get("/undo", headers=ui(root)).json()["records"] == []
 
 
+# --- move_files (P3.2 F2) ---------------------------------------------------------
+
+
+def move_many(undo_log, sources, destination, targets=None):
+    """The handler as the bridge calls it: resolved `sources`, `destination`, `target`."""
+    targets = targets or tuple(Path(destination) / Path(s).name for s in sources)
+    args = {"sources": tuple(sources), "destination": destination, "target": tuple(targets)}
+    return tools.mutating(undo_log, {})["move_files"](args)
+
+
+def three_files(root):
+    """a.txt and b.txt in in1, c.txt in in2; an empty folder `dest`."""
+    for folder in ["in1", "in2", "dest"]:
+        (root / folder).mkdir()
+    files = [root / "in1" / "a.txt", root / "in1" / "b.txt", root / "in2" / "c.txt"]
+    for file in files:
+        file.write_text(file.name)
+    return files, root / "dest"
+
+
+def untouched(files, dest, undo_log):
+    return all(f.read_text() == f.name for f in files) and list(dest.iterdir()) == [] and undo_log.list() == []
+
+
+def test_move_files_moves_all_and_records_each(folders, undo_log):
+    root, outside = folders
+    files, dest = three_files(root)
+    targets = [dest / f.name for f in files]
+    # A doctored destination is not where files go: only the policy's `target` is used.
+    result = move_many(undo_log, files, outside, targets)
+    assert all((dest / f.name).read_text() == f.name for f in files)
+    assert not any(f.exists() for f in files) and list(outside.iterdir()) == []
+    records = [undo_log.get(i) for i in result["undo_ids"]]
+    assert result == {"moved": 3, "requested": 3, "complete": True, "undo_ids": [r.id for r in records]}
+    assert [(r.kind, r.tool, r.source, r.destination) for r in records] == [
+        ("moved", "move_files", str(f), str(dest / f.name)) for f in files
+    ]
+    assert_plain(result)
+
+
+def test_move_files_preflight_moves_nothing(folders, undo_log):
+    """Every check runs before the first move: a failure leaves everything in place."""
+    root, outside = folders
+    files, dest = three_files(root)
+    (root / "afile").write_text("x")
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    for destination in [root / "missing", root / "afile", root / "jump"]:  # no real folder
+        targets = [destination / f.name for f in files]
+        with pytest.raises(OSError):
+            move_many(undo_log, files, destination, targets)
+        assert untouched(files, dest, undo_log), destination
+    assert list(outside.iterdir()) == []
+    (root / "in1" / "sub").mkdir()  # a folder among the sources (last, so order matters not)
+    with pytest.raises(OSError, match="not a plain file"):
+        move_many(undo_log, [*files, root / "in1" / "sub"], dest)
+    assert untouched(files, dest, undo_log)
+    (dest / "c.txt").write_text("taken")  # a taken landing name (last member)
+    with pytest.raises(FileExistsError):
+        move_many(undo_log, files, dest)
+    assert all(f.read_text() == f.name for f in files) and [p.name for p in dest.iterdir()] == ["c.txt"]
+    assert (dest / "c.txt").read_text() == "taken" and undo_log.list() == []
+
+
+class FailsOnSecond:
+    """A real undo log whose second record cannot be written."""
+
+    def __init__(self, log):
+        self.log, self.count = log, 0
+
+    def moved(self, source, destination, tool):
+        self.count += 1
+        if self.count == 2:
+            raise OSError("disk full")
+        return self.log.moved(source, destination, tool)
+
+
+def test_move_files_failure_part_way_stops_and_reports(folders, undo_log):
+    root, outside = folders
+    files, dest = three_files(root)
+    result = move_many(FailsOnSecond(undo_log), files, dest)
+    [record] = undo_log.list()
+    assert result == {"moved": 1, "requested": 3, "complete": False, "undo_ids": [record.id], "failed": "OSError"}
+    assert (dest / "a.txt").read_text() == "a.txt" and record.source == str(files[0])  # stays moved
+    assert files[1].read_text() == "b.txt" and files[2].read_text() == "c.txt"  # back / untouched
+    assert sorted(p.name for p in dest.iterdir()) == ["a.txt"]
+    assert_plain(result)
+
+
+def test_move_files_failure_on_the_first_file_raises(folders):
+    root, outside = folders
+    files, dest = three_files(root)
+    with pytest.raises(OSError, match="not recorded"):
+        move_many(BrokenLog(), files, dest)
+    assert all(f.read_text() == f.name for f in files) and list(dest.iterdir()) == []
+
+
+def test_move_files_through_the_bridge_is_undoable_file_by_file(bridge):
+    client, root = bridge
+    files, dest = three_files(root)
+    response = call(client, fresh_task(client), "move_files", sources=[str(f) for f in files], destination=str(dest))
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert (result["moved"], result["complete"]) == (3, True)
+    assert all((dest / f.name).exists() for f in files)
+    for undo_id, file in zip(reversed(result["undo_ids"]), reversed(files)):
+        assert client.post("/undo", json={"record_id": undo_id}, headers=ui(root)).status_code == 200
+        assert file.read_text() == file.name and not (dest / file.name).exists()
+
+
+def test_move_files_tainted_batch_waits_for_one_approval(bridge):
+    client, root = bridge
+    files, dest = three_files(root)
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "move_files", sources=[str(f) for f in files], destination=str(dest))
+    assert queued.status_code == 202 and list(dest.iterdir()) == []
+    [pending] = client.get("/pending", headers=ui(root)).json()["pending"]
+    real = lambda path: os.path.realpath(path)  # noqa: E731
+    assert pending["paths"] == {
+        "destination": real(dest),
+        "sources": [real(f) for f in files],
+        "target": [real(dest / f.name) for f in files],
+    }
+    assert all(f.exists() for f in files)
+    approved = client.post("/approve", json={"pending_id": pending["id"]}, headers=ui(root))
+    assert approved.status_code == 200 and approved.json()["result"]["moved"] == 3
+    assert sorted(p.name for p in dest.iterdir()) == ["a.txt", "b.txt", "c.txt"]
+
+
+def test_move_files_one_bad_source_refuses_the_batch(bridge):
+    client, root = bridge
+    files, dest = three_files(root)
+    outside = root.parent / "outside"
+    (outside / "x.txt").write_text("x")
+    for task in [fresh_task(client), client.post("/task").json()["task_id"]]:  # clean and tainted
+        sources = [str(files[0]), str(outside / "x.txt"), str(files[1])]
+        response = call(client, task, "move_files", sources=sources, destination=str(dest))
+        assert response.status_code == 403 and response.json()["detail"].startswith("sources: ")
+    assert all(f.read_text() == f.name for f in files) and list(dest.iterdir()) == []
+    assert (outside / "x.txt").read_text() == "x"
+    assert client.get("/pending", headers=ui(root)).json()["pending"] == []
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+@pytest.mark.parametrize("change", ["source renamed away", "landing replaced by a junction"])
+def test_move_files_change_while_pending_moves_nothing(bridge, change):
+    client, root = bridge
+    files, dest = three_files(root)
+    outside = root.parent / "outside"
+    task = client.post("/task").json()["task_id"]
+    queued = call(client, task, "move_files", sources=[str(f) for f in files], destination=str(dest))
+    assert queued.status_code == 202
+    if change == "source renamed away":
+        files[2].rename(root / "in2" / "gone.txt")
+    else:
+        _winapi.CreateJunction(str(outside), str(dest / "b.txt"))
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code in (403, 500), approved.text  # policy refusal / preflight failure
+    assert files[0].read_text() == "a.txt" and files[1].read_text() == "b.txt"
+    assert not (dest / "a.txt").exists() and list(outside.iterdir()) == []
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []
+    if change != "source renamed away":  # recheck: the landing now resolves outside the root
+        assert approved.status_code == 403 and approved.json()["detail"].startswith("destination: ")
+
+
 # --- open_app (P3.2 D) ------------------------------------------------------------
 
 APPS_TOML = REPO / "config" / "apps.toml"

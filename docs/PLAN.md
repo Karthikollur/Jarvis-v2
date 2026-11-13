@@ -172,7 +172,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 - [x] P3.1b Review gaps G1 to G3: `/outcome` survives a lone surrogate; `read_text_file`
       refuses a hard link; built-in tools guard scans subfolders and refuses `**` in calls.
       Plan: `docs/plans/P3.1b.md`.
-- [ ] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
+- [x] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
       `move_file`, `rename_file`, all with undo records. One batch confirmation for a
       multi-file move on a tainted task (P2.8: `list_dir` taints).
 - [ ] P3.3 T2 tools: `delete_file` (to quarantine), `run_named_script` (only entries in
