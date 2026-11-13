@@ -184,6 +184,17 @@ def test_read_text_file_never_follows_a_symlink(folders):
         read(root / "link.txt")
 
 
+def test_read_text_file_refuses_a_hard_link(folders):
+    """P3.1b G2: a hard link's other name may be outside the roots; realpath cannot see it."""
+    root, outside = folders
+    (outside / "secret.txt").write_text("secret")
+    os.link(outside / "secret.txt", root / "innocent.txt")
+    with pytest.raises(OSError, match="hard link"):
+        read(root / "innocent.txt")
+    (root / "plain.txt").write_text("plain")
+    assert read(root / "plain.txt")["text"] == "plain"
+
+
 # --- list_windows -----------------------------------------------------------------
 
 

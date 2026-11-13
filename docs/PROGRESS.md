@@ -7,8 +7,10 @@ Newest session entry goes at the top of the Session log.
 
 - Active phase: P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b in progress (plan
   `docs/plans/P3.1b.md`): commit A done (`POST /outcome` answers through `encoded()`, so a
-  lone surrogate in a result no longer gives 500; 424 passed, 2 skipped); B and C next,
-  each on Karthik's go. P3.2 not started. P0 and P1 are complete, every task ticked in PLAN.md.
+  lone surrogate in a result no longer gives 500); commit B done (`read_text_file`
+  refuses a file with `st_nlink != 1` via `_single_name(fd)` in `bridge/tools.py`; rule 7
+  in `docs/plans/P3.2.md`; cost: a legitimately hard-linked file cannot be read, Decisions
+  entry comes with C; 425 passed, 2 skipped). C next, on Karthik's go. P3.2 not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it

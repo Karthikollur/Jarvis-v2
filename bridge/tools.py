@@ -1,8 +1,10 @@
 """Real tool handlers (P3.1). Each takes the args dict the bridge passes (`path` values
 already resolved and checked by the policy) and returns plain JSON data.
 
-Rules (docs/plans/P3.1.md): never build or re-resolve a path, never follow a link, raise
-when the job cannot be done (the bridge logs it and answers "Tool failed")."""
+Rules (docs/plans/P3.1.md): never build or re-resolve a path, never follow a link, never
+read a file with a second name (a handler that opens a file's content calls `_single_name`
+on the open handle), raise when the job cannot be done (the bridge logs it and answers
+"Tool failed")."""
 
 import ctypes
 from ctypes import wintypes
@@ -62,6 +64,15 @@ def _final_path(fd: int) -> str:
     return buffer.value.removeprefix("\\\\?\\")
 
 
+def _single_name(fd: int) -> os.stat_result:
+    """Refuse a file with a second name (hard link): that name may live outside the
+    roots, and realpath cannot see it. Every handler that opens content calls this."""
+    stat = os.fstat(fd)
+    if stat.st_nlink != 1:
+        raise OSError("file has more than one hard link")
+    return stat
+
+
 def read_text_file(args: dict[str, Any]) -> dict[str, Any]:
     path = str(args["path"])
     fd = os.open(path, os.O_RDONLY | os.O_BINARY)  # a folder fails here
@@ -70,7 +81,7 @@ def read_text_file(args: dict[str, Any]) -> dict[str, Any]:
         # after the check would be followed by the open; this refuses it instead.
         if _final_path(fd).casefold() != path.casefold():
             raise OSError("opened file is not the checked path")
-        size = os.fstat(fd).st_size
+        size = _single_name(fd).st_size
         data = handle.read(MAX_BYTES + 1)
     if b"\x00" in data:
         raise ValueError("not a text file")
