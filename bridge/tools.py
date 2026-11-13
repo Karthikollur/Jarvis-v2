@@ -246,3 +246,19 @@ HANDLERS = {
     "list_windows": list_windows,
     "system_stats": system_stats,
 }
+
+
+def mutating(undo_log) -> dict[str, Any]:
+    """T1 handlers (P3.2): closures over the bridge's UndoLog."""
+
+    def create_folder(args: dict[str, Any]) -> dict[str, Any]:
+        path = args["path"]
+        os.mkdir(path)  # parent must exist; an existing name fails, nothing is reused
+        try:
+            record = undo_log.created(path, "create_folder")
+        except Exception as error:
+            # Act, then record (P3.2 rule 4): the folder stays, never deleted; the call fails.
+            raise OSError(f"folder created but not recorded, left in place: {error}") from error
+        return {"created": True, "undo_id": record.id}
+
+    return {"create_folder": create_folder}

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from bridge import tools
 from bridge.app import create_app, load_token
+from safety.undo import UndoLog
 
 REPO = Path(__file__).resolve().parents[1]
 BASE = "http://127.0.0.1:8765"
@@ -368,8 +369,8 @@ def test_list_dir_odd_name_still_answers(bridge):
 def test_list_dir_taints_so_a_following_t1_call_waits(bridge):
     client, root = bridge
     clean = fresh_task(client)
-    # Control: on a clean task create_folder passes the policy (no handler yet: 501).
-    assert call(client, clean, "create_folder", path=str(root / "a")).status_code == 501
+    # Control: on a clean task create_folder passes the policy and runs.
+    assert call(client, clean, "create_folder", path=str(root / "a")).status_code == 200
     task = fresh_task(client)
     assert call(client, task, "list_dir", path=str(root)).status_code == 200
     queued = call(client, task, "create_folder", path=str(root / "b"))
@@ -393,13 +394,12 @@ def test_list_windows_taints_so_a_following_t1_call_waits(bridge):
 
 
 def test_system_stats_does_not_taint(bridge):
-    """Numbers and a vendor GPU name only: a following T1 call passes the policy (no
-    create_folder handler yet: 501, not 202)."""
+    """Numbers and a vendor GPU name only: a following T1 call runs (200, not 202)."""
     client, root = bridge
     task = fresh_task(client)
     response = call(client, task, "system_stats")
     assert response.status_code == 200 and "cpu_percent" in response.json()["result"]
-    assert call(client, task, "create_folder", path=str(root / "b")).status_code == 501
+    assert call(client, task, "create_folder", path=str(root / "b")).status_code == 200
 
 
 def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):
@@ -409,3 +409,97 @@ def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):
     assert call(client, task, "read_text_file", path=str(root / "a.txt")).status_code == 200
     queued = call(client, task, "create_folder", path=str(root / "b"))
     assert queued.status_code == 202 and "pending_id" in queued.json()
+
+
+# --- create_folder (P3.2 A) -------------------------------------------------------
+
+
+class BrokenLog:
+    """An undo log whose record cannot be written (disk full, ACL, ...)."""
+
+    def created(self, path, tool):
+        raise OSError("disk full")
+
+
+@pytest.fixture
+def undo_log(folders):
+    root, outside = folders
+    return UndoLog(root.parent / "quarantine")
+
+
+def create(undo_log, path):
+    return tools.mutating(undo_log)["create_folder"]({"path": path})
+
+
+def test_create_folder_creates_and_records(folders, undo_log):
+    root, outside = folders
+    result = create(undo_log, root / "new")
+    assert (root / "new").is_dir()
+    [record] = undo_log.list()
+    assert result == {"created": True, "undo_id": record.id}
+    assert (record.kind, record.tool, record.path) == ("created", "create_folder", str(root / "new"))
+    assert_plain(result)
+
+
+def test_create_folder_never_reuses_an_existing_name(folders, undo_log):
+    root, outside = folders
+    (root / "old").mkdir()
+    (root / "old" / "keep.txt").write_text("keep")
+    (root / "file").write_text("keep")
+    for path in [root / "old", root / "file"]:
+        with pytest.raises(FileExistsError):
+            create(undo_log, path)
+    assert undo_log.list() == []
+    assert (root / "old" / "keep.txt").read_text() == "keep" and (root / "file").read_text() == "keep"
+
+
+def test_create_folder_needs_its_parent(folders, undo_log):
+    root, outside = folders
+    with pytest.raises(FileNotFoundError):
+        create(undo_log, root / "missing" / "new")
+    assert not (root / "missing").exists() and undo_log.list() == []
+
+
+def test_create_folder_unrecorded_is_left_and_fails(folders):
+    """Rule 4: never delete. The folder stays; the call fails; the audit line says why."""
+    root, outside = folders
+    with pytest.raises(OSError, match="not recorded"):
+        create(BrokenLog(), root / "new")
+    assert (root / "new").is_dir()
+
+
+def ui(root):
+    return {"x-jarvis-token": load_token(root.parent / "storage", "ui.token")}
+
+
+def test_create_folder_through_the_bridge_is_undoable(bridge):
+    client, root = bridge
+    response = call(client, fresh_task(client), "create_folder", path=str(root / "new"))
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["created"] is True and (root / "new").is_dir()
+    records = client.get("/undo", headers=ui(root)).json()["records"]
+    assert [record["id"] for record in records] == [result["undo_id"]]
+    undone = client.post("/undo", json={"record_id": result["undo_id"]}, headers=ui(root))
+    assert undone.status_code == 200
+    assert not (root / "new").exists()
+    quarantine = root.parent / "storage" / "quarantine"
+    assert any((folder / "item").is_dir() for folder in quarantine.iterdir())  # moved, not deleted
+
+
+def test_create_folder_on_a_tainted_task_waits_for_approval(bridge):
+    client, root = bridge
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "create_folder", path=str(root / "new"))
+    assert queued.status_code == 202 and not (root / "new").exists()
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and (root / "new").is_dir()
+
+
+def test_create_folder_outside_the_root_is_refused(bridge):
+    client, root = bridge
+    outside = root.parent / "outside"
+    response = call(client, fresh_task(client), "create_folder", path=str(outside / "new"))
+    assert response.status_code == 403
+    assert not (outside / "new").exists()
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []

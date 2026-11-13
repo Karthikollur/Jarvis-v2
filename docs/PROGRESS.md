@@ -11,8 +11,11 @@ Newest session entry goes at the top of the Session log.
   B `read_text_file` refuses a file with `st_nlink != 1` via `_single_name(fd)` in
   `bridge/tools.py` (rule 7 in `docs/plans/P3.2.md`); C the built-in tools guard scans
   `core/` and `evals/` recursively and refuses `**` keyword unpacking in any call; PLAN.md
-  P3.5 now carries the runtime tools guard. 428 passed, 2 skipped. P3.2 not started; its
-  commit A (`P3.2: create_folder`) waits for Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  P3.5 now carries the runtime tools guard. P3.2 in progress (plan
+  `docs/plans/P3.2.md`): commit A done (`create_folder` runs for real: `os.mkdir`, then an
+  undo record; an unrecorded folder is left and the call fails; `tools.mutating(undo_log)`
+  wired into `create_app` when `handlers is None`). 435 passed, 2 skipped. Commit B
+  (`P3.2: rename_file`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it

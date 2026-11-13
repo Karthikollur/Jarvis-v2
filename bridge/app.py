@@ -216,7 +216,9 @@ def create_app(
     policy = Policy(roots, clock, [storage, *repo], apps, scripts)
     queue = ConfirmQueue(clock)
     undo_log = UndoLog(storage / "quarantine")  # inside storage: protected, user-only ACL
-    handlers = dict(tools.HANDLERS if handlers is None else handlers)  # None: production
+    if handlers is None:  # production
+        handlers = {**tools.HANDLERS, **tools.mutating(undo_log)}
+    handlers = dict(handlers)
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
     # Untrusted text stays in the model's context after the task that read it, so a new
