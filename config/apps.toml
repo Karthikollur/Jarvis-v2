@@ -1,0 +1,14 @@
+# Apps open_app may start. Only Karthik edits this file.
+# Each command is a fixed absolute path; the model supplies only the [name].
+
+[notepad]
+command = ['C:\Windows\System32\notepad.exe']
+
+[calculator]
+command = ['C:\Windows\System32\calc.exe']
+
+[explorer]
+command = ['C:\Windows\explorer.exe']
+
+[vscode]
+command = ['C:\Users\karth\AppData\Local\Programs\Microsoft VS Code\Code.exe']

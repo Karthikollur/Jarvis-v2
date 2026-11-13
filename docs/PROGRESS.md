@@ -18,9 +18,12 @@ Newest session entry goes at the top of the Session log.
   via shared `_move`: `lstat` must say plain file, `os.rename` to the policy's `target`,
   then an undo `moved` record; an unrecorded move is renamed back and the call fails).
   Commit C done (`move_file` via the same `_move`, `source` -> the policy's `target`
-  inside `destination`). 450 passed, 3 skipped (a skip: symlink test, account cannot
-  create symlinks). Commit D (`P3.2: open_app`, new `config/apps.toml`: Karthik approves
-  the file and the VS Code path first) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  inside `destination`). Commit D done (`open_app`: new `config/apps.toml`, approved by
+  Karthik; `tools.load_commands` stops the bridge on a bad entry; handler runs the fixed
+  command with `shell=False` and DEVNULL handles, model supplies only the name; no undo
+  record). 467 passed, 3 skipped (a skip: symlink test, account cannot create symlinks).
+  Pending: Karthik's manual "open notepad" check through a running bridge. Commit E
+  (`P3.2: focus_window`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -243,6 +246,15 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-13 — P3.2 D: `config/apps.toml` lists notepad, calculator, explorer and vscode
+  with fixed absolute commands (vscode at the per-user path, so the Windows user name is
+  in git; `Code.exe` sits in a user-writable folder, inside the accepted same-user
+  limit). `load_commands` refuses a UNC first item as well as the planned checks: a
+  network path would mean outbound access and remote code. `calc.exe` is a launcher on
+  Windows 11, so its returned `pid` is the launcher's. `browser` stays in the router
+  aliases and the stub enum but not in apps.toml, so the policy refuses it. — Karthik
+  (file approval), Claude Code
 
 - 2026-11-13 — P3.1b: `read_text_file` refuses any file with more than one hard link,
   checked on the open handle — a second name may be outside the roots and neither

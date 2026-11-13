@@ -14,6 +14,7 @@ from pathlib import Path
 import stat
 import subprocess
 import time
+import tomllib
 from typing import Any
 
 from safety.policy import MAX_TEXT
@@ -250,8 +251,33 @@ HANDLERS = {
 }
 
 
-def mutating(undo_log) -> dict[str, Any]:
-    """T1 handlers (P3.2): closures over the bridge's UndoLog."""
+def load_commands(config: Path) -> dict[str, list[str]]:
+    """config/apps.toml: the fixed command each allowed name starts. Any bad entry raises,
+    so the bridge does not start (fail closed). A missing file allows nothing, as
+    `safety.policy.load_names`, which still decides which names are allowed."""
+    if not config.exists():
+        return {}
+    commands = {}
+    for name, entry in tomllib.loads(config.read_text(encoding="utf-8")).items():
+        command = entry.get("command") if isinstance(entry, dict) else None
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(part, str) for part in command)
+            or command[0].startswith(("\\\\", "//"))  # UNC: code off the network; checked before is_file touches it
+            or not Path(command[0]).is_absolute()  # a bare name would be looked up on PATH
+            or not Path(command[0]).is_file()
+        ):
+            raise ValueError(
+                f"{config.name}: [{name}] command must be a list whose first item is an "
+                "absolute path to an existing local file"
+            )
+        commands[name] = command
+    return commands
+
+
+def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
+    """T1 handlers (P3.2): closures over the bridge's UndoLog and the apps.toml commands."""
 
     def create_folder(args: dict[str, Any]) -> dict[str, Any]:
         path = args["path"]
@@ -281,4 +307,18 @@ def mutating(undo_log) -> dict[str, Any]:
     def move_file(args: dict[str, Any]) -> dict[str, Any]:
         return {"moved": True, "undo_id": _move(args["source"], args["target"], "move_file")}
 
-    return {"create_folder": create_folder, "rename_file": rename_file, "move_file": move_file}
+    def open_app(args: dict[str, Any]) -> dict[str, Any]:
+        # The model supplies only the name (the policy checked it against apps.toml); the
+        # command line is fixed in apps.toml. No shell, no inherited console handles.
+        # ponytail: the Popen is never waited on; the app outlives the call on purpose.
+        name = args["app"]
+        process = subprocess.Popen(
+            commands[name], shell=False,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return {"opened": name, "pid": process.pid}
+
+    return {
+        "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
+        "open_app": open_app,
+    }

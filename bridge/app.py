@@ -217,7 +217,8 @@ def create_app(
     queue = ConfirmQueue(clock)
     undo_log = UndoLog(storage / "quarantine")  # inside storage: protected, user-only ACL
     if handlers is None:  # production
-        handlers = {**tools.HANDLERS, **tools.mutating(undo_log)}
+        commands = tools.load_commands(CONFIG / "apps.toml")  # a bad entry stops the start
+        handlers = {**tools.HANDLERS, **tools.mutating(undo_log, commands)}
     handlers = dict(handlers)
     tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted

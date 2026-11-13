@@ -4,14 +4,20 @@ import _winapi
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
 import tempfile
+import types
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bridge import tools
+from bridge import app as bridge_app
 from bridge.app import create_app, load_token
+from core.router import APP_ALIASES
+from evals.stub_tools import APPS
+from safety.policy import load_names
 from safety.undo import UndoLog
 
 REPO = Path(__file__).resolve().parents[1]
@@ -432,7 +438,7 @@ def undo_log(folders):
 
 
 def create(undo_log, path):
-    return tools.mutating(undo_log)["create_folder"]({"path": path})
+    return tools.mutating(undo_log, {})["create_folder"]({"path": path})
 
 
 def test_create_folder_creates_and_records(folders, undo_log):
@@ -513,7 +519,7 @@ def test_create_folder_outside_the_root_is_refused(bridge):
 
 
 def rename(undo_log, source, target, **extra):
-    return tools.mutating(undo_log)["rename_file"]({"path": source, "target": target, **extra})
+    return tools.mutating(undo_log, {})["rename_file"]({"path": source, "target": target, **extra})
 
 
 def test_rename_file_renames_and_records(folders, undo_log):
@@ -621,7 +627,7 @@ def test_rename_file_trusts_lstat_not_the_name(folders, undo_log, monkeypatch):
 
 
 def move(undo_log, source, target, **extra):
-    return tools.mutating(undo_log)["move_file"]({"source": source, "target": target, **extra})
+    return tools.mutating(undo_log, {})["move_file"]({"source": source, "target": target, **extra})
 
 
 def test_move_file_moves_into_a_subfolder_and_back_to_the_root(folders, undo_log):
@@ -702,3 +708,118 @@ def test_move_file_cannot_leave_the_root(bridge):
     assert response.status_code == 403
     assert (root / "a.txt").read_text() == "keep" and not (outside / "a.txt").exists()
     assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+# --- open_app (P3.2 D) ------------------------------------------------------------
+
+APPS_TOML = REPO / "config" / "apps.toml"
+NOTEPAD = r"C:\Windows\System32\notepad.exe"
+
+
+class FakePopen:
+    """Stands in for subprocess.Popen: no real app is ever launched by a test."""
+
+    calls = []
+
+    def __init__(self, *args, **kwargs):
+        FakePopen.calls.append((args, kwargs))
+        self.pid = 4321
+
+
+@pytest.fixture
+def fake_popen(monkeypatch):
+    """Only bridge.tools sees the fake: the rest of the bridge (icacls, ...) keeps the real one."""
+    FakePopen.calls = []
+    fake = types.SimpleNamespace(Popen=FakePopen, DEVNULL=subprocess.DEVNULL, run=subprocess.run)
+    monkeypatch.setattr(tools, "subprocess", fake)
+    return FakePopen.calls
+
+
+def test_open_app_runs_the_fixed_command_only(fake_popen):
+    commands = {"notepad": [NOTEPAD]}
+    handler = tools.mutating(None, commands)["open_app"]
+    # Whatever else arrives with the call never reaches the command line.
+    result = handler({"app": "notepad", "args": ["--evil"], "path": r"C:\x", "app2": "calc"})
+    assert result == {"opened": "notepad", "pid": 4321}
+    assert_plain(result)
+    [(args, kwargs)] = fake_popen
+    assert args == ([NOTEPAD],)
+    assert kwargs == {
+        "shell": False, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+
+def test_open_app_unknown_name_fails_without_launching(fake_popen):
+    with pytest.raises(KeyError):
+        tools.mutating(None, {"notepad": [NOTEPAD]})["open_app"]({"app": "calculator"})
+    assert fake_popen == []
+
+
+def test_real_apps_toml_loads_and_matches_the_allowlist():
+    commands = tools.load_commands(APPS_TOML)
+    assert set(commands) == set(load_names(APPS_TOML)) == {"notepad", "calculator", "explorer", "vscode"}
+    for name, command in commands.items():
+        assert Path(command[0]).is_absolute() and Path(command[0]).is_file(), name
+
+
+def test_every_app_is_offered_to_the_model_and_reachable_by_voice():
+    names = set(tools.load_commands(APPS_TOML))
+    assert names <= set(APPS)
+    assert names <= set(APP_ALIASES.values())
+
+
+def test_missing_apps_toml_allows_nothing(folders):
+    root, outside = folders
+    assert tools.load_commands(root / "apps.toml") == {}
+
+
+@pytest.mark.parametrize("entry", [
+    "",  # no command
+    "command = []",
+    "command = 'C:\\Windows\\System32\\notepad.exe'",  # a string, not a list
+    "command = [1]",
+    "command = ['notepad.exe']",  # relative: found on PATH, could be anything
+    "command = ['\\Windows\\System32\\notepad.exe']",  # no drive
+    "command = ['C:\\Windows\\System32\\no-such-app.exe']",
+    "command = ['C:\\Windows\\System32']",  # a folder
+    "command = ['\\\\server\\share\\app.exe']",  # UNC: would run code off the network
+])
+def test_bad_apps_toml_entry_stops_startup(folders, monkeypatch, entry):
+    root, outside = folders
+    config = root.parent / "config"
+    config.mkdir()
+    (config / "apps.toml").write_text(f"[notepad]\n{entry}\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        tools.load_commands(config / "apps.toml")
+    storage = root.parent / "storage"
+    storage.mkdir()
+    monkeypatch.setattr(bridge_app, "CONFIG", config)
+    with pytest.raises(ValueError):
+        create_app(storage, roots=[root], protected=[], hotkey=None)
+
+
+def test_open_app_through_the_bridge_uses_apps_toml(bridge, fake_popen):
+    client, root = bridge
+    response = call(client, fresh_task(client), "open_app", app="notepad")
+    assert response.status_code == 200
+    assert response.json() == {"result": {"opened": "notepad", "pid": 4321}}
+    assert fake_popen[0][0] == ([NOTEPAD],)
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []  # audit line only
+
+
+def test_open_app_refuses_names_not_in_apps_toml(bridge, fake_popen):
+    client, root = bridge
+    for app in ["browser", "cmd", "powershell", "NOTEPAD", "notepad.exe", NOTEPAD]:
+        response = call(client, fresh_task(client), "open_app", app=app)
+        assert response.status_code == 403, app
+    assert fake_popen == []
+
+
+def test_open_app_on_a_tainted_task_waits_for_approval(bridge, fake_popen):
+    client, root = bridge
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "open_app", app="notepad")
+    assert queued.status_code == 202 and fake_popen == []
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and len(fake_popen) == 1
