@@ -278,4 +278,7 @@ def mutating(undo_log) -> dict[str, Any]:
     def rename_file(args: dict[str, Any]) -> dict[str, Any]:
         return {"renamed": True, "undo_id": _move(args["path"], args["target"], "rename_file")}
 
-    return {"create_folder": create_folder, "rename_file": rename_file}
+    def move_file(args: dict[str, Any]) -> dict[str, Any]:
+        return {"moved": True, "undo_id": _move(args["source"], args["target"], "move_file")}
+
+    return {"create_folder": create_folder, "rename_file": rename_file, "move_file": move_file}

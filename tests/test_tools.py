@@ -615,3 +615,90 @@ def test_rename_file_trusts_lstat_not_the_name(folders, undo_log, monkeypatch):
         patch.setattr(tools.os, "lstat", lambda path: as_link)
         rename(undo_log, root / "a.txt", root / "b.txt")
     assert (root / "a.txt").exists() and undo_log.list() == []
+
+
+# --- move_file (P3.2 C) -----------------------------------------------------------
+
+
+def move(undo_log, source, target, **extra):
+    return tools.mutating(undo_log)["move_file"]({"source": source, "target": target, **extra})
+
+
+def test_move_file_moves_into_a_subfolder_and_back_to_the_root(folders, undo_log):
+    root, outside = folders
+    (root / "sub").mkdir()
+    (root / "a.txt").write_text("keep")
+    # A doctored destination is ignored: only the policy's `target` is used (rule 1).
+    result = move(undo_log, root / "a.txt", root / "sub" / "a.txt", destination=str(outside))
+    assert (root / "sub" / "a.txt").read_text() == "keep" and not (outside / "a.txt").exists()
+    record = undo_log.get(result["undo_id"])
+    assert result == {"moved": True, "undo_id": record.id}
+    assert (record.kind, record.tool, record.source, record.destination) == (
+        "moved", "move_file", str(root / "a.txt"), str(root / "sub" / "a.txt"),
+    )
+    assert_plain(result)
+    move(undo_log, root / "sub" / "a.txt", root / "a.txt")
+    assert (root / "a.txt").read_text() == "keep" and len(undo_log.list()) == 2
+
+
+def test_move_file_name_clash_refused(folders, undo_log):
+    root, outside = folders
+    (root / "sub").mkdir()
+    (root / "a.txt").write_text("new")
+    (root / "sub" / "a.txt").write_text("old")
+    with pytest.raises(OSError):
+        move(undo_log, root / "a.txt", root / "sub" / "a.txt")
+    assert (root / "a.txt").read_text() == "new" and (root / "sub" / "a.txt").read_text() == "old"
+    assert undo_log.list() == []
+
+
+def test_move_file_refuses_a_folder(folders, undo_log):
+    root, outside = folders
+    (root / "dir").mkdir()
+    (root / "sub").mkdir()
+    with pytest.raises(OSError, match="not a plain file"):
+        move(undo_log, root / "dir", root / "sub" / "dir")
+    assert (root / "dir").is_dir() and not (root / "sub" / "dir").exists() and undo_log.list() == []
+
+
+def test_move_file_unrecorded_is_moved_back(folders):
+    root, outside = folders
+    (root / "sub").mkdir()
+    (root / "a.txt").write_text("keep")
+    with pytest.raises(OSError, match="not recorded"):
+        move(BrokenLog(), root / "a.txt", root / "sub" / "a.txt")
+    assert (root / "a.txt").read_text() == "keep" and not (root / "sub" / "a.txt").exists()
+
+
+def test_move_file_through_the_bridge_is_undoable(bridge):
+    client, root = bridge
+    (root / "sub").mkdir()
+    (root / "a.txt").write_text("keep")
+    response = call(client, fresh_task(client), "move_file", source=str(root / "a.txt"), destination=str(root / "sub"))
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["moved"] is True and (root / "sub" / "a.txt").read_text() == "keep"
+    undone = client.post("/undo", json={"record_id": result["undo_id"]}, headers=ui(root))
+    assert undone.status_code == 200
+    assert (root / "a.txt").read_text() == "keep" and not (root / "sub" / "a.txt").exists()
+
+
+def test_move_file_on_a_tainted_task_waits_for_approval(bridge):
+    client, root = bridge
+    (root / "sub").mkdir()
+    (root / "a.txt").write_text("keep")
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "move_file", source=str(root / "a.txt"), destination=str(root / "sub"))
+    assert queued.status_code == 202 and (root / "a.txt").exists()
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and (root / "sub" / "a.txt").read_text() == "keep"
+
+
+def test_move_file_cannot_leave_the_root(bridge):
+    client, root = bridge
+    outside = root.parent / "outside"
+    (root / "a.txt").write_text("keep")
+    response = call(client, fresh_task(client), "move_file", source=str(root / "a.txt"), destination=str(outside))
+    assert response.status_code == 403
+    assert (root / "a.txt").read_text() == "keep" and not (outside / "a.txt").exists()
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []

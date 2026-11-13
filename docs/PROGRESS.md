@@ -17,8 +17,10 @@ Newest session entry goes at the top of the Session log.
   wired into `create_app` when `handlers is None`); commit B done (`rename_file`
   via shared `_move`: `lstat` must say plain file, `os.rename` to the policy's `target`,
   then an undo `moved` record; an unrecorded move is renamed back and the call fails).
-  443 passed, 3 skipped (new skip: symlink test, account cannot create symlinks). Commit C
-  (`P3.2: move_file`) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  Commit C done (`move_file` via the same `_move`, `source` -> the policy's `target`
+  inside `destination`). 450 passed, 3 skipped (a skip: symlink test, account cannot
+  create symlinks). Commit D (`P3.2: open_app`, new `config/apps.toml`: Karthik approves
+  the file and the VS Code path first) next, on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
