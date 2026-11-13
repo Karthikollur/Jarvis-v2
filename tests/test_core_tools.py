@@ -7,6 +7,7 @@ They do not need a model.
 """
 
 import ast
+import sys
 import tomllib
 from pathlib import Path
 
@@ -15,7 +16,13 @@ import pytest
 from safety.policy import TOOLS
 
 REPO = Path(__file__).resolve().parents[1]
-SOURCES = sorted([*(REPO / "core").glob("*.py"), *(REPO / "evals").glob("*.py")])
+
+
+def sources(base):
+    return sorted([*(base / "core").rglob("*.py"), *(base / "evals").rglob("*.py")])
+
+
+SOURCES = sources(REPO)
 BUILT_INS = ["shell_exec", "file_write", "http_request", "apply_patch"]
 # Agents that bring no tools of their own. The SDK's digest agent adds its own tools.
 AGENTS = {"simple", "orchestrator"}
@@ -31,6 +38,35 @@ def keyword_values(name):
                     if keyword.arg == name:
                         found.append((source.name, keyword.value.lineno, ast.unparse(keyword.value)))
     return found
+
+
+def hidden_keywords():
+    """(file, line) for every call with a `**` unpacking: it can hide `tools=` from the scan."""
+    return [
+        (source.name, node.lineno)
+        for source in SOURCES
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call) and any(keyword.arg is None for keyword in node.keywords)
+    ]
+
+
+def test_no_call_hides_its_keywords():
+    assert hidden_keywords() == [], "write the keywords out (no f(**{...})) so the tools guard can see them"
+
+
+def test_scan_reaches_subfolders(tmp_path, monkeypatch):
+    """P3.1b G3: a call site in core/sub/ must not escape the guard."""
+    (tmp_path / "core" / "sub").mkdir(parents=True)
+    (tmp_path / "core" / "sub" / "x.py").write_text("f(tools=['shell_exec'])\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "SOURCES", sources(tmp_path))
+    assert keyword_values("tools") == [("x.py", 1, "['shell_exec']")]
+
+
+def test_scan_sees_keyword_unpacking(tmp_path, monkeypatch):
+    (tmp_path / "evals").mkdir()
+    (tmp_path / "evals" / "y.py").write_text("f(**{'tools': ['shell_exec']})\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "SOURCES", sources(tmp_path))
+    assert hidden_keywords() == [("y.py", 1)]
 
 
 def test_sources_are_scanned():

@@ -169,6 +169,9 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 
 - [x] P3.1 T0 tools: `list_windows`, `system_stats` (CPU, RAM, GPU, VRAM), `list_dir`,
       `read_text_file` (size cap).
+- [x] P3.1b Review gaps G1 to G3: `/outcome` survives a lone surrogate; `read_text_file`
+      refuses a hard link; built-in tools guard scans subfolders and refuses `**` in calls.
+      Plan: `docs/plans/P3.1b.md`.
 - [ ] P3.2 T1 tools: `open_app` (allowlist in `config/apps.toml`), `focus_window`, `create_folder`,
       `move_file`, `rename_file`, all with undo records. One batch confirmation for a
       multi-file move on a tainted task (P2.8: `list_dir` taints).
@@ -178,6 +181,9 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 - [ ] P3.5 Register tools in core; rerun evals against real tools in the sandbox. The core
       opens exactly one task per user request and sends `fresh_context` only when it has
       dropped the model's context (also after a bridge restart); tests for both.
+      Runtime tools guard (P3.1b review): one `BridgeTool` class in `core/`; before every
+      request the agent's real tool set must equal `TOOLS` by name and be exactly
+      `BridgeTool` by type, else refuse. Tests include the refused case.
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
       (history stays in the audit log).
 

@@ -5,12 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b in progress (plan
-  `docs/plans/P3.1b.md`): commit A done (`POST /outcome` answers through `encoded()`, so a
-  lone surrogate in a result no longer gives 500); commit B done (`read_text_file`
-  refuses a file with `st_nlink != 1` via `_single_name(fd)` in `bridge/tools.py`; rule 7
-  in `docs/plans/P3.2.md`; cost: a legitimately hard-linked file cannot be read, Decisions
-  entry comes with C; 425 passed, 2 skipped). C next, on Karthik's go. P3.2 not started. P0 and P1 are complete, every task ticked in PLAN.md.
+- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
+  (plan `docs/plans/P3.1b.md`, three commits, ticked in PLAN.md): A `POST /outcome`
+  answers through `encoded()`, so a lone surrogate in a result no longer gives 500;
+  B `read_text_file` refuses a file with `st_nlink != 1` via `_single_name(fd)` in
+  `bridge/tools.py` (rule 7 in `docs/plans/P3.2.md`); C the built-in tools guard scans
+  `core/` and `evals/` recursively and refuses `**` keyword unpacking in any call; PLAN.md
+  P3.5 now carries the runtime tools guard. 428 passed, 2 skipped. P3.2 not started; its
+  commit A (`P3.2: create_folder`) waits for Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -233,6 +235,14 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-13 — P3.1b: `read_text_file` refuses any file with more than one hard link,
+  checked on the open handle — a second name may be outside the roots and neither
+  `realpath` nor `GetFinalPathNameByHandle` reveals it. Cost: a legitimately hard-linked
+  file in the sandbox cannot be read. Nothing enforces the rule mechanically: a future
+  content-opening handler must call `_single_name` and bring its own hard-link test
+  (rule 7, `docs/plans/P3.2.md`). The built-in tools guard is still static (source scan)
+  until P3.5 adds the runtime guard. — Karthik (plan approval), Claude Code
 
 - 2026-11-12 — P2.8 limits, as built. (1) Conversation taint trusts the core's
   `fresh_context` claim; P3.5 must test that the core sends it only after dropping the
@@ -572,6 +582,29 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   run did not repeat.
 
 ## Session log
+
+### 2026-11-13 — Agent: Claude Code (P3.1b, three commits)
+
+- Start: HEAD 630906d, tree clean except the two untracked root files (`PowerShell 5.1`,
+  a saved `git diff`; `oft Corporation. All rights reserved.`, the `less` help screen;
+  left alone), 423 passed, 2 skipped.
+- A `P3.1b: outcome survives odd results`: `bridge/app.py` `outcome()` returns
+  `encoded(...)`; new test `test_surrogate_in_an_outcome_is_returned` in
+  `tests/test_bridge.py`. Red: `UnicodeEncodeError` on `/outcome` after approve 200
+  (first attempt was 403 because test storage is in the repo; fixed with `protected=[]`
+  as the `sandbox` fixture does). Mutant = pre-fix line = red run.
+- B `P3.1b: read_text_file refuses a hard link`: `_single_name(fd)` in `bridge/tools.py`,
+  docstring rule, rule 7 in `docs/plans/P3.2.md`; new test
+  `test_read_text_file_refuses_a_hard_link` in `tests/test_tools.py` (no skip if
+  `os.link` fails). Red: `DID NOT RAISE`. In-memory mutant (helper = plain `fstat`) killed.
+- C `P3.1b: tools guard scans subfolders`: `tests/test_core_tools.py` gets `sources(base)`
+  with `rglob`, `hidden_keywords()`, `test_no_call_hides_its_keywords` and two `tmp_path`
+  scan tests. Red (with `glob`): nested `core/sub/x.py` call site missed. In-memory mutant
+  (`hidden_keywords` blinded) killed. PLAN.md: P3.1b ticked, P3.5 runtime guard added.
+- Tests: `rtk proxy uv run python -m pytest` -> 428 passed, 2 skipped. Evals not re-run
+  (core still uses stub tools until P3.5).
+- Stopped at: P3.1b complete, plan marked Implemented. Next concrete step: P3.2 commit A
+  `P3.2: create_folder` (plus `mutating` wiring), on Karthik's go.
 
 ### 2026-11-13 — Agent: Claude Code (P3.1 T0 tools, four commits)
 
