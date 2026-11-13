@@ -401,6 +401,7 @@ def test_every_path_parameter_is_checked(every_tool, tool, param, escape):
     client, root, outside, protected, ran = every_tool
     rule = TOOLS[tool]
     args = {name: str(root / f"ok-{name}") for name in rule.path_params}  # other params valid
+    args |= {name: [str(root / f"ok-{name}")] for name in rule.list_params}
     args |= {name: "ok.txt" for name in rule.name_params}
     args[param] = ESCAPES[escape](root, outside, protected)
     response = call(client, new_task(client), tool, **args)
@@ -408,6 +409,30 @@ def test_every_path_parameter_is_checked(every_tool, tool, param, escape):
     assert response.json()["detail"].startswith(f"{param}: ")
     assert ran == []
     assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []  # T2 too
+    assert list(outside.iterdir()) == [] and list(protected.iterdir()) == []
+
+
+LIST_PARAMS = [(tool, name) for tool, rule in TOOLS.items() for name in rule.list_params]
+
+
+def test_list_sweep_is_not_vacuous():
+    assert ("move_files", "sources") in LIST_PARAMS
+
+
+@pytest.mark.parametrize("escape", ESCAPES)
+@pytest.mark.parametrize("tool, param", LIST_PARAMS)
+def test_every_member_of_a_path_list_is_checked(every_tool, tool, param, escape):
+    """P3.2 F1: one bad member among good ones refuses the whole batch."""
+    client, root, outside, protected, ran = every_tool
+    rule = TOOLS[tool]
+    args = {name: str(root / f"ok-{name}") for name in rule.path_params}
+    args |= {name: [str(root / f"ok-{name}")] for name in rule.list_params}
+    args[param] = [str(root / "a.txt"), ESCAPES[escape](root, outside, protected), str(root / "b.txt")]
+    response = call(client, new_task(client), tool, **args)
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"].startswith(f"{param}: ")
+    assert ran == []
+    assert client.get("/pending", headers=ui_headers(root)).json()["pending"] == []
     assert list(outside.iterdir()) == [] and list(protected.iterdir()) == []
 
 
@@ -1264,6 +1289,7 @@ def valid_args(tool, root):
     """Arguments the policy accepts for `tool` (fixture allowlists: notepad, x)."""
     rule = TOOLS[tool]
     args = {name: str(root / f"ok-{name}") for name in rule.path_params}
+    args |= {name: [str(root / f"ok-{name}")] for name in rule.list_params}
     args |= {name: "ok.txt" for name in rule.name_params}
     args |= {name: {"apps": "notepad", "scripts": "x"}[listed] for name, listed in rule.choices}
     args |= {name: "hello" for name in rule.text_params}

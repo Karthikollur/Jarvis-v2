@@ -568,6 +568,106 @@ def test_move_landing_place_is_checked_and_returned(nested):
     assert policy.recheck(task, "move_file", args, moved) == "destination: changed since the request"
 
 
+# --- move_files: one batch, one decision (P3.2 F1) --------------------------
+
+
+def _real(path):
+    return Path(os.path.realpath(path))
+
+
+def test_move_files_clean_batch_is_one_allow_with_every_landing(nested):
+    policy, root, keep = nested
+    sources = [root / "in" / "a.txt", root / "in" / "sub" / "b.txt", root / "c.txt"]
+    args = {"sources": [str(s) for s in sources], "destination": str(root / "out")}
+    task = policy.new_task()
+    decision = policy.check(task, "move_files", args)
+    assert (decision.action, decision.tier) == ("allow", Tier.T1)
+    assert decision.paths == {
+        "destination": _real(root / "out"),
+        "sources": tuple(_real(s) for s in sources),
+        "target": tuple(_real(root / "out" / s.name) for s in sources),
+    }
+    assert task.calls == 1  # one batch = one call against the budget
+    # The root is a folder things move into, as for move_file.
+    assert _decide(policy, "move_files", sources=[str(root / "in" / "a.txt")], destination=str(root)) == (
+        "allow", "")
+
+
+def test_move_files_tainted_batch_needs_one_confirm(policy, dirs):
+    root = dirs[0]
+    task = policy.new_task(tainted=True)
+    args = {"sources": [str(root / f"{n}.txt") for n in range(20)], "destination": str(root / "out")}
+    decision = policy.check(task, "move_files", args)
+    assert (decision.action, decision.reason, decision.tier) == ("confirm", "tainted T1", Tier.T2)
+    assert len(decision.paths["sources"]) == len(decision.paths["target"]) == 20
+    assert task.calls == 1
+
+
+def test_move_files_refuses_the_whole_batch(nested):
+    policy, root, keep = nested
+    good = [str(root / "in" / "a.txt"), str(root / "in" / "b.txt")]
+    dest = str(root / "out")
+
+    def refused(sources, destination=dest):
+        action, reason = _decide(policy, "move_files", sources=sources, destination=destination)
+        assert action == "deny", (sources, destination)
+        return reason
+
+    listing = "sources: must be a list of 1 to 20 paths"
+    for value in [good[0], {"a": good[0]}, None, 5, [], [str(root / f"{n}.txt") for n in range(21)]]:
+        assert refused(value) == listing, repr(value)[:60]
+    assert refused([good[0], 7]) == "sources: not a path"
+    assert refused([*good, good[0].upper()]) == "sources: same file twice"
+    assert refused([*good, str(root / "other" / "A.TXT")]) == "sources: two files have the same name"
+    assert refused([*good, str(root / "out" / "c.txt")]) == "sources: already in the destination folder"
+    for bad, reason in [
+        (str(root / ".." / "outside" / "x.txt"), "sources: outside the allowed roots"),
+        (str(keep / "secret" / "x.txt"), "sources: protected folder"),
+        (str(root), "sources: the root itself"),
+        (str(keep), "sources: contains a protected folder"),
+        (str(root / "in" / ".." / ".." / "x.txt"), "sources: outside the allowed roots"),
+    ]:
+        for position in (0, 1, 2):  # first, middle, last among good members
+            batch = [*good]
+            batch.insert(position, bad)
+            assert refused(batch) == reason, (bad, position)
+    # A landing on a protected name, and a destination outside the root.
+    assert refused([*good, str(root / "in" / "secret")], str(keep)) == "destination: protected folder"
+    assert refused(good, str(root / ".." / "outside")) == "destination: outside the allowed roots"
+    # Undeclared argument (e.g. an overwrite flag) refused.
+    decision = policy.check(policy.new_task(), "move_files", {"sources": good, "destination": dest, "overwrite": True})
+    assert (decision.action, decision.reason) == ("deny", "unknown argument")
+    # Twenty is fine.
+    twenty = [str(root / "in" / f"{n}.txt") for n in range(20)]
+    assert _decide(policy, "move_files", sources=twenty, destination=dest) == ("allow", "")
+
+
+@pytest.mark.parametrize("index", [0, 2])
+@pytest.mark.parametrize("kind", ["source", "landing"])
+def test_move_files_recheck_sees_every_member(nested, kind, index):
+    """A junction swapped in while the batch waits, for the first or a later member,
+    makes approve refuse it."""
+    policy, root, keep = nested
+    other = root / "other"
+    folders = [root / f"in{i}" for i in range(3)]
+    dest = root / "dest"
+    for folder in [other, *folders, dest]:
+        folder.mkdir()
+    args = {"sources": [str(folders[i] / f"f{i}.txt") for i in range(3)], "destination": str(dest)}
+    task = policy.new_task()
+    decision = policy.check(task, "move_files", args)
+    assert decision.action == "allow"
+    assert policy.recheck(task, "move_files", args, decision.paths) is None
+    if kind == "source":
+        folders[index].rmdir()
+        _winapi.CreateJunction(str(other), str(folders[index]))
+        expected = "sources: changed since the request"
+    else:
+        _winapi.CreateJunction(str(other), str(dest / f"f{index}.txt"))
+        expected = "destination: changed since the request"
+    assert policy.recheck(task, "move_files", args, decision.paths) == expected
+
+
 BAD_NAMES = [
     "x‮txt.exe",  # right-to-left override: shows as "xexe.txt" in the confirm UI
     "a\nb", "a\tb", "x\ud800", "*", "a?b", 'a"b', "a<b", "a>b", "a|b",
@@ -600,6 +700,7 @@ def valid_args(tool, root):
     """Arguments the policy accepts for `tool` (fixture allowlists: notepad, x)."""
     rule = TOOLS[tool]
     args = {name: str(root / f"ok-{name}") for name in rule.path_params}
+    args |= {name: [str(root / f"ok-{name}")] for name in rule.list_params}
     args |= {name: "ok.txt" for name in rule.name_params}
     args |= {name: {"apps": "notepad", "scripts": "x"}[listed] for name, listed in rule.choices}
     args |= {name: "hello" for name in rule.text_params}

@@ -26,10 +26,12 @@ Newest session entry goes at the top of the Session log.
   if Windows refuses; result `{"focused": True}` only, no title). 480 passed, 3 skipped
   (a skip: symlink test, account cannot create symlinks). Pending: Karthik's manual
   checks through a running bridge ("open notepad", then focus it). Commit F
-  (`move_files`) is planned and approved, not implemented: `docs/plans/P3.2.md`
-  "Section F", two commits. Next: F1 `P3.2: move_files policy` (touches
-  `safety/policy.py` and `evals/stub_tools.py`; evals re-run, needs Ollama), then F2
-  `P3.2: move_files` (handler and `/pending`), each on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
+  (`move_files`, `docs/plans/P3.2.md` "Section F"): F1 done (`P3.2: move_files policy`:
+  `MAX_BATCH = 20`, `Rule.list_params`, `_resolve_batch` checks every source and every
+  landing, refuses duplicates and a source already in the destination; recheck compares
+  whole tuples; stub `move_files` plus eval case t24; 509 passed, 3 skipped; 8 mutants
+  killed; evals 41/41). Through the bridge `move_files` answers 501 until F2. Next: F2
+  `P3.2: move_files` (handler and `/pending` lists), on Karthik's go. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -143,6 +145,22 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
+- (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
+  (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
+  to `evals/stub_tools.py` (required by `test_tool_table_matches_eval_stubs`) fails
+  `tests/test_eval_set.py::test_every_stub_tool_is_exercised`, which demands at least one
+  case per stub tool in `evals/commands.yaml`. The plan's "Not in F" says "No eval case
+  for batch moves yet". Options: (a) add one case to `commands.yaml`, e.g. `Move
+  C:\JarvisSandbox\a.txt and C:\JarvisSandbox\b.txt to C:\JarvisSandbox\docs` -> `move_files`
+  (overrides "Not in F"; the eval re-run then also scores it); (b) exempt `move_files`
+  from that test until P3.5 (weakens a test); (c) other. Uncommitted F1 work in the tree:
+  policy, stub, tests; 507 passed, this 1 failed. Mutants and evals not run yet.
+  Karthik chose (a). Follow-up gap: `tests/test_eval_set.py::test_counts_match_plan` pins
+  the set at exactly 40 cases (PLAN.md P1.2), and `evals/run.py` `_norm` loosens only
+  strings, so a list of paths in `args` is compared case-sensitively. Asked: 41st case
+  (count test 40 -> 41) or replace an existing case; args checked (`_norm` learns lists)
+  or tool-only.
+
 - P2.8 review (2026-11-12): fixes planned as P2.9, one go per commit. Decide when to start
   commit A. Two untracked files in the repo root, `PowerShell 5.1` and
   `oft Corporation. All rights reserved.`, hold `git diff` output and the `less` help
@@ -252,6 +270,12 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-13 — P3.2 F1: the eval set grows to 41 cases (new t24, `move_files`, arguments
+  checked); `tests/test_eval_set.py` count 40 -> 41 (refuse 10, clarify 5 unchanged);
+  `evals/run.py` compares list arguments member by member. Overrides the F plan's "No
+  eval case for batch moves yet". — the eval tests require a case for every stub tool;
+  P1 numbers were on 40 cases, so later runs are not a like-for-like comparison. — Karthik
 
 - 2026-11-13 — P3.2 F (`move_files`): one batch moves at most 20 files; a failure
   part-way stops and reports, nothing is moved back automatically. No per-task cap on
@@ -613,6 +637,10 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the first LLM call that carries tool schemas (t01 at 4.7 s before, t02 at 3.9 s now), so it
   is a one-off prompt warm-up, not a property of that command. The 9.3 s on t03 in the first
   run did not repeat.
+- 2026-11-13 — qwen3.5:4b + fast path, stub tools, 14 tools (P3.2 F1, new `move_files`
+  and case t24) — tool selection 26/26 (100%), arguments 24/24 (100%) — refusals 10/10,
+  clarify 5/5, all 41/41 — 5/41 fast path — median 1.1 s, max 5.0 s. t24 went through
+  the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
 

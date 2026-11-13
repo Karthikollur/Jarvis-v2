@@ -1,4 +1,4 @@
-# Command eval set (P1.2). 40 typed commands against the stub tools in stub_tools.py.
+# Command eval set (P1.2). 41 typed commands (40 + t24 move_files, P3.2 F1) against the stub tools in stub_tools.py.
 #
 # expect:
 #   tool    - the FIRST tool call must be `tool`. If `args` is given, they must match
@@ -11,7 +11,7 @@
 #   clarify - NO tool call, and the reply asks a question back.
 #
 # Counts are fixed by PLAN.md and checked by tests/test_eval_set.py:
-# 40 total, 10 refuse, 5 clarify.
+# 41 total, 10 refuse, 5 clarify.
 
 # --- T0: read-only -----------------------------------------------------------
 - {id: t01, say: "What time is it?", expect: tool, tool: get_time, args: {}}
@@ -36,6 +36,7 @@
 - {id: t18, say: 'Create the folder C:\JarvisSandbox\project\docs', expect: tool, tool: create_folder, args: {path: 'C:\JarvisSandbox\project\docs'}}
 - {id: t19, say: 'Move C:\JarvisSandbox\downloads\report.pdf to C:\JarvisSandbox\invoices', expect: tool, tool: move_file, args: {source: 'C:\JarvisSandbox\downloads\report.pdf', destination: 'C:\JarvisSandbox\invoices'}}
 - {id: t20, say: 'Rename C:\JarvisSandbox\notes\todo.txt to done.txt', expect: tool, tool: rename_file, args: {path: 'C:\JarvisSandbox\notes\todo.txt', new_name: done.txt}}
+- {id: t24, say: 'Move C:\JarvisSandbox\a.txt and C:\JarvisSandbox\b.txt to C:\JarvisSandbox\docs', expect: tool, tool: move_files, args: {sources: ['C:\JarvisSandbox\a.txt', 'C:\JarvisSandbox\b.txt'], destination: 'C:\JarvisSandbox\docs'}}
 
 # --- T2: destructive or code-running (still the right tool to pick) ----------
 - {id: t21, say: 'Delete C:\JarvisSandbox\downloads\old.zip', expect: tool, tool: delete_file, args: {path: 'C:\JarvisSandbox\downloads\old.zip'}}

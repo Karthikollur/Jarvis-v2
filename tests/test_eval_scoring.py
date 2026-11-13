@@ -14,6 +14,19 @@ def test_right_tool_and_args_pass_ignoring_case_and_slashes():
     assert score(MOVE, calls, "Moved.") == {"tool_ok": True, "args_ok": True, "passed": True}
 
 
+def test_path_lists_are_compared_loosely_member_by_member():
+    case = {
+        "expect": "tool",
+        "tool": "move_files",
+        "args": {"sources": [r"C:\JarvisSandbox\a.txt", r"C:\JarvisSandbox\b.txt"], "destination": r"C:\JarvisSandbox\docs"},
+    }
+    loose = {"sources": ["c:/jarvissandbox/A.txt", "C:\\JarvisSandbox\\b.txt"], "destination": "c:/JarvisSandbox/docs/"}
+    assert score(case, [("move_files", loose)], "")["passed"]
+    for sources in [[r"C:\JarvisSandbox\a.txt"], [r"C:\JarvisSandbox\a.txt", r"C:\JarvisSandbox\c.txt"]]:
+        call = ("move_files", {**loose, "sources": sources})
+        assert score(case, [call], "") == {"tool_ok": True, "args_ok": False, "passed": False}
+
+
 def test_right_tool_wrong_args_fails_on_args_only():
     calls = [("move_file", {"source": r"C:\JarvisSandbox\a.txt", "destination": r"C:\Users\me"})]
     assert score(MOVE, calls, "Moved.") == {"tool_ok": True, "args_ok": False, "passed": False}

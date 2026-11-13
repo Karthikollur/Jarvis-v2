@@ -27,6 +27,7 @@ MAX_CALLS = 8  # tool calls per task
 MAX_SECONDS = 120  # wall time per task
 MAX_FAILURES = 3  # failures of one tool per task
 MAX_TEXT = 200  # characters in a free-text argument
+MAX_BATCH = 20  # paths in one list argument (move_files, P3.2 F)
 
 
 class Tier(IntEnum):
@@ -47,12 +48,14 @@ class Rule:
     # (argument, allowlist): the value must be a name on that allowlist ("apps" or "scripts")
     choices: tuple[tuple[str, str], ...] = ()
     text_params: tuple[str, ...] = ()  # short plain text: MAX_TEXT, printable only
+    # Arguments that are a LIST of 1..MAX_BATCH paths, each moved into the `into` folder.
+    list_params: tuple[str, ...] = ()
 
     @property
     def params(self) -> tuple[str, ...]:
         """Every argument the tool takes. All are required; anything else is refused."""
         listed = tuple(name for name, _ in self.choices)
-        return (*self.path_params, *self.name_params, *listed, *self.text_params)
+        return (*self.path_params, *self.list_params, *self.name_params, *listed, *self.text_params)
 
 
 # One entry per tool. A new tool gets a new entry at the strictest tier that works.
@@ -67,6 +70,7 @@ TOOLS: dict[str, Rule] = {
     "focus_window": Rule(Tier.T1, text_params=("title",)),
     "create_folder": Rule(Tier.T1, ("path",)),
     "move_file": Rule(Tier.T1, ("source", "destination"), into=("destination",)),
+    "move_files": Rule(Tier.T1, ("destination",), into=("destination",), list_params=("sources",)),
     "rename_file": Rule(Tier.T1, ("path",), ("new_name",)),
     "delete_file": Rule(Tier.T2, ("path",)),
     "run_named_script": Rule(Tier.T2, choices=(("name", "scripts"),)),
@@ -187,7 +191,8 @@ class Decision:
     action: str  # "allow" | "confirm" | "deny"
     reason: str = ""
     tier: Tier | None = None  # effective tier, after taint
-    paths: dict[str, Path] = field(default_factory=dict)  # resolved path arguments
+    # Resolved path arguments; a list argument and its landings are tuples (move_files).
+    paths: dict[str, Path | tuple[Path, ...]] = field(default_factory=dict)
 
 
 class Policy:
@@ -265,7 +270,7 @@ class Policy:
         return Decision("allow", "", tier, paths)
 
     def recheck(
-        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]
+        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path | tuple[Path, ...]]
     ) -> str | None:
         """Re-validate a confirmed action at approve time. None means it may run.
 
@@ -278,7 +283,7 @@ class Policy:
             return self._recheck(task, tool, args, paths)
 
     def _recheck(
-        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path]
+        self, task: Task, tool: str, args: dict[str, Any], paths: dict[str, Path | tuple[Path, ...]]
     ) -> str | None:
         if task.stopped:
             return "task stopped"
@@ -309,6 +314,8 @@ class Policy:
                 paths[name] = resolve_inside(args.get(name), self.roots, self.protected, changed)
             except PathRefused as refused:
                 raise PathRefused(f"{name}: {refused}") from None
+        if rule.list_params:
+            return paths | self._resolve_batch(rule, args, paths[rule.into[0]])
         landings = []
         for name in rule.name_params:
             value = args.get(name)
@@ -331,6 +338,37 @@ class Policy:
             except PathRefused as refused:
                 raise PathRefused(f"{name}: {refused}") from None
         return paths
+
+    def _resolve_batch(
+        self, rule: Rule, args: dict[str, Any], folder: Path
+    ) -> dict[str, tuple[Path, ...]]:
+        """move_files (P3.2 F): every member of the list is checked as a single move would
+        be, and every landing (`folder` / member name) too. Any refusal refuses the batch.
+        Recheck compares the whole tuples, so a change to any member is caught."""
+        (name,) = rule.list_params  # ponytail: one list parameter per tool today
+        raw = args.get(name)
+        if not isinstance(raw, list) or not 0 < len(raw) <= MAX_BATCH:
+            raise PathRefused(f"{name}: must be a list of 1 to {MAX_BATCH} paths")
+        try:
+            sources = tuple(resolve_inside(item, self.roots, self.protected, True) for item in raw)
+        except PathRefused as refused:
+            raise PathRefused(f"{name}: {refused}") from None
+        try:
+            landings = tuple(
+                resolve_inside(str(folder / source.name), self.roots, self.protected, True)
+                for source in sources
+            )
+        except PathRefused as refused:
+            raise PathRefused(f"{rule.into[0]}: {refused}") from None
+        folded = [os.path.normcase(str(source)) for source in sources]
+        landed = [os.path.normcase(str(landing)) for landing in landings]
+        if len(set(folded)) < len(folded):
+            raise PathRefused(f"{name}: same file twice")
+        if any(source == landing for source, landing in zip(folded, landed)):
+            raise PathRefused(f"{name}: already in the destination folder")
+        if len(set(landed)) < len(landed):
+            raise PathRefused(f"{name}: two files have the same name")
+        return {name: sources, "target": landings}
 
     def record(self, task: Task, tool: str, ok: bool) -> None:
         """Report the outcome of a tool that ran."""

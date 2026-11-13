@@ -52,6 +52,15 @@ SPECS: dict[str, tuple[str, dict[str, Any]]] = {
             }
         ),
     ),
+    "move_files": (
+        "Move several files (up to 20) into one folder.",
+        _obj(
+            {
+                "sources": {"type": "array", "items": _PATH, "minItems": 1, "maxItems": 20},
+                "destination": {**_PATH, "description": "Destination FOLDER inside C:\\JarvisSandbox."},
+            }
+        ),
+    ),
     "rename_file": (
         "Rename a file, keeping it in the same folder.",
         _obj(

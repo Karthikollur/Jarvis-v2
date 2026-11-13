@@ -29,6 +29,8 @@ def _norm(value: Any) -> Any:
     """Compare paths and names loosely: case, slash direction, trailing slash."""
     if isinstance(value, str):
         return value.strip().lower().replace("/", "\\").rstrip("\\")
+    if isinstance(value, list):  # move_files sources: same members, same order
+        return [_norm(item) for item in value]
     return value
 
 

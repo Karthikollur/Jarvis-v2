@@ -127,7 +127,7 @@ localhost server, with Wi-Fi off.
 - [x] P1.1 Pull `qwen3.5:4b`; set as default model.
 - [x] P1.2 `evals/commands.yaml`: 40 typed commands with expected tool + arguments, including
       10 that must be refused and 5 ambiguous ones that must trigger a clarifying question.
-      Use stub tools.
+      Use stub tools. (41 since P3.2 F1: case t24 for `move_files`, decided by Karthik.)
 - [x] P1.3 `evals/run.py`: reports tool-selection accuracy, argument accuracy, refusal correctness,
       median latency.
 - [x] P1.4 Use Ollama structured output (JSON schema) for tool calls where OpenJarvis allows it.
