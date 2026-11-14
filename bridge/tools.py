@@ -326,16 +326,30 @@ def _checked_command(config: Path, name: str, entry: object) -> list[str]:
     return command
 
 
-def load_commands(config: Path) -> dict[str, list[str]]:
-    """config/apps.toml: the fixed command each allowed name starts. Any bad entry raises,
-    so the bridge does not start (fail closed). A missing file allows nothing, as
-    `safety.policy.load_names`, which still decides which names are allowed."""
+@dataclass(frozen=True)
+class App:
+    command: list[str]
+    accepts: str | None
+
+
+def load_apps(config: Path) -> dict[str, App]:
+    """config/apps.toml: the fixed command each allowed name starts, and what open_in_app
+    may hand it. Any bad entry raises, so the bridge does not start (fail closed). A
+    missing file allows nothing, as `safety.policy.load_names`, which still decides
+    which names are allowed."""
     if not config.exists():
         return {}
-    commands = {}
+    allowed = {"command", "accepts"}
+    apps = {}
     for name, entry in tomllib.loads(config.read_text(encoding="utf-8")).items():
-        commands[name] = _checked_command(config, name, entry)
-    return commands
+        if not isinstance(entry, dict) or set(entry) - allowed:
+            raise ValueError(f"{config.name}: [{name}] keys must be command, accepts")
+        command = _checked_command(config, name, entry)
+        accepts = entry.get("accepts")
+        if accepts is not None and accepts not in ("file", "folder", "any"):
+            raise ValueError(f"{config.name}: [{name}] accepts must be file, folder, or any")
+        apps[name] = App(command, accepts)
+    return apps
 
 
 @dataclass(frozen=True)
@@ -384,7 +398,7 @@ def _tail(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")[-OUTPUT_TAIL:]
 
 
-def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str, Any]:
+def mutating(undo_log, apps: dict[str, App], scripts=None) -> dict[str, Any]:
     """T1 and T2 handlers: closures over the bridge's UndoLog, apps.toml, and scripts.toml."""
     scripts = scripts or {}
 
@@ -446,7 +460,28 @@ def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str
         # ponytail: the Popen is never waited on; the app outlives the call on purpose.
         name = args["app"]
         process = subprocess.Popen(
-            commands[name], shell=False,
+            apps[name].command, shell=False,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return {"opened": name, "pid": process.pid}
+
+    def open_in_app(args):
+        name, path = args["app"], args["path"]  # both checked by the policy (rule 1)
+        app = apps[name]
+        # ponytail: an app that takes no path fails in the handler (500 Tool failed, one
+        # failure counted), not in the policy: a third allowlist is not worth a Policy
+        # kwarg for a refusal that is not a security boundary (the policy already bounds
+        # app and path).
+        if app.accepts is None:
+            raise OSError(f"{name} does not open a path")
+        found = os.lstat(path)  # never follow a link or junction (rule 12)
+        if found.st_reparse_tag or not (stat.S_ISREG(found.st_mode) or stat.S_ISDIR(found.st_mode)):
+            raise OSError("not a plain file or folder")
+        kind = "file" if stat.S_ISREG(found.st_mode) else "folder"
+        if app.accepts not in (kind, "any"):
+            raise OSError(f"{name} opens a {app.accepts}, not a {kind}")
+        process = subprocess.Popen(
+            [*app.command, str(path)], shell=False,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         return {"opened": name, "pid": process.pid}
@@ -480,6 +515,7 @@ def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str
 
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
-        "move_files": move_files, "open_app": open_app, "focus_window": focus_window,
+        "move_files": move_files, "open_app": open_app, "open_in_app": open_in_app,
+        "focus_window": focus_window,
         "delete_file": delete_file, "run_named_script": run_named_script,
     }

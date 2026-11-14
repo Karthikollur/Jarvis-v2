@@ -1,14 +1,19 @@
 # Apps open_app may start. Only Karthik edits this file.
 # Each command is a fixed absolute path; the model supplies only the [name].
+# Optional per entry: accepts = 'file' | 'folder' | 'any', what open_in_app may hand
+# the app on its command line. No accepts = open_app only.
 
 [notepad]
 command = ['C:\Windows\System32\notepad.exe']
+accepts = 'file'
 
 [calculator]
 command = ['C:\Windows\System32\calc.exe']
 
 [explorer]
 command = ['C:\Windows\explorer.exe']
+accepts = 'folder'
 
 [vscode]
 command = ['C:\Users\karth\AppData\Local\Programs\Microsoft VS Code\Code.exe']
+accepts = 'any'

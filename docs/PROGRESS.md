@@ -78,8 +78,13 @@ Newest session entry goes at the top of the Session log.
   DONE 2026-11-15 (commit `P3.4: open_in_app policy`): `Rule.opens` (last field, so
   positional `Rule` calls stay valid), `_resolve` skips the root check when `opens` is
   set, stub plus eval case t25. 577 passed, 3 skipped. 5 mutants killed (baseline 6).
-  P3.4 is not ticked. Cursor implements B next (`apps.toml` `accepts`, `load_apps`,
-  handler) after Claude Code reviews A; Karthik's manual check after B.
+  Section A reviewed and accepted. Section B DONE 2026-11-15 (commit `P3.4: open_in_app`):
+  `config/apps.toml` `accepts`, `App` / `load_apps`, `open_in_app` handler (`lstat`,
+  reparse tag, path as one argv item after the fixed command). `create_app` keeps the
+  policy name set in `apps` and passes `app_entries`. 589 passed, 4 skipped (the new
+  skip is the symlink half; this account cannot create one; the junction half runs
+  first). 8 mutants killed (baseline 5 passed, 1 skipped). P3.4 ticked in PLAN.md.
+  Manual check by Karthik still pending.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -373,6 +378,12 @@ Format: `YYYY-MM-DD — decision — reason — who`
 - 2026-11-15 — P3.4: eval case t25 "Open VS Code on my sandbox project." -> `open_in_app`;
   count 41 -> 42. — `test_every_stub_tool_is_exercised` needs a case per stub tool; same as
   `move_files`. — Karthik
+- 2026-11-15 — P3.4: `opens=True` skips `_refuse_mutation` entirely, so both "the root
+  itself" and "contains a protected folder" are lifted for `open_in_app`. "Inside a
+  protected folder" is still refused (checked before the mutating step). — Today no
+  folder in `C:\JarvisSandbox` contains a protected folder (protected =
+  `%LOCALAPPDATA%\Jarvis` and the repo), so nothing changes in practice. Revisit before
+  adding any root that contains a protected folder. — Karthik (found in review by Claude Code)
 
 - 2026-11-14 — P3.3: `run_named_script` waits for the script (timeout from its
   `scripts.toml` entry, 1 to 60 s, default 30), returns the exit code and the last 4096
@@ -803,6 +814,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.4 B open_in_app)
+
+- Start: HEAD `42a7ed3`, tree clean, `main` in sync with `origin/main`. Section A
+  reviewed and accepted. `uv run python -m pytest` from the repo root: 577 passed,
+  3 skipped.
+- Red run before the handler: 22 failed, 1 passed. The pass is
+  `test_open_in_app_refused_before_any_launch`: those calls are already 403 in the
+  policy. The rest failed because `load_apps` and `App` did not exist.
+- `create_app` does not rebind `apps` (the policy name set). The loaded entries are
+  `app_entries`. The lstat stand-in sets `st_reparse_tag=0`, so the refusal is the
+  `S_IFLNK` mode check.
+- Files: `bridge/tools.py`, `bridge/app.py`, `config/apps.toml`, `tests/test_tools.py`,
+  `docs/plans/P3.4.md`, `docs/PLAN.md`, `docs/PROGRESS.md`. No `safety/`, routes, or
+  `.claude/` change. P3.4 ticked.
+- Tests: `uv run python -m pytest` -> 589 passed, 4 skipped. The fourth skip is the
+  symlink half of `test_open_in_app_refuses_a_junction_and_a_symlink` (this account
+  cannot create symlinks); the junction assertions run before the skip. Mutants in
+  `%TEMP%\p34b_mutants.py` (not committed): baseline 5 passed, 1 skipped, all 8 killed.
+- Stopped at: this commit. Next concrete step: Karthik's manual check (the five
+  `Jtool` calls in `docs/plans/P3.4.md`), then Claude Code reviews section B.
 
 ### 2026-11-15 — Agent: Cursor (P3.4 A open_in_app policy)
 

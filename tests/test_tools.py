@@ -901,8 +901,7 @@ def fake_popen(monkeypatch):
 
 
 def test_open_app_runs_the_fixed_command_only(fake_popen):
-    commands = {"notepad": [NOTEPAD]}
-    handler = tools.mutating(None, commands)["open_app"]
+    handler = tools.mutating(None, {"notepad": tools.App([NOTEPAD], None)})["open_app"]
     # Whatever else arrives with the call never reaches the command line.
     result = handler({"app": "notepad", "args": ["--evil"], "path": r"C:\x", "app2": "calc"})
     assert result == {"opened": "notepad", "pid": 4321}
@@ -917,26 +916,29 @@ def test_open_app_runs_the_fixed_command_only(fake_popen):
 
 def test_open_app_unknown_name_fails_without_launching(fake_popen):
     with pytest.raises(KeyError):
-        tools.mutating(None, {"notepad": [NOTEPAD]})["open_app"]({"app": "calculator"})
+        tools.mutating(None, {"notepad": tools.App([NOTEPAD], None)})["open_app"]({"app": "calculator"})
     assert fake_popen == []
 
 
 def test_real_apps_toml_loads_and_matches_the_allowlist():
-    commands = tools.load_commands(APPS_TOML)
-    assert set(commands) == set(load_names(APPS_TOML)) == {"notepad", "calculator", "explorer", "vscode"}
-    for name, command in commands.items():
-        assert Path(command[0]).is_absolute() and Path(command[0]).is_file(), name
+    apps = tools.load_apps(APPS_TOML)
+    assert set(apps) == set(load_names(APPS_TOML)) == {"notepad", "calculator", "explorer", "vscode"}
+    assert {name: app.accepts for name, app in apps.items()} == {
+        "vscode": "any", "explorer": "folder", "notepad": "file", "calculator": None,
+    }
+    for name, app in apps.items():
+        assert Path(app.command[0]).is_absolute() and Path(app.command[0]).is_file(), name
 
 
 def test_every_app_is_offered_to_the_model_and_reachable_by_voice():
-    names = set(tools.load_commands(APPS_TOML))
+    names = set(tools.load_apps(APPS_TOML))
     assert names <= set(APPS)
     assert names <= set(APP_ALIASES.values())
 
 
 def test_missing_apps_toml_allows_nothing(folders):
     root, outside = folders
-    assert tools.load_commands(root / "apps.toml") == {}
+    assert tools.load_apps(root / "apps.toml") == {}
 
 
 @pytest.mark.parametrize("entry", [
@@ -949,6 +951,14 @@ def test_missing_apps_toml_allows_nothing(folders):
     "command = ['C:\\Windows\\System32\\no-such-app.exe']",
     "command = ['C:\\Windows\\System32']",  # a folder
     "command = ['\\\\server\\share\\app.exe']",  # UNC: would run code off the network
+    pytest.param(
+        "command = ['C:\\Windows\\System32\\notepad.exe']\naccepts = 'url'", id="accepts_url"),
+    pytest.param(
+        "command = ['C:\\Windows\\System32\\notepad.exe']\naccepts = 1", id="accepts_int"),
+    pytest.param(
+        "command = ['C:\\Windows\\System32\\notepad.exe']\naccepts = true", id="accepts_true"),
+    pytest.param(
+        "command = ['C:\\Windows\\System32\\notepad.exe']\nnote = 'x'", id="unknown_key"),
 ])
 def test_bad_apps_toml_entry_stops_startup(folders, monkeypatch, entry):
     root, outside = folders
@@ -956,7 +966,7 @@ def test_bad_apps_toml_entry_stops_startup(folders, monkeypatch, entry):
     config.mkdir()
     (config / "apps.toml").write_text(f"[notepad]\n{entry}\n", encoding="utf-8")
     with pytest.raises(ValueError):
-        tools.load_commands(config / "apps.toml")
+        tools.load_apps(config / "apps.toml")
     storage = root.parent / "storage"
     storage.mkdir()
     monkeypatch.setattr(bridge_app, "CONFIG", config)
@@ -985,6 +995,160 @@ def test_open_app_on_a_tainted_task_waits_for_approval(bridge, fake_popen):
     client, root = bridge
     task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
     queued = call(client, task, "open_app", app="notepad")
+    assert queued.status_code == 202 and fake_popen == []
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200 and len(fake_popen) == 1
+
+
+# --- open_in_app (P3.4 B) ---------------------------------------------------------
+
+CODE = r"C:\Users\karth\AppData\Local\Programs\Microsoft VS Code\Code.exe"
+EXPLORER = r"C:\Windows\explorer.exe"
+CALC = r"C:\Windows\System32\calc.exe"
+
+
+def _listed_apps():
+    return {
+        "vscode": tools.App([CODE], "any"),
+        "notepad": tools.App([NOTEPAD], "file"),
+        "explorer": tools.App([EXPLORER], "folder"),
+        "calculator": tools.App([CALC], None),
+    }
+
+
+def test_open_in_app_vscode_opens_a_folder(folders, fake_popen):
+    root, outside = folders
+    folder = root / "proj"
+    folder.mkdir()
+    result = tools.mutating(None, _listed_apps())["open_in_app"](
+        {"app": "vscode", "path": folder, "args": ["--evil"]})
+    assert result == {"opened": "vscode", "pid": 4321}
+    assert_plain(result)
+    [(args, kwargs)] = fake_popen
+    assert args == ([CODE, str(folder)],)
+    assert kwargs == {
+        "shell": False, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+
+def test_open_in_app_notepad_opens_a_file_not_a_folder(folders, fake_popen):
+    root, outside = folders
+    file = root / "a.txt"
+    file.write_text("hi")
+    (root / "dir").mkdir()
+    opened = tools.mutating(None, _listed_apps())["open_in_app"]({"app": "notepad", "path": file})
+    assert opened == {"opened": "notepad", "pid": 4321}
+    assert fake_popen[0][0] == ([NOTEPAD, str(file)],)
+    fake_popen.clear()
+    with pytest.raises(OSError, match="notepad opens a file, not a folder"):
+        tools.mutating(None, _listed_apps())["open_in_app"]({"app": "notepad", "path": root / "dir"})
+    assert fake_popen == []
+
+
+def test_open_in_app_explorer_opens_a_folder_not_a_file(folders, fake_popen):
+    root, outside = folders
+    file = root / "a.txt"
+    file.write_text("hi")
+    folder = root / "dir"
+    folder.mkdir()
+    opened = tools.mutating(None, _listed_apps())["open_in_app"]({"app": "explorer", "path": folder})
+    assert opened == {"opened": "explorer", "pid": 4321}
+    assert fake_popen[0][0] == ([EXPLORER, str(folder)],)
+    fake_popen.clear()
+    with pytest.raises(OSError, match="explorer opens a folder, not a file"):
+        tools.mutating(None, _listed_apps())["open_in_app"]({"app": "explorer", "path": file})
+    assert fake_popen == []
+
+
+def test_open_in_app_calculator_does_not_open_a_path(folders, fake_popen):
+    root, outside = folders
+    file = root / "a.txt"
+    file.write_text("hi")
+    (root / "dir").mkdir()
+    for path in (file, root / "dir", root):
+        with pytest.raises(OSError, match="calculator does not open a path"):
+            tools.mutating(None, _listed_apps())["open_in_app"]({"app": "calculator", "path": path})
+    assert fake_popen == []
+
+
+def test_open_in_app_refuses_a_junction_and_a_symlink(folders, fake_popen):
+    root, outside = folders
+    (outside / "secret.txt").write_bytes(b"secret")
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    with pytest.raises(OSError, match="not a plain file or folder"):
+        tools.mutating(None, _listed_apps())["open_in_app"]({"app": "vscode", "path": root / "jump"})
+    assert fake_popen == []
+    assert (outside / "secret.txt").read_bytes() == b"secret"
+    try:
+        os.symlink(outside / "secret.txt", root / "link.txt")
+    except OSError:
+        pytest.skip("this account cannot create symlinks")
+    with pytest.raises(OSError, match="not a plain file or folder"):
+        tools.mutating(None, _listed_apps())["open_in_app"]({"app": "vscode", "path": root / "link.txt"})
+    assert fake_popen == []
+    assert (outside / "secret.txt").read_bytes() == b"secret"
+
+
+def test_open_in_app_trusts_lstat_not_the_name(folders, fake_popen, monkeypatch):
+    """A link as lstat reports it is refused, even when st_reparse_tag is 0.
+    This is what kills `stat` instead of `lstat`."""
+    root, outside = folders
+    file = root / "a.txt"
+    file.write_text("keep")
+    real = os.lstat(file)
+    as_link = os.stat_result(
+        (stat.S_IFLNK | 0o777, *tuple(real)[1:]), {"st_reparse_tag": 0})
+    assert as_link.st_reparse_tag == 0 and stat.S_ISLNK(as_link.st_mode)
+    with monkeypatch.context() as patch, pytest.raises(OSError, match="not a plain file or folder"):
+        patch.setattr(tools.os, "lstat", lambda path: as_link)
+        tools.mutating(None, _listed_apps())["open_in_app"]({"app": "notepad", "path": file})
+    assert fake_popen == [] and file.read_text() == "keep"
+
+
+def test_open_in_app_through_the_bridge_may_open_the_root(bridge, fake_popen):
+    client, root = bridge
+    response = call(client, fresh_task(client), "open_in_app", app="vscode", path=str(root))
+    assert response.status_code == 200
+    assert response.json()["result"] == {"opened": "vscode", "pid": 4321}
+    assert fake_popen[0][0] == ([CODE, str(root)],)
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+def test_open_in_app_refused_before_any_launch(bridge, fake_popen, folders):
+    client, root = bridge
+    outside = root.parent / "outside"
+    for app in ["browser", "cmd", "VSCODE"]:
+        response = call(client, fresh_task(client), "open_in_app", app=app, path=str(root))
+        assert response.status_code == 403 and response.json()["detail"] == "app: not on the allowlist", app
+    outside_path = call(client, fresh_task(client), "open_in_app", app="vscode", path=str(outside / "x.txt"))
+    assert outside_path.status_code == 403
+    assert outside_path.json()["detail"] == "path: outside the allowed roots"
+    on_root = call(client, fresh_task(client), "create_folder", path=str(root))
+    assert on_root.status_code == 403 and on_root.json()["detail"] == "path: the root itself"
+    assert fake_popen == []
+    locked = root / "locked"
+    locked.mkdir()
+    secret = locked / "secret.txt"
+    secret.write_text("secret")
+    storage = root.parent / "storage-locked"
+    storage.mkdir()
+    ran = []
+    app = create_app(
+        storage, roots=[root], protected=[locked], hotkey=None,
+        handlers={"open_in_app": lambda args: ran.append(args)},
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as guarded:
+        on_secret = call(guarded, fresh_task(guarded), "open_in_app", app="vscode", path=str(secret))
+    assert on_secret.status_code == 403 and on_secret.json()["detail"] == "path: protected folder"
+    assert ran == [] and secret.read_text() == "secret"
+
+
+def test_open_in_app_on_a_tainted_task_waits_for_approval(bridge, fake_popen):
+    client, root = bridge
+    task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)
+    queued = call(client, task, "open_in_app", app="vscode", path=str(root))
     assert queued.status_code == 202 and fake_popen == []
     approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
     assert approved.status_code == 200 and len(fake_popen) == 1
