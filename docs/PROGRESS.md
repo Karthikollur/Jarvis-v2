@@ -52,9 +52,11 @@ Newest session entry goes at the top of the Session log.
   P3.2d DONE 2026-11-14 (`docs/plans/P3.2d.md`, one commit): when the plain call does
   not land, `_to_front` minimises then restores and waits up to 500 ms. The attach route
   is removed. 526 passed, 3 skipped. 7 mutants killed (baseline 20). Test 5 replaced in
-  implementation (a minimised window lands on the first restore). Manual check is still
-  Karthik's (covered, minimised, maximised-and-covered), then P3.3 (T2 tools) on
-  Karthik's go. P3.3 is not started. P0 and P1 are complete, every task ticked in PLAN.md.
+  implementation (a minimised window lands on the first restore). Manual check 2026-11-14
+  by Karthik through a running bridge: covered PASS (327 ms), minimised PASS (123 ms),
+  maximised-and-covered PASS (563 ms, Notepad came back maximised). `focus_window` works
+  from a background bridge. Reviewed by Claude Code: PASS. Next: P3.3 (T2 tools) on
+  Karthik's go; not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -193,9 +195,10 @@ Newest session entry goes at the top of the Session log.
   a fresh child of the foreground window inherits the foreground right, so they do not show
   what the bridge sees. (Decided 2026-11-14: minimise + restore when the plain call does not
   land, attach removed, planned as P3.2d; see Decisions. Karthik. Implemented 2026-11-14
-  as P3.2d. The manual re-check, Notepad covered, then minimised, then maximised and
-  covered, is still Karthik's. If the covered case still fails, stop. The remaining path
-  is `AllowSetForegroundWindow` from the UI in P6.)
+  as P3.2d. Manual re-check 2026-11-14, Karthik, running bridge, audit read back: covered
+  PASS 327 ms, minimised PASS 123 ms, maximised-and-covered PASS 563 ms and still
+  maximised. CLOSED. `AllowSetForegroundWindow` from the UI stays a fallback idea for P6
+  only if a real app ever refuses the restore.)
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -739,6 +742,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Claude Code (review of P3.2d, manual checks, focus_window closed)
+
+- Reviewed Cursor's `a39ede0` (P3.2d) against `docs/plans/P3.2d.md`: PASS. Own run:
+  526 passed, 3 skipped. `_to_front` is plain call, wait, minimise, restore, wait; attach
+  route gone, source guard test keeps it out.
+- Karthik's manual checks through a running bridge (normal PowerShell): covered 327 ms,
+  minimised 123 ms, maximised-and-covered 563 ms (stayed maximised). All `focused: true`.
+  One `time budget exceeded (120 s)` refusal in between was a stale task id, as designed.
+- Files: `docs/PROGRESS.md` only. No code changed.
+- Next concrete step: plan P3.3 (`delete_file` to quarantine, `run_named_script` from
+  `config/scripts.toml`) on Karthik's go. P3.3 is not started.
 
 ### 2026-11-14 — Agent: Cursor (P3.2d focus_window lands through minimise and restore)
 
