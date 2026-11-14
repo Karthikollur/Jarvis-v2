@@ -74,9 +74,12 @@ Newest session entry goes at the top of the Session log.
   `run_tests` run, `cmd` refused; audit lines in the Session log). P3.3 is DONE.
   `C:\JarvisSandbox` now exists (created by Karthik 2026-11-15). P3.4 planned and
   approved 2026-11-15 (`docs/plans/P3.4.md`): new T1 tool `open_in_app(app, path)`,
-  `Rule.opens` so the root may be opened, `apps.toml` `accepts`, eval case t25. Cursor
-  implements A (policy, stub, eval) then B (apps.toml, `load_apps`, handler); Claude Code
-  reviews each; Karthik's manual check after B. Next: Cursor, section A.
+  `Rule.opens` so the root may be opened, `apps.toml` `accepts`, eval case t25. Section A
+  DONE 2026-11-15 (commit `P3.4: open_in_app policy`): `Rule.opens` (last field, so
+  positional `Rule` calls stay valid), `_resolve` skips the root check when `opens` is
+  set, stub plus eval case t25. 577 passed, 3 skipped. 5 mutants killed (baseline 6).
+  P3.4 is not ticked. Cursor implements B next (`apps.toml` `accepts`, `load_apps`,
+  handler) after Claude Code reviews A; Karthik's manual check after B.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -800,6 +803,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.4 A open_in_app policy)
+
+- Start: HEAD `76f9ea4`, tree clean, `main` in sync with `origin/main`. First pytest
+  collection failed with `No module named 'safety'`; with `PYTHONPATH` set to the repo
+  root: 557 passed, 3 skipped.
+- Red run of the five new policy tests plus `test_counts_match_plan`, before the policy
+  change: 6 failed. `open_in_app` was an unknown tool, `Rule` had no `opens`, and the
+  eval set was still 41.
+- `Rule.opens` is the last field. Putting it beside `path_params` made `rename_file`'s
+  positional name argument land in `opens` (9 tests failed); moved to the end, then the
+  full suite passed.
+- Files: `safety/policy.py`, `evals/stub_tools.py`, `evals/commands.yaml`,
+  `tests/test_policy.py`, `tests/test_eval_set.py`, `docs/plans/P3.4.md`, `docs/PLAN.md`,
+  `docs/PROGRESS.md`. No bridge, config, or route change. P3.4 not ticked.
+- Tests: `uv run python -m pytest` -> 577 passed, 3 skipped. Mutants in
+  `%TEMP%\p34a_mutants.py` (not committed): baseline 6 passed, all 5 killed. The
+  tier-dropped mutant (`mutating = not rule.opens`) is killed by
+  `test_root_itself_cannot_be_changed` because `list_dir` on the root must stay allow.
+- Stopped at: this commit. Next concrete step: Claude Code reviews section A, then
+  Cursor implements section B (`P3.4: open_in_app`).
 
 ### 2026-11-15 — Agent: Claude Code (P3.4 plan)
 

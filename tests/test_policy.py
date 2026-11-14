@@ -505,6 +505,56 @@ def test_root_itself_cannot_be_changed(nested):
     assert _decide(policy, "list_dir", path=str(root)) == ("allow", "")  # reading is fine
 
 
+# --- open_in_app: a path handed to an app may be the root (P3.4 A) ----------
+
+
+def test_open_in_app_may_open_the_root(policy, dirs):
+    root = dirs[0]
+    decision = policy.check(policy.new_task(), "open_in_app", {"app": "notepad", "path": str(root)})
+    assert decision.action == "allow"
+    assert decision.tier is Tier.T1
+    assert decision.paths == {"path": root}
+
+
+def test_only_open_in_app_opens_a_path():
+    assert {name for name, rule in TOOLS.items() if rule.opens} == {"open_in_app"}
+
+
+def test_open_in_app_refuses_protected_outside_and_unknown_app(dirs, clock):
+    from safety.policy import Policy
+
+    root, outside = dirs
+    locked = root / "locked"
+    locked.mkdir()
+    guarded = Policy([root], clock, [locked], apps={"notepad"})
+    assert _decide(guarded, "open_in_app", app="notepad", path=str(locked / "x.txt")) == (
+        "deny", "path: protected folder")
+    assert _decide(guarded, "open_in_app", app="notepad", path=str(outside / "x.txt")) == (
+        "deny", "path: outside the allowed roots")
+    assert _decide(guarded, "open_in_app", app="cmd", path=str(root)) == (
+        "deny", "app: not on the allowlist")
+
+
+def test_open_in_app_on_a_tainted_task_needs_confirm(policy, dirs):
+    decision = policy.check(
+        policy.new_task(tainted=True), "open_in_app", {"app": "notepad", "path": str(dirs[0])})
+    assert (decision.action, decision.reason) == ("confirm", "tainted T1")
+
+
+def test_open_in_app_recheck_refuses_junction_to_outside(policy, dirs):
+    """Queued while `x` is a plain folder; a junction to outside is swapped in before approve."""
+    root, outside = dirs
+    folder = root / "x"
+    folder.mkdir()
+    task = policy.new_task(tainted=True)
+    args = {"app": "notepad", "path": str(folder)}
+    decision = policy.check(task, "open_in_app", args)
+    assert decision.action == "confirm"
+    folder.rmdir()
+    _winapi.CreateJunction(str(outside), str(folder))
+    assert policy.recheck(task, "open_in_app", args, decision.paths) == "path: outside the allowed roots"
+
+
 def test_folder_containing_a_protected_folder_cannot_be_changed(nested):
     policy, root, keep = nested
     refused = "contains a protected folder"

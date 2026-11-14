@@ -50,6 +50,9 @@ class Rule:
     text_params: tuple[str, ...] = ()  # short plain text: MAX_TEXT, printable only
     # Arguments that are a LIST of 1..MAX_BATCH paths, each moved into the `into` folder.
     list_params: tuple[str, ...] = ()
+    # Path parameters handed to an app to open, never changed: the root itself is
+    # allowed (open_in_app).
+    opens: bool = False
 
     @property
     def params(self) -> tuple[str, ...]:
@@ -67,6 +70,7 @@ TOOLS: dict[str, Rule] = {
     "read_text_file": Rule(Tier.T0, ("path",), taints=True),
     "recall_memory": Rule(Tier.T0, text_params=("query",), taints=True),
     "open_app": Rule(Tier.T1, choices=(("app", "apps"),)),
+    "open_in_app": Rule(Tier.T1, ("path",), choices=(("app", "apps"),), opens=True),
     "focus_window": Rule(Tier.T1, text_params=("title",)),
     "create_folder": Rule(Tier.T1, ("path",)),
     "move_file": Rule(Tier.T1, ("source", "destination"), into=("destination",)),
@@ -306,7 +310,7 @@ class Policy:
         """Every path a call may touch, resolved and checked; PathRefused names the argument.
         A name parameter or an `into` folder also yields `target`: where the item lands
         (next to, or inside, those). Handlers use `target`, never build it themselves."""
-        mutating = rule.tier >= Tier.T1
+        mutating = rule.tier >= Tier.T1 and not rule.opens
         paths = {}
         for name in rule.path_params:
             try:

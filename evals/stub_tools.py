@@ -38,6 +38,11 @@ SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         "Open an application from the allowlist.",
         _obj({"app": {"type": "string", "enum": APPS}}),
     ),
+    "open_in_app": (
+        "Open a file or folder inside C:\\JarvisSandbox in an allowlisted app, "
+        "e.g. VS Code on a project folder.",
+        _obj({"app": {"type": "string", "enum": APPS}, "path": _PATH}),
+    ),
     "focus_window": (
         "Bring an already open window to the front.",
         _obj({"title": {"type": "string", "description": "App or window name, e.g. Notepad."}}),
