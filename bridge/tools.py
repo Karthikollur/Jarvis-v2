@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import threading
 import time
 import tomllib
 from typing import Any
@@ -253,6 +254,35 @@ SW_RESTORE = 9
 _user32.IsIconic.argtypes = [wintypes.HWND]
 _user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+_user32.SetForegroundWindow.restype = wintypes.BOOL
+_user32.GetForegroundWindow.restype = wintypes.HWND
+_user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+_user32.AttachThreadInput.restype = wintypes.BOOL
+_user32.IsHungAppWindow.argtypes = [wintypes.HWND]
+_user32.IsHungAppWindow.restype = wintypes.BOOL
+_user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
+
+def _to_front(hwnd) -> bool:
+    """True only when `hwnd` is the foreground window afterwards. Attaches to the
+    foreground thread for one call when the plain call is refused, and always detaches."""
+    _user32.SetForegroundWindow(hwnd)
+    if _user32.GetForegroundWindow() == hwnd:
+        return True
+    front = _user32.GetForegroundWindow()
+    theirs = _user32.GetWindowThreadProcessId(front, None)
+    ours = threading.get_native_id()
+    if not front or theirs == ours:
+        return False
+    if _user32.IsHungAppWindow(front):
+        return False  # a thread that does not pump messages can stall our own input
+    if not _user32.AttachThreadInput(ours, theirs, True):
+        return False  # Windows refuses across privilege levels; fail honestly
+    try:
+        _user32.SetForegroundWindow(hwnd)
+    finally:
+        _user32.AttachThreadInput(ours, theirs, False)
+    return _user32.GetForegroundWindow() == hwnd
 
 
 def focus_window(args: dict[str, Any]) -> dict[str, Any]:
@@ -268,8 +298,8 @@ def focus_window(args: dict[str, Any]) -> dict[str, Any]:
         raise LookupError("no matching window")
     if _user32.IsIconic(hwnd):
         _user32.ShowWindow(hwnd, SW_RESTORE)
-    # ponytail: Windows may refuse to hand over the foreground; a fix is proposed, not improvised.
-    if not _user32.SetForegroundWindow(hwnd):
+    # ponytail: if Windows still refuses, focus from the UI (P6, a foreground process).
+    if not _to_front(hwnd):
         raise OSError("Windows refused to bring the window forward")
     return {"focused": True}
 

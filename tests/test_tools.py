@@ -7,6 +7,7 @@ import stat
 import subprocess
 from pathlib import Path
 import tempfile
+import threading
 import types
 
 import pytest
@@ -1004,8 +1005,14 @@ APPS_BY_PID = {4: "Notepad.exe", 5: "Code.exe", 6: "Notepad.exe"}
 
 
 class FakeUser32:
+    """No real window. `SetForegroundWindow` changes `foreground` only when allowed:
+    `refuses` never, `needs_attach` only while attached, `lies` returns True and changes nothing."""
+
     def __init__(self, minimised=(), refuses=False):
         self.minimised, self.refuses, self.calls = set(minimised), refuses, []
+        self.foreground, self.attached = 0, False
+        self.needs_attach = self.lies = self.attach_refuses = self.raise_when_attached = False
+        self.threads, self.hung = {}, set()
 
     def IsIconic(self, hwnd):
         return hwnd in self.minimised
@@ -1014,9 +1021,32 @@ class FakeUser32:
         self.calls.append(("show", hwnd, command))
         return True
 
+    def GetForegroundWindow(self):
+        return self.foreground
+
+    def GetWindowThreadProcessId(self, hwnd, _process_id):
+        return self.threads.get(hwnd, 1)
+
+    def IsHungAppWindow(self, hwnd):
+        return hwnd in self.hung
+
+    def AttachThreadInput(self, ours, theirs, attach):
+        self.calls.append(("attach", ours, theirs, bool(attach)))
+        if attach and self.attach_refuses:
+            return False
+        self.attached = bool(attach)
+        return True
+
     def SetForegroundWindow(self, hwnd):
         self.calls.append(("foreground", hwnd))
-        return not self.refuses
+        if self.raise_when_attached and self.attached:
+            raise RuntimeError("foreground failed")
+        if self.lies:
+            return True
+        if self.refuses or (self.needs_attach and not self.attached):
+            return False
+        self.foreground = hwnd
+        return True
 
 
 @pytest.fixture
@@ -1031,6 +1061,16 @@ def desktop(monkeypatch):
 
 def focus(title):
     return tools.mutating(None, {})["focus_window"]({"title": title})
+
+
+OTHER_THREAD = 9001  # not this process's thread; tests that attach expect this id in the log
+
+
+def covered(desktop, hwnd=105):
+    """A different window is in front, on another thread, so a refused plain call can attach."""
+    desktop.foreground = hwnd
+    desktop.threads[hwnd] = OTHER_THREAD
+    return threading.get_native_id()
 
 
 def test_focus_window_title_contains_case_insensitive_topmost_wins(desktop):
@@ -1063,6 +1103,102 @@ def test_focus_window_refused_by_windows_fails(desktop):
     desktop.refuses = True
     with pytest.raises(OSError, match="refused"):
         focus("notepad")
+
+
+def test_focus_window_attaches_when_windows_refuses_the_plain_call(desktop):
+    desktop.needs_attach = True
+    ours = covered(desktop)
+    assert focus("notepad") == {"focused": True}
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
+
+
+def test_focus_window_still_fails_when_attached_and_detaches(desktop):
+    desktop.refuses = True
+    ours = covered(desktop)
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
+
+
+def test_focus_window_attach_refused_stops_without_detach(desktop):
+    desktop.needs_attach = True
+    desktop.attach_refuses = True
+    ours = covered(desktop)
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [("foreground", 104), ("attach", ours, OTHER_THREAD, True)]
+
+
+def test_focus_window_no_foreground_window_does_not_attach(desktop):
+    desktop.needs_attach = True
+    desktop.foreground = 0
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [("foreground", 104)]
+
+
+def test_focus_window_own_thread_does_not_attach(desktop):
+    desktop.needs_attach = True
+    desktop.foreground = 105
+    desktop.threads[105] = threading.get_native_id()
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [("foreground", 104)]
+
+
+def test_focus_window_does_not_believe_a_true_return(desktop):
+    desktop.lies = True
+    covered(desktop)
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+
+
+def test_focus_window_restores_a_minimised_window_then_attaches(desktop):
+    desktop.needs_attach = True
+    desktop.minimised = {104}
+    ours = covered(desktop)
+    assert focus("notepad") == {"focused": True}
+    assert desktop.calls == [
+        ("show", 104, tools.SW_RESTORE),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
+
+
+def test_focus_window_hung_foreground_does_not_attach(desktop):
+    desktop.needs_attach = True
+    desktop.hung = {105}
+    covered(desktop)
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [("foreground", 104)]
+
+
+def test_focus_window_detaches_when_foreground_call_raises(desktop):
+    """Test 9, added in implementation, approved by Karthik."""
+    desktop.needs_attach = True
+    desktop.raise_when_attached = True
+    ours = covered(desktop)
+    with pytest.raises(RuntimeError, match="foreground failed"):
+        focus("notepad")
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
 
 
 def test_all_windows_on_this_desktop_carries_a_handle():

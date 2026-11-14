@@ -35,12 +35,13 @@ Newest session entry goes at the top of the Session log.
   a real folder, every source a plain file, every landing free, before the first move;
   a failure part-way stops with `complete: False`, nothing moved back; one undo record
   per file; `GET /pending` lists every source and landing). 518 passed, 3 skipped.
-  P3.2 COMPLETE, ticked in PLAN.md, plan marked Implemented. P3.2b planned and approved
-  2026-11-13 (`docs/plans/P3.2b.md`, docs only, no code): `focus_window` retries under
-  `AttachThreadInput` when Windows refuses, skips the attach if the foreground window is
-  hung, always detaches, and judges success by `GetForegroundWindow`. One commit,
-  `P3.2b: focus_window gets the foreground`, on Karthik's go; then his manual check.
-  Next: P3.2b on Karthik's go, or P3.3 (T2 tools); neither started. P0 and P1 are complete, every task ticked in PLAN.md.
+  P3.2 COMPLETE, ticked in PLAN.md, plan marked Implemented. P3.2b DONE 2026-11-14
+  (`docs/plans/P3.2b.md`, one commit): `focus_window` calls `_to_front`, which attaches to
+  the foreground thread when the plain call is refused, skips a hung window, always
+  detaches, and returns success only when `GetForegroundWindow` is that window. 527 passed,
+  3 skipped. 8 mutants killed (baseline 21). Manual check (covered Notepad, then minimised)
+  is still Karthik's. Next: that check, then P3.3 (T2 tools) on Karthik's go. P3.3 is not
+  started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -157,18 +158,15 @@ Newest session entry goes at the top of the Session log.
 - (Karthik, 2026-11-13) Should focus_window be limited to windows of allowlisted apps?
   Decide before any keyboard-input tool exists.
 
-- (Decided 2026-11-13: option (a), planned as P3.2b; see Decisions.) P3.2 manual check (2026-11-13, by Karthik through a running bridge, audit lines read
+- (Decided 2026-11-13: option (a). Implemented 2026-11-14 as P3.2b; see Decisions.) P3.2 manual check (2026-11-13, by Karthik through a running bridge, audit lines read
   by the agent): `open_app` notepad PASS (`opened`, pid 27772, window appeared);
   `open_app` cmd PASS (403 `app: not on the allowlist`); an expired task refused
   (`time budget exceeded (120 s)`). `focus_window` notepad FAIL: the window was found,
   then `OSError: Windows refused to bring the window forward` (500 `Tool failed`).
   Cause: Windows' foreground lock; the bridge is a background process, so
-  `SetForegroundWindow` is refused. The handler fails honestly (E7), but the tool does
-  not work for a non-minimised window in real use. Not fixed. Needs a decision and a
-  small plan (it changes `bridge/tools.py`): (a) attach to the foreground thread's input
-  (`AttachThreadInput`) around the call; (b) minimise then restore the window (crude,
-  no extra rights); (c) accept, and let the UI (P6, a foreground process) do the focus.
-  Not tried by hand: a minimised Notepad (restore path).
+  `SetForegroundWindow` is refused. The handler failed honestly (E7). Option (a) is now
+  in `_to_front`. The manual re-check (covered Notepad, then minimised) is still Karthik's.
+  If Windows still refuses, stop and ask. Do not add another trick.
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -295,6 +293,12 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.2b implemented: `_to_front` attaches to the foreground thread when the
+  plain call is refused, skips a hung window, detaches in `finally`, and reports success
+  only when `GetForegroundWindow` is that window. A raise during the attached call still
+  detaches (test 9). — option (a), decided 2026-11-13; 527 passed, 3 skipped; 8 mutants
+  killed. Manual check still open. — Karthik (go), Cursor
 
 - 2026-11-13 — P3.2b: `focus_window` gets the foreground by attaching to the foreground
   thread's input (`AttachThreadInput`) when the plain call is refused; no attach if that
@@ -676,6 +680,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Cursor (P3.2b focus_window foreground)
+
+- Start: HEAD `c34cb0b`, tree clean, `uv run python -m pytest` through PowerShell ->
+  518 passed, 3 skipped. A non-PowerShell pytest fails to import `safety`; use PowerShell.
+- Tests first, in `tests/test_tools.py`: `FakeUser32` learned a foreground handle,
+  thread ids, a hung set, `AttachThreadInput`, and `SetForegroundWindow` modes
+  `refuses` / `needs_attach` / `lies`. Nine new tests (the ninth, a raise while
+  attached, approved by Karthik during implementation). Red run of `focus_window`:
+  6 failed, 15 passed. The no-foreground, own-thread, and hung tests already passed,
+  because today's refusal does not attach.
+- `bridge/tools.py`: `_to_front(hwnd)` and `focus_window` calls it. ctypes and the
+  standard library only. No change to `safety/`, `config/`, routes, or the policy entry.
+- Green: `uv run python -m pytest` -> 527 passed, 3 skipped. Mutants in memory from
+  `%TEMP%\p32b_mutants.py` (not in the repo): baseline 21 passed, all 8 killed. Table
+  in `docs/plans/P3.2b.md`.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.2b.md`, `docs/PLAN.md`,
+  `docs/PROGRESS.md`.
+- Stopped at: this commit, pushed. Not done: Karthik's manual check through a running
+  bridge (open Notepad, cover it, `focus_window`; repeat with Notepad minimised; read
+  the audit line back into this file). Next concrete step: that check. P3.3 is not started.
 
 ### 2026-11-13 — Agent: Claude Code, Opus 5.5 (P3.2 F: move_files, two commits)
 
