@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 import stat
 import subprocess
-import threading
 import time
 import tomllib
 from typing import Any
@@ -251,20 +250,16 @@ def system_stats(args: dict[str, Any]) -> dict[str, Any]:
 
 
 SW_RESTORE = 9
+SW_MINIMIZE = 6
 _user32.IsIconic.argtypes = [wintypes.HWND]
 _user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
 _user32.SetForegroundWindow.restype = wintypes.BOOL
 _user32.GetForegroundWindow.restype = wintypes.HWND
-_user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
-_user32.AttachThreadInput.restype = wintypes.BOOL
-_user32.IsHungAppWindow.argtypes = [wintypes.HWND]
-_user32.IsHungAppWindow.restype = wintypes.BOOL
-_user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 
 
-def _settled(hwnd, timeout=0.25, step=0.01) -> bool:
-    # ponytail: 250 ms cap; make it config if a slow app needs more
+def _settled(hwnd, timeout=0.5, step=0.01) -> bool:
+    # ponytail: 500 ms cap; make it config if a slow app needs more
     deadline = time.monotonic() + timeout
     while True:
         if _user32.GetForegroundWindow() == hwnd:
@@ -275,24 +270,12 @@ def _settled(hwnd, timeout=0.25, step=0.01) -> bool:
 
 
 def _to_front(hwnd) -> bool:
-    """True only when `hwnd` is the foreground window afterwards. Attaches to the
-    foreground thread for one call when the plain call is refused, and always detaches."""
+    """True only when `hwnd` is the foreground window afterwards."""
     _user32.SetForegroundWindow(hwnd)
     if _settled(hwnd):
         return True
-    front = _user32.GetForegroundWindow()
-    theirs = _user32.GetWindowThreadProcessId(front, None)
-    ours = threading.get_native_id()
-    if not front or theirs == ours:
-        return False
-    if _user32.IsHungAppWindow(front):
-        return False  # a thread that does not pump messages can stall our own input
-    if not _user32.AttachThreadInput(ours, theirs, True):
-        return False  # Windows refuses across privilege levels; fail honestly
-    try:
-        _user32.SetForegroundWindow(hwnd)
-    finally:
-        _user32.AttachThreadInput(ours, theirs, False)
+    _user32.ShowWindow(hwnd, SW_MINIMIZE)
+    _user32.ShowWindow(hwnd, SW_RESTORE)
     return _settled(hwnd)
 
 
@@ -309,7 +292,8 @@ def focus_window(args: dict[str, Any]) -> dict[str, Any]:
         raise LookupError("no matching window")
     if _user32.IsIconic(hwnd):
         _user32.ShowWindow(hwnd, SW_RESTORE)
-    # ponytail: if Windows still refuses, focus from the UI (P6, a foreground process).
+    # ponytail: if the restore does not land, the UI (P6, a foreground process)
+    # can grant AllowSetForegroundWindow to the bridge.
     if not _to_front(hwnd):
         raise OSError("Windows refused to bring the window forward")
     return {"focused": True}

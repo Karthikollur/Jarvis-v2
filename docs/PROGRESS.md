@@ -49,9 +49,11 @@ Newest session entry goes at the top of the Session log.
   bridge: covered Notepad FAIL (`OSError` 518 ms after `allow`: both waits timed out, a
   genuine refusal; the attach route has never worked through the bridge); minimised
   Notepad PASS (`focused: true`, 228 ms: `ShowWindow(SW_RESTORE)` lands past the lock).
-  P3.2d planned and approved 2026-11-14 (`docs/plans/P3.2d.md`, docs only, no code):
-  minimise + restore when the plain call does not land, attach code removed, cap 500 ms.
-  Next: Cursor implements P3.2d, then Karthik's manual check, then P3.3 (T2 tools) on
+  P3.2d DONE 2026-11-14 (`docs/plans/P3.2d.md`, one commit): when the plain call does
+  not land, `_to_front` minimises then restores and waits up to 500 ms. The attach route
+  is removed. 526 passed, 3 skipped. 7 mutants killed (baseline 20). Test 5 replaced in
+  implementation (a minimised window lands on the first restore). Manual check is still
+  Karthik's (covered, minimised, maximised-and-covered), then P3.3 (T2 tools) on
   Karthik's go. P3.3 is not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -190,7 +192,10 @@ Newest session entry goes at the top of the Session log.
   `ShowWindow(SW_RESTORE)` step landed it. Probes from the planning session were discarded:
   a fresh child of the foreground window inherits the foreground right, so they do not show
   what the bridge sees. (Decided 2026-11-14: minimise + restore when the plain call does not
-  land, attach removed, planned as P3.2d; see Decisions. Karthik.)
+  land, attach removed, planned as P3.2d; see Decisions. Karthik. Implemented 2026-11-14
+  as P3.2d. The manual re-check, Notepad covered, then minimised, then maximised and
+  covered, is still Karthik's. If the covered case still fails, stop. The remaining path
+  is `AllowSetForegroundWindow` from the UI in P6.)
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -317,6 +322,13 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.2d implemented: `_to_front` tries the plain call, then
+  `ShowWindow(SW_MINIMIZE)` and `ShowWindow(SW_RESTORE)`, and reports success only when
+  `GetForegroundWindow` is that window within 500 ms. Attach code is gone. Test 5
+  replaced in implementation: a minimised window lands on the first restore. —
+  526 passed, 3 skipped; 7 mutants killed (baseline 20). Manual check still open. —
+  Karthik (go), Cursor
 
 - 2026-11-14 — P3.2d: when the plain `SetForegroundWindow` does not land, `_to_front`
   does `ShowWindow(SW_MINIMIZE)` then `ShowWindow(SW_RESTORE)` and waits (cap 500 ms).
@@ -727,6 +739,34 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Cursor (P3.2d focus_window lands through minimise and restore)
+
+- Start: HEAD `4070754`, tree clean. `uv run python -m pytest` in this PowerShell
+  session failed to import `safety` before collecting (the failure already noted for a
+  non-PowerShell pytest). The green run below set `PYTHONPATH` to the repo root and
+  collected. Not `pytest.main()`.
+- Red run of the six new tests against the pre-fix handler: 4 failed, 2 passed
+  (`plain_call_makes_no_show_call` and `minimised_lands_on_the_first_restore` already
+  matched). The three restore failures were `AttributeError` on the removed
+  `GetWindowThreadProcessId`. The source guard still saw `AttachThreadInput`.
+- `bridge/tools.py`: `_to_front` is the plain call, then minimise and restore, each
+  followed by `_settled` (default 500 ms). Attach declarations and `import threading`
+  removed. `GetWindowThreadProcessId` argtypes for `_all_windows` stay.
+  `tests/test_tools.py`: `lands_on_restore`, six tests, attach fakes and tests deleted,
+  `lies` dropped. `settles_too_late` keeps `settles_after=100` and `OSError` by refusing
+  the plain call and starting a fresh 100-read hide on the restore: one 500 ms cap
+  cannot see 100 reads, and a hide left by the plain call can be finished by the second
+  wait. Test 5 replaced in implementation, approved by Karthik: a minimised window
+  lands on the first restore, log is restore then the plain call, no second restore.
+- Green: `uv run python -m pytest` -> 526 passed, 3 skipped. Mutants from
+  `%TEMP%\p32d_mutants.py` (not in the repo): baseline 20 passed, all 7 killed. Table
+  in `docs/plans/P3.2d.md`.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.2d.md`, `docs/PLAN.md`,
+  `docs/PROGRESS.md`. No change to `safety/`, `config/`, routes, or the policy entry.
+- Stopped at: this commit, pushed. Not done: Karthik's manual check through a running
+  bridge (Notepad covered, then minimised, then maximised and covered; read the audit
+  lines back into this file). Next concrete step: that check. P3.3 is not started.
 
 ### 2026-11-14 — Agent: Claude Code (review of P3.2c, manual checks, P3.2d plan)
 

@@ -7,7 +7,6 @@ import stat
 import subprocess
 from pathlib import Path
 import tempfile
-import threading
 import types
 
 import pytest
@@ -1005,15 +1004,14 @@ APPS_BY_PID = {4: "Notepad.exe", 5: "Code.exe", 6: "Notepad.exe"}
 
 
 class FakeUser32:
-    """No real window. `SetForegroundWindow` changes `foreground` only when allowed:
-    `refuses` never, `needs_attach` only while attached, `lies` returns True and changes nothing.
-    `settles_after` then hides that result for N reads (None) before revealing it."""
+    """No real window. `SetForegroundWindow` changes `foreground` unless `refuses`.
+    `settles_after` then hides that result for N reads (0) before revealing it.
+    `lands_on_restore`: every `ShowWindow(SW_RESTORE)` sets the foreground the same way."""
 
     def __init__(self, minimised=(), refuses=False):
         self.minimised, self.refuses, self.calls = set(minimised), refuses, []
-        self.foreground, self.attached = 0, False
-        self.needs_attach = self.lies = self.attach_refuses = self.raise_when_attached = False
-        self.threads, self.hung = {}, set()
+        self.foreground = 0
+        self.lands_on_restore = False
         self.settles_after = 0
         self._hidden = 0
 
@@ -1022,6 +1020,9 @@ class FakeUser32:
 
     def ShowWindow(self, hwnd, command):
         self.calls.append(("show", hwnd, command))
+        if self.lands_on_restore and command == tools.SW_RESTORE:
+            self.foreground = hwnd
+            self._hidden = self.settles_after
         return True
 
     def GetForegroundWindow(self):
@@ -1030,35 +1031,16 @@ class FakeUser32:
             return 0
         return self.foreground
 
-    def GetWindowThreadProcessId(self, hwnd, _process_id):
-        return self.threads.get(hwnd, 1)
-
-    def IsHungAppWindow(self, hwnd):
-        return hwnd in self.hung
-
-    def AttachThreadInput(self, ours, theirs, attach):
-        self.calls.append(("attach", ours, theirs, bool(attach)))
-        if attach and self.attach_refuses:
-            return False
-        self.attached = bool(attach)
-        return True
-
     def SetForegroundWindow(self, hwnd):
         self.calls.append(("foreground", hwnd))
-        if self.raise_when_attached and self.attached:
-            raise RuntimeError("foreground failed")
-        if not (self.lies or self.refuses or (self.needs_attach and not self.attached)):
+        if not self.refuses:
             self.foreground = hwnd
         self._hidden = self.settles_after
-        if self.lies:
-            return True
-        if self.refuses or (self.needs_attach and not self.attached):
-            return False
-        return True
+        return not self.refuses
 
 
 class FakeClock:
-    """`monotonic` is a counter. `sleep` advances it and counts the call. Past two 250 ms
+    """`monotonic` is a counter. `sleep` advances it and counts the call. Past two 500 ms
     waits plus one step, it raises so a wait with no deadline cannot hang the run."""
 
     def __init__(self):
@@ -1071,8 +1053,8 @@ class FakeClock:
     def sleep(self, seconds):
         self.sleeps.append(seconds)
         self.now += seconds
-        if sum(self.sleeps) > 2 * 0.25 + 0.01:
-            raise RuntimeError("focus wait slept past 2 x 250 ms plus one step")
+        if sum(self.sleeps) > 2 * 0.5 + 0.01:
+            raise RuntimeError("focus wait slept past 2 x 500 ms plus one step")
 
 
 @pytest.fixture
@@ -1088,16 +1070,6 @@ def desktop(monkeypatch):
 
 def focus(title):
     return tools.mutating(None, {})["focus_window"]({"title": title})
-
-
-OTHER_THREAD = 9001  # not this process's thread; tests that attach expect this id in the log
-
-
-def covered(desktop, hwnd=105):
-    """A different window is in front, on another thread, so a refused plain call can attach."""
-    desktop.foreground = hwnd
-    desktop.threads[hwnd] = OTHER_THREAD
-    return threading.get_native_id()
 
 
 def test_focus_window_title_contains_case_insensitive_topmost_wins(desktop):
@@ -1132,102 +1104,6 @@ def test_focus_window_refused_by_windows_fails(desktop):
         focus("notepad")
 
 
-def test_focus_window_attaches_when_windows_refuses_the_plain_call(desktop):
-    desktop.needs_attach = True
-    ours = covered(desktop)
-    assert focus("notepad") == {"focused": True}
-    assert desktop.calls == [
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
-    ]
-
-
-def test_focus_window_still_fails_when_attached_and_detaches(desktop):
-    desktop.refuses = True
-    ours = covered(desktop)
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert desktop.calls == [
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
-    ]
-
-
-def test_focus_window_attach_refused_stops_without_detach(desktop):
-    desktop.needs_attach = True
-    desktop.attach_refuses = True
-    ours = covered(desktop)
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert desktop.calls == [("foreground", 104), ("attach", ours, OTHER_THREAD, True)]
-
-
-def test_focus_window_no_foreground_window_does_not_attach(desktop):
-    desktop.needs_attach = True
-    desktop.foreground = 0
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert desktop.calls == [("foreground", 104)]
-
-
-def test_focus_window_own_thread_does_not_attach(desktop):
-    desktop.needs_attach = True
-    desktop.foreground = 105
-    desktop.threads[105] = threading.get_native_id()
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert desktop.calls == [("foreground", 104)]
-
-
-def test_focus_window_does_not_believe_a_true_return(desktop):
-    desktop.lies = True
-    covered(desktop)
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-
-
-def test_focus_window_restores_a_minimised_window_then_attaches(desktop):
-    desktop.needs_attach = True
-    desktop.minimised = {104}
-    ours = covered(desktop)
-    assert focus("notepad") == {"focused": True}
-    assert desktop.calls == [
-        ("show", 104, tools.SW_RESTORE),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
-    ]
-
-
-def test_focus_window_hung_foreground_does_not_attach(desktop):
-    desktop.needs_attach = True
-    desktop.hung = {105}
-    covered(desktop)
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert desktop.calls == [("foreground", 104)]
-
-
-def test_focus_window_detaches_when_foreground_call_raises(desktop):
-    """Test 9, added in implementation, approved by Karthik."""
-    desktop.needs_attach = True
-    desktop.raise_when_attached = True
-    ours = covered(desktop)
-    with pytest.raises(RuntimeError, match="foreground failed"):
-        focus("notepad")
-    assert desktop.calls == [
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
-    ]
-
-
 def test_focus_window_plain_call_settles_after_two_reads(desktop):
     desktop.settles_after = 2
     assert focus("notepad") == {"focused": True}
@@ -1235,44 +1111,62 @@ def test_focus_window_plain_call_settles_after_two_reads(desktop):
     assert tools.time.sleeps == [0.01, 0.01]
 
 
-def test_focus_window_attached_call_settles_after_two_reads(desktop):
-    desktop.needs_attach = True
-    desktop.settles_after = 2
-    ours = covered(desktop)
-    assert focus("notepad") == {"focused": True}
-    assert desktop.calls == [
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
-    ]
-
-
-def test_focus_window_never_settles_and_the_wait_is_capped(desktop):
-    desktop.refuses = True
-    covered(desktop)
-    with pytest.raises(OSError, match="refused"):
-        focus("notepad")
-    assert sum(tools.time.sleeps) <= 2 * 0.25 + 0.01
-
-
 def test_focus_window_settles_too_late(desktop):
+    """100 reads exceed one 500 ms cap. The restore starts that hide fresh."""
+    desktop.refuses = True
+    desktop.lands_on_restore = True
     desktop.settles_after = 100
     with pytest.raises(OSError, match="refused"):
         focus("notepad")
 
 
-def test_focus_window_transient_none_then_another_window_attaches_once(desktop):
-    desktop.needs_attach = True
-    desktop.settles_after = 1
-    ours = covered(desktop)
+def test_focus_window_restore_lands_when_the_plain_call_is_refused(desktop):
+    desktop.refuses = True
+    desktop.lands_on_restore = True
     assert focus("notepad") == {"focused": True}
     assert desktop.calls == [
         ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, True),
-        ("foreground", 104),
-        ("attach", ours, OTHER_THREAD, False),
+        ("show", 104, tools.SW_MINIMIZE),
+        ("show", 104, tools.SW_RESTORE),
     ]
+
+
+def test_focus_window_restore_lands_after_forty_reads(desktop):
+    desktop.refuses = True
+    desktop.lands_on_restore = True
+    desktop.settles_after = 40
+    assert focus("notepad") == {"focused": True}
+
+
+def test_focus_window_restore_that_does_not_land_fails(desktop):
+    desktop.refuses = True
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("show", 104, tools.SW_MINIMIZE),
+        ("show", 104, tools.SW_RESTORE),
+    ]
+    assert sum(tools.time.sleeps) <= 2 * 0.5 + 0.01
+
+
+def test_focus_window_plain_call_makes_no_show_call(desktop):
+    assert focus("notepad") == {"focused": True}
+    assert [call for call in desktop.calls if call[0] == "show"] == []
+
+
+def test_focus_window_minimised_lands_on_the_first_restore(desktop):
+    """Test 5 replaced in implementation, approved by Karthik."""
+    desktop.minimised = {104}
+    desktop.lands_on_restore = True
+    assert focus("notepad") == {"focused": True}
+    assert desktop.calls == [("show", 104, tools.SW_RESTORE), ("foreground", 104)]
+
+
+def test_focus_window_source_has_no_attach_route():
+    source = (REPO / "bridge" / "tools.py").read_text(encoding="utf-8")
+    assert "AttachThreadInput" not in source
+    assert "IsHungAppWindow" not in source
 
 
 def test_all_windows_on_this_desktop_carries_a_handle():
