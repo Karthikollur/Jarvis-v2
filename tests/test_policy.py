@@ -781,8 +781,10 @@ def test_load_names(dirs):
 
 
 def test_tools_that_return_untrusted_text_taint(policy):
-    # File contents, file names, window titles and stored memories are attacker-shaped.
-    tainting = {"read_text_file", "list_dir", "list_windows", "recall_memory"}
+    # File contents, file names, window titles, stored memories and script output.
+    tainting = {
+        "read_text_file", "list_dir", "list_windows", "recall_memory", "run_named_script",
+    }
     assert {name for name, rule in TOOLS.items() if rule.taints} == tainting
     for tool in tainting:
         failed = policy.new_task()

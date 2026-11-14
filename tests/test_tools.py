@@ -16,7 +16,7 @@ from bridge import tools
 from bridge import app as bridge_app
 from bridge.app import create_app, load_token
 from core.router import APP_ALIASES
-from evals.stub_tools import APPS
+from evals.stub_tools import APPS, SCRIPTS
 from safety.policy import load_names
 from safety.undo import UndoLog
 
@@ -1329,3 +1329,55 @@ def test_delete_file_refuses_the_root_and_a_protected_folder(folders):
     assert on_root.status_code == 403 and on_root.json()["detail"] == "path: the root itself"
     assert on_secret.status_code == 403 and on_secret.json()["detail"] == "path: protected folder"
     assert ran == [] and secret.read_text() == "secret" and root.is_dir()
+
+
+# --- scripts.toml (P3.3 B) --------------------------------------------------------
+
+
+SCRIPTS_TOML = REPO / "config" / "scripts.toml"
+_HOST = "C:\\Windows\\System32\\HOSTNAME.EXE"
+_SCRIPT = f"command = ['{_HOST}']"
+
+
+def test_real_scripts_toml_loads_and_matches_the_allowlist():
+    scripts = tools.load_scripts(SCRIPTS_TOML)
+    assert set(scripts) == set(load_names(SCRIPTS_TOML)) == {"dev_server", "run_tests", "backup_notes"}
+    assert set(scripts) <= set(SCRIPTS)
+    for name, script in scripts.items():
+        assert script.command == [_HOST], name
+        assert Path(script.command[0]).is_absolute() and Path(script.command[0]).is_file()
+        assert script.cwd == Path(script.command[0]).parent and script.timeout == 30
+
+
+def test_missing_scripts_toml_allows_nothing(folders):
+    root, outside = folders
+    assert tools.load_scripts(root / "scripts.toml") == {}
+
+
+@pytest.mark.parametrize("entry", [
+    pytest.param("", id="missing_command"),
+    pytest.param("command = ['HOSTNAME.EXE']", id="bare_name"),
+    pytest.param("command = ['Windows\\System32\\HOSTNAME.EXE']", id="relative"),
+    pytest.param("command = ['\\\\server\\share\\HOSTNAME.EXE']", id="unc"),
+    pytest.param("command = ['C:\\Windows\\System32\\no-such-app.exe']", id="missing_file"),
+    pytest.param(f"{_SCRIPT}\ncwd = 'Windows'", id="cwd_relative"),
+    pytest.param(f"{_SCRIPT}\ncwd = 'C:\\no\\such\\folder'", id="cwd_missing"),
+    pytest.param(f"{_SCRIPT}\ncwd = '{_HOST}'", id="cwd_file"),
+    pytest.param(f"{_SCRIPT}\ntimeout = 0", id="timeout_0"),
+    pytest.param(f"{_SCRIPT}\ntimeout = 61", id="timeout_61"),
+    pytest.param(f"{_SCRIPT}\ntimeout = '30'", id="timeout_string"),
+    pytest.param(f"{_SCRIPT}\ntimeout = true", id="timeout_true"),
+    pytest.param(f"{_SCRIPT}\nnote = 'x'", id="unknown_key"),
+])
+def test_bad_scripts_toml_entry_stops_startup(folders, monkeypatch, entry):
+    root, outside = folders
+    config = root.parent / "config"
+    config.mkdir()
+    (config / "scripts.toml").write_text(f"[run_tests]\n{entry}\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        tools.load_scripts(config / "scripts.toml")
+    storage = root.parent / "storage"
+    storage.mkdir()
+    monkeypatch.setattr(bridge_app, "CONFIG", config)
+    with pytest.raises(ValueError):
+        create_app(storage, roots=[root], protected=[], hotkey=None)

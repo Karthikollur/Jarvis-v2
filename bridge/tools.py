@@ -8,6 +8,7 @@ on the open handle), raise when the job cannot be done (the bridge logs it and a
 
 import ctypes
 from ctypes import wintypes
+from dataclasses import dataclass
 import msvcrt
 import os
 from pathlib import Path
@@ -307,6 +308,24 @@ HANDLERS = {
 }
 
 
+def _checked_command(config: Path, name: str, entry: object) -> list[str]:
+    """The fixed argv for one apps.toml or scripts.toml entry."""
+    command = entry.get("command") if isinstance(entry, dict) else None
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) for part in command)
+        or command[0].startswith(("\\\\", "//"))  # UNC: code off the network; checked before is_file touches it
+        or not Path(command[0]).is_absolute()  # a bare name would be looked up on PATH
+        or not Path(command[0]).is_file()
+    ):
+        raise ValueError(
+            f"{config.name}: [{name}] command must be a list whose first item is an "
+            "absolute path to an existing local file"
+        )
+    return command
+
+
 def load_commands(config: Path) -> dict[str, list[str]]:
     """config/apps.toml: the fixed command each allowed name starts. Any bad entry raises,
     so the bridge does not start (fail closed). A missing file allows nothing, as
@@ -315,25 +334,52 @@ def load_commands(config: Path) -> dict[str, list[str]]:
         return {}
     commands = {}
     for name, entry in tomllib.loads(config.read_text(encoding="utf-8")).items():
-        command = entry.get("command") if isinstance(entry, dict) else None
-        if (
-            not isinstance(command, list)
-            or not command
-            or not all(isinstance(part, str) for part in command)
-            or command[0].startswith(("\\\\", "//"))  # UNC: code off the network; checked before is_file touches it
-            or not Path(command[0]).is_absolute()  # a bare name would be looked up on PATH
-            or not Path(command[0]).is_file()
-        ):
-            raise ValueError(
-                f"{config.name}: [{name}] command must be a list whose first item is an "
-                "absolute path to an existing local file"
-            )
-        commands[name] = command
+        commands[name] = _checked_command(config, name, entry)
     return commands
 
 
-def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class Script:
+    command: list[str]
+    cwd: Path
+    timeout: int
+
+
+def load_scripts(config: Path) -> dict[str, Script]:
+    """config/scripts.toml: fixed command, optional cwd and timeout. Any bad entry raises,
+    so the bridge does not start. A missing file allows nothing."""
+    if not config.exists():
+        return {}
+    allowed = {"command", "cwd", "timeout"}
+    scripts = {}
+    for name, entry in tomllib.loads(config.read_text(encoding="utf-8")).items():
+        if not isinstance(entry, dict) or set(entry) - allowed:
+            raise ValueError(f"{config.name}: [{name}] keys must be command, cwd, timeout")
+        command = _checked_command(config, name, entry)
+        if "cwd" in entry:
+            cwd = entry["cwd"]
+            if (
+                not isinstance(cwd, str)
+                or cwd.startswith(("\\\\", "//"))  # UNC: checked before is_dir touches it
+                or not Path(cwd).is_absolute()
+                or not Path(cwd).is_dir()
+            ):
+                raise ValueError(
+                    f"{config.name}: [{name}] cwd must be an absolute path to an existing local folder"
+                )
+            folder = Path(cwd)
+        else:
+            folder = Path(command[0]).parent
+        timeout = entry.get("timeout", 30)
+        if type(timeout) is not int or not 1 <= timeout <= 60:
+            raise ValueError(f"{config.name}: [{name}] timeout must be an integer from 1 to 60")
+        scripts[name] = Script(command, folder, timeout)
+    return scripts
+
+
+def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str, Any]:
     """T1 handlers (P3.2): closures over the bridge's UndoLog and the apps.toml commands."""
+    scripts = scripts or {}  # P3.3 C reads scripts[name]; no handler in this commit
 
     def create_folder(args: dict[str, Any]) -> dict[str, Any]:
         path = args["path"]

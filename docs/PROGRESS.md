@@ -60,13 +60,15 @@ Newest session entry goes at the top of the Session log.
   `mutating()` checks `os.lstat` for a plain file and moves it with
   `UndoLog.quarantine` (nothing is unlinked). Result `{"deleted": True, "undo_id"}`.
   534 passed, 3 skipped. 5 mutants killed (baseline 8). The `stat` mutant is killed by
-  an lstat stand-in, approved by Karthik 2026-11-15. Sections B and C are not started:
-  B is `config/scripts.toml` + `load_scripts` + `run_named_script` taint; C is
-  `run_named_script` (waits, timeout from the entry, last 4096 characters of output).
-  Next: Claude Code reviews A, then Cursor implements B, then C, one commit each;
-  Karthik's manual check is after C. Karthik creates `C:\JarvisSandbox` before that
-  check. P0 and P1 are complete, every task ticked in PLAN.md. PLAN.md P3.3 stays
-  unticked until C.
+  an lstat stand-in, approved by Karthik 2026-11-15. P3.3 section B DONE 2026-11-15
+  (commit `P3.3: scripts.toml`): `config/scripts.toml` placeholders, `_checked_command`
+  shared with `load_commands`, `load_scripts` (`Script` of command, cwd, timeout),
+  `create_app` passes the dict into `mutating`, and `run_named_script` taints.
+  549 passed, 3 skipped. 6 mutants killed (baseline 16). No `run_named_script` handler
+  yet. Section C is that handler (waits, timeout from the entry, last 4096 characters
+  of output). Next: Claude Code reviews B, then Cursor implements C. Karthik's manual
+  check is after C. Karthik creates `C:\JarvisSandbox` before that check. P0 and P1
+  are complete, every task ticked in PLAN.md. PLAN.md P3.3 stays unticked until C.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -767,6 +769,29 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.3 B scripts.toml)
+
+- Start: HEAD `886302d`, tree clean, `main` in sync with `origin/main`. With `PYTHONPATH`
+  set to the repo root: 534 passed, 3 skipped.
+- Red run of the 16 tests (real `scripts.toml`, missing file, 13 bad entries, taint
+  census): 16 failed. The tool tests were `AttributeError: load_scripts`. The census
+  failed because `run_named_script` was not in the taint set.
+- `config/scripts.toml`: `dev_server`, `run_tests`, `backup_notes`, each
+  `HOSTNAME.EXE`. `bridge/tools.py`: `_checked_command` shared by `load_commands`;
+  frozen `Script`; `load_scripts`; `mutating(undo_log, commands, scripts=None)` then
+  `scripts = scripts or {}`. `bridge/app.py`: loads the file next to `apps.toml` and
+  passes it in. `safety/policy.py`: `taints=True` on `run_named_script` only.
+  `tests/test_policy.py`: that name added to the taint census. No handler.
+- Green: `uv run python -m pytest` with `PYTHONPATH` -> 549 passed, 3 skipped. Mutants
+  from `%TEMP%\p33b_mutants.py` (not in the repo): baseline 16 passed, all 6 killed.
+  Table in `docs/plans/P3.3.md`.
+- Files: `config/scripts.toml`, `bridge/tools.py`, `bridge/app.py`, `safety/policy.py`,
+  `tests/test_tools.py`, `tests/test_policy.py`, `docs/plans/P3.3.md`, `docs/PROGRESS.md`.
+  PLAN.md P3.3 stays unticked.
+- Stopped at: this commit, pushed. Not done: section C, Karthik's manual check. Next
+  concrete step: Claude Code reviews this commit, then section C
+  (`P3.3: run_named_script`) on Karthik's go.
 
 ### 2026-11-15 — Agent: Cursor (P3.3 A delete_file)
 

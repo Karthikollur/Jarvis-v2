@@ -73,7 +73,7 @@ TOOLS: dict[str, Rule] = {
     "move_files": Rule(Tier.T1, ("destination",), into=("destination",), list_params=("sources",)),
     "rename_file": Rule(Tier.T1, ("path",), ("new_name",)),
     "delete_file": Rule(Tier.T2, ("path",)),
-    "run_named_script": Rule(Tier.T2, choices=(("name", "scripts"),)),
+    "run_named_script": Rule(Tier.T2, choices=(("name", "scripts"),), taints=True),
 }
 
 _RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {

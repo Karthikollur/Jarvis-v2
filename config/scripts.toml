@@ -1,0 +1,15 @@
+# Scripts run_named_script may run. Only Karthik edits this file.
+# Each command is a fixed argv; the model supplies only the [name]. No shell.
+# Optional per entry: cwd = absolute existing folder (default: the command's folder),
+# timeout = seconds, 1..60 (default 30).
+# Placeholders until the sandbox project exists (decided 2026-11-14): all three print
+# the host name and exit 0.
+
+[dev_server]
+command = ['C:\Windows\System32\HOSTNAME.EXE']
+
+[run_tests]
+command = ['C:\Windows\System32\HOSTNAME.EXE']
+
+[backup_notes]
+command = ['C:\Windows\System32\HOSTNAME.EXE']
