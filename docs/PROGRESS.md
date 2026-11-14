@@ -64,11 +64,14 @@ Newest session entry goes at the top of the Session log.
   (commit `P3.3: scripts.toml`): `config/scripts.toml` placeholders, `_checked_command`
   shared with `load_commands`, `load_scripts` (`Script` of command, cwd, timeout),
   `create_app` passes the dict into `mutating`, and `run_named_script` taints.
-  549 passed, 3 skipped. 6 mutants killed (baseline 16). No `run_named_script` handler
-  yet. Section C is that handler (waits, timeout from the entry, last 4096 characters
-  of output). Next: Claude Code reviews B, then Cursor implements C. Karthik's manual
-  check is after C. Karthik creates `C:\JarvisSandbox` before that check. P0 and P1
-  are complete, every task ticked in PLAN.md. PLAN.md P3.3 stays unticked until C.
+  549 passed, 3 skipped. 6 mutants killed (baseline 16). P3.3 section C DONE
+  2026-11-15 (commit `P3.3: run_named_script`): `run_named_script` inside `mutating()`
+  runs the entry's fixed argv with `shell=False`, the entry's `cwd` and `timeout`,
+  and returns the last 4096 characters. A timeout is a result (`exit_code` null),
+  not a tool failure. No undo record. 557 passed, 3 skipped. 7 mutants killed.
+  P3.3 ticked in PLAN.md. Not done: Karthik's manual check. Karthik creates
+  `C:\JarvisSandbox` before that check. Next: Claude Code reviews C. P0 and P1
+  are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -769,6 +772,28 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.3 C run_named_script)
+
+- Start: HEAD `f498cf9`, tree clean, `main` in sync with `origin/main`. Sections A and B
+  reviewed. With `PYTHONPATH` set to the repo root: 549 passed, 3 skipped.
+- Red run of the eight new tests before the handler: 7 failed, 1 passed. The five direct
+  calls were `KeyError: run_named_script`. `/approve` was 501. The allowlist refusal
+  passed. Deny failed because the fake replaced `subprocess.run` on the shared module
+  and the bridge's `whoami` call got bytes. The fake was then bound only on
+  `bridge.tools`, the same way `fake_popen` is.
+- `bridge/tools.py`: `run_named_script` inside `mutating()`. Fixed argv, `shell=False`,
+  the entry's `cwd` and `timeout`, stdin `DEVNULL`, combined stdout. Last 4096 characters.
+  A timeout is a result (`exit_code` null). No undo record. `tests/test_tools.py`: the
+  eight plan tests. No change to `safety/`, `config/`, or routes.
+- Green: `uv run python -m pytest` with `PYTHONPATH` -> 557 passed, 3 skipped. Mutants
+  from `%TEMP%\p33c_mutants.py` (not in the repo): all 7 killed. Table in
+  `docs/plans/P3.3.md`. PLAN.md P3.3 ticked.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.3.md`, `docs/PLAN.md`,
+  `docs/PROGRESS.md`.
+- Stopped at: this commit. Not done: Karthik's manual check (create `C:\JarvisSandbox`
+  and `bye.txt` first; steps in `docs/plans/P3.3.md`). Next concrete step: Claude Code
+  reviews this commit.
 
 ### 2026-11-15 — Agent: Cursor (P3.3 B scripts.toml)
 

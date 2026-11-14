@@ -377,9 +377,16 @@ def load_scripts(config: Path) -> dict[str, Script]:
     return scripts
 
 
+OUTPUT_TAIL = 4096  # characters of combined output returned to the model
+
+
+def _tail(raw: bytes) -> str:
+    return raw.decode("utf-8", errors="replace")[-OUTPUT_TAIL:]
+
+
 def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str, Any]:
-    """T1 handlers (P3.2): closures over the bridge's UndoLog and the apps.toml commands."""
-    scripts = scripts or {}  # P3.3 C reads scripts[name]; no handler in this commit
+    """T1 and T2 handlers: closures over the bridge's UndoLog, apps.toml, and scripts.toml."""
+    scripts = scripts or {}
 
     def create_folder(args: dict[str, Any]) -> dict[str, Any]:
         path = args["path"]
@@ -451,8 +458,28 @@ def mutating(undo_log, commands: dict[str, list[str]], scripts=None) -> dict[str
         record = undo_log.quarantine(path, "delete_file")
         return {"deleted": True, "undo_id": record.id}
 
+    def run_named_script(args: dict[str, Any]) -> dict[str, Any]:
+        # The model supplies only the name (the policy checked it against scripts.toml).
+        # No undo record: the audit line carries the result.
+        # ponytail: subprocess.run kills the direct child only; children of a .cmd can
+        # outlive it. Upgrade path: a Job Object when a real script needs it.
+        # ponytail: the handler blocks the worker up to timeout; Stop does not interrupt
+        # a running handler (known P2.6 limit). The 60 s cap stays under the 120 s budget.
+        name = args["name"]
+        script = scripts[name]
+        try:
+            done = subprocess.run(
+                script.command, shell=False, cwd=script.cwd, timeout=script.timeout,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+        except subprocess.TimeoutExpired as expired:
+            return {"ran": name, "timed_out": True, "exit_code": None,
+                    "output": _tail(expired.output or b"")}
+        return {"ran": name, "timed_out": False, "exit_code": done.returncode,
+                "output": _tail(done.stdout)}
+
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
         "move_files": move_files, "open_app": open_app, "focus_window": focus_window,
-        "delete_file": delete_file,
+        "delete_file": delete_file, "run_named_script": run_named_script,
     }
