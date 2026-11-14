@@ -72,7 +72,11 @@ Newest session entry goes at the top of the Session log.
   P3.3 ticked in PLAN.md. Claude Code reviewed A, B and C: accepted. Manual check by
   Karthik PASSED 2026-11-15 through a running bridge (delete to quarantine and undo,
   `run_tests` run, `cmd` refused; audit lines in the Session log). P3.3 is DONE.
-  `C:\JarvisSandbox` now exists (created by Karthik 2026-11-15). Next: plan P3.4.
+  `C:\JarvisSandbox` now exists (created by Karthik 2026-11-15). P3.4 planned and
+  approved 2026-11-15 (`docs/plans/P3.4.md`): new T1 tool `open_in_app(app, path)`,
+  `Rule.opens` so the root may be opened, `apps.toml` `accepts`, eval case t25. Cursor
+  implements A (policy, stub, eval) then B (apps.toml, `load_apps`, handler); Claude Code
+  reviews each; Karthik's manual check after B. Next: Cursor, section A.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -333,7 +337,8 @@ Newest session entry goes at the top of the Session log.
   "Offline check" should turn that guard into a permanent pytest test.
 - OpenJarvis already ships SQLite memory, faster-whisper STT, Kokoro TTS and a Tauri app. Reuse
   any of these, or build our own as planned? Its memory has no approval queue.
-- P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
+- (Resolved by P3.2 F: `move_files` moves up to 20 files in one call.)
+  P3 "Done when" (sort a folder by file type) needs one `move_file` per file, which exceeds the
   8-tool-call budget for more than a few files. Batch move tool, or change the check?
 - (Resolved in P2.6: the repo sits inside the Obsidian vault, and the whole repo folder is now
   a protected folder, so a vault docs root in P4.2 can never reach `safety/`, `config/` or
@@ -344,6 +349,27 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-15 — P3.4: apps are driven through their command line or a documented API. UI
+  automation (pywinauto, key presses, clicks) needs its own plan naming the app, what was
+  tried through its CLI/API, and why that is not enough. No pywinauto dependency until then
+  (rule 11 in `docs/plans/P3.4.md`). — PLAN.md P3.4; a CLI call is testable and has no
+  foreground or timing problems (see P3.2b-d). — Karthik (planned by Claude Code)
+- 2026-11-15 — P3.4: opening an app on a path is a new T1 tool `open_in_app(app, path)`, not
+  an optional argument on `open_app`. — Every policy argument is required today; an
+  optional-argument feature in `safety/` would be a bigger change for the same result. —
+  Karthik (planned by Claude Code)
+- 2026-11-15 — P3.4: `Rule.opens=True` lets a path that is only handed to an app be the root
+  itself (still refused outside the roots and in protected folders). Only `open_in_app` has
+  it. — "Open VS Code on my sandbox" names the root; nothing is changed. — Karthik (planned
+  by Claude Code)
+- 2026-11-15 — P3.4: `apps.toml` entries declare `accepts = file | folder | any` (vscode any,
+  explorer folder, notepad file, calculator none). The handler refuses a mismatch, not the
+  policy. — Not a security boundary: the policy already bounds `app` and `path`; a third
+  allowlist is not worth it. — Karthik (planned by Claude Code)
+- 2026-11-15 — P3.4: eval case t25 "Open VS Code on my sandbox project." -> `open_in_app`;
+  count 41 -> 42. — `test_every_stub_tool_is_exercised` needs a case per stub tool; same as
+  `move_files`. — Karthik
 
 - 2026-11-14 — P3.3: `run_named_script` waits for the script (timeout from its
   `scripts.toml` entry, 1 to 60 s, default 30), returns the exit code and the last 4096
@@ -774,6 +800,17 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.4 plan)
+
+- Start: HEAD `3a188aa`, tree clean, in sync with `origin/main`. 557 passed, 3 skipped.
+- Planned P3.4 in plan mode; Karthik chose a new tool `open_in_app`, `accepts` per app
+  (vscode any, explorer folder, notepad file), eval case t25, pywinauto as a rule only.
+  Checked on this Python: a junction is `S_ISDIR` to `lstat` with `st_reparse_tag`
+  `0xA0000003`, so the handler checks the reparse tag.
+- Files: `docs/plans/P3.4.md` (new), `docs/PROGRESS.md`. No code change.
+- Stopped at: this commit. Next concrete step: Cursor implements section A
+  (`P3.4: open_in_app policy`).
 
 ### 2026-11-15 — Agent: Claude Code (P3.3 review and manual check)
 
