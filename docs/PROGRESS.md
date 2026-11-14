@@ -39,8 +39,12 @@ Newest session entry goes at the top of the Session log.
   (`docs/plans/P3.2b.md`, one commit): `focus_window` calls `_to_front`, which attaches to
   the foreground thread when the plain call is refused, skips a hung window, always
   detaches, and returns success only when `GetForegroundWindow` is that window. 527 passed,
-  3 skipped. 8 mutants killed (baseline 21). Manual check (covered Notepad, then minimised)
-  is still Karthik's. Next: that check, then P3.3 (T2 tools) on Karthik's go. P3.3 is not
+  3 skipped. 8 mutants killed (baseline 21). Manual check 2026-11-14 FAILED, but on timing,
+  not refusal: `SetForegroundWindow` returned 1, `GetForegroundWindow` read `None` during the
+  activation handoff, so `_to_front` returned False; Notepad was in front 25 ms later.
+  P3.2c planned and approved 2026-11-14 (`docs/plans/P3.2c.md`, docs only, no code): a
+  bounded 250 ms wait for the activation after each focus call. Next: Cursor implements
+  P3.2c, then Karthik's manual check, then P3.3 (T2 tools) on Karthik's go. P3.3 is not
   started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -167,6 +171,10 @@ Newest session entry goes at the top of the Session log.
   `SetForegroundWindow` is refused. The handler failed honestly (E7). Option (a) is now
   in `_to_front`. The manual re-check (covered Notepad, then minimised) is still Karthik's.
   If Windows still refuses, stop and ask. Do not add another trick.
+  Re-check 2026-11-14 (Karthik, running bridge, audit read back): FAIL, `OSError` 22 ms
+  after `allow`. Not a refusal: a read-only diagnosis showed `SetForegroundWindow` -> 1,
+  `GetForegroundWindow` -> `None` at 0 ms, Notepad at 25 ms. (Decided 2026-11-14: wait up
+  to 250 ms for the activation, planned as P3.2c; see Decisions. Karthik.)
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -293,6 +301,13 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.2c: after each `SetForegroundWindow`, `_to_front` polls
+  `GetForegroundWindow` every 10 ms for up to 250 ms before judging the call. — The P3.2b
+  manual check showed Windows accepts the focus but the foreground reads `None` for a few ms
+  during the handoff. This is not the "retries or sleeps" P3.2b excluded: the focus request
+  is still issued at most twice; the wait only confirms an activation Windows accepted. —
+  Karthik (planned by Claude Code)
 
 - 2026-11-14 — P3.2b implemented: `_to_front` attaches to the foreground thread when the
   plain call is refused, skips a hung window, detaches in `finally`, and reports success
@@ -680,6 +695,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Claude Code (review of P3.2b, manual check, P3.2c plan)
+
+- Roles from now on: Claude Code plans and reviews; Cursor implements.
+- Backed up the repo to private GitHub `Karthikollur/Jarvis-v2` (history scanned for
+  secrets first: none). AGENTS.md now says to push after the final commit.
+- Reviewed Cursor's `a2ce53b` (P3.2b) against `docs/plans/P3.2b.md`: PASS. Re-ran the suite:
+  527 passed, 3 skipped. Read-only check that real `GetForegroundWindow` and `_all_windows`
+  handles are both `int` and compare equal.
+- Karthik's manual check through a running bridge: `focus_window` notepad FAIL (`OSError`).
+  Diagnosis (script outside the repo, not committed): Windows accepted the focus, the
+  foreground read `None` during the handoff, Notepad was in front 25 ms later.
+- Files: `docs/plans/P3.2c.md` (new), `docs/PROGRESS.md`. No code changed. No tests needed.
+- Next concrete step: Cursor implements `docs/plans/P3.2c.md` (one commit), then Karthik
+  repeats the manual check. P3.3 is not started.
 
 ### 2026-11-14 — Agent: Cursor (P3.2b focus_window foreground)
 
