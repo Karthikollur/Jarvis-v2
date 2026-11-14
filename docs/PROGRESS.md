@@ -69,9 +69,11 @@ Newest session entry goes at the top of the Session log.
   runs the entry's fixed argv with `shell=False`, the entry's `cwd` and `timeout`,
   and returns the last 4096 characters. A timeout is a result (`exit_code` null),
   not a tool failure. No undo record. 557 passed, 3 skipped. 7 mutants killed.
-  P3.3 ticked in PLAN.md. Not done: Karthik's manual check. Karthik creates
-  `C:\JarvisSandbox` before that check. Next: Claude Code reviews C. P0 and P1
-  are complete, every task ticked in PLAN.md.
+  P3.3 ticked in PLAN.md. Claude Code reviewed A, B and C: accepted. Manual check by
+  Karthik PASSED 2026-11-15 through a running bridge (delete to quarantine and undo,
+  `run_tests` run, `cmd` refused; audit lines in the Session log). P3.3 is DONE.
+  `C:\JarvisSandbox` now exists (created by Karthik 2026-11-15). Next: plan P3.4.
+  P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -336,7 +338,7 @@ Newest session entry goes at the top of the Session log.
 - (Resolved in P2.6: the repo sits inside the Obsidian vault, and the whole repo folder is now
   a protected folder, so a vault docs root in P4.2 can never reach `safety/`, `config/` or
   any other repo file.)
-- (Decided 2026-11-14: Karthik creates it himself before the P3.3 manual check.)
+- (Done 2026-11-15: Karthik created it for the P3.3 manual check.)
   `C:\JarvisSandbox` does not exist yet. Create it in P2/P3, or should Karthik create it?
 
 ## Decisions
@@ -772,6 +774,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.3 review and manual check)
+
+- Reviewed `886302d` (A), `f498cf9` (B), `6eb611a` (C) against `docs/plans/P3.3.md`:
+  accepted. Full suite re-run in PowerShell after each: 534, 549, 557 passed, 3 skipped.
+  Section A: approved the lstat stand-in test (a junction cannot kill the `stat` mutant;
+  this account cannot make symlinks). Section B: asked for `scripts=None` instead of a
+  mutable `{}` default. Optional, not done: `Script.command` as a tuple.
+- Manual check by Karthik, PASSED, through a running bridge started after `6eb611a`
+  (normal PowerShell). Audit lines read back from `%LOCALAPPDATA%\Jarvis\audit.jsonl`:
+  - `delete_file C:\JarvisSandbox\bye.txt`: request `confirm` reason `T2`; approve
+    `recheck ok`; result `{"deleted": true, "undo_id": "30073d84..."}`. `Test-Path` False,
+    then `POST /undo` (`kind quarantined`, `undone` set), then `Test-Path` True.
+  - `run_named_script run_tests`: request `confirm` `T2`; approve `recheck ok`; result
+    `timed_out false`, `exit_code 0`, output the laptop's host name, 43 ms after approve.
+  - `run_named_script cmd`: request `deny`, reason `name: not on the allowlist`, nothing
+    queued (403 in PowerShell).
+- Files: `docs/PROGRESS.md`, `docs/plans/P3.3.md`. No code change.
+- Stopped at: this commit. Next concrete step: plan P3.4 (Claude Code), then Cursor
+  implements.
 
 ### 2026-11-15 — Agent: Cursor (P3.3 C run_named_script)
 
