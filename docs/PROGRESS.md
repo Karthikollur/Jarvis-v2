@@ -55,8 +55,13 @@ Newest session entry goes at the top of the Session log.
   implementation (a minimised window lands on the first restore). Manual check 2026-11-14
   by Karthik through a running bridge: covered PASS (327 ms), minimised PASS (123 ms),
   maximised-and-covered PASS (563 ms, Notepad came back maximised). `focus_window` works
-  from a background bridge. Reviewed by Claude Code: PASS. Next: P3.3 (T2 tools) on
-  Karthik's go; not started. P0 and P1 are complete, every task ticked in PLAN.md.
+  from a background bridge. Reviewed by Claude Code: PASS. P3.3 planned and approved
+  2026-11-14 (`docs/plans/P3.3.md`, docs only, no code): section A `delete_file` (plain
+  file to quarantine, undo id returned), B `config/scripts.toml` + `load_scripts` +
+  `run_named_script` taints, C `run_named_script` (waits, timeout from the entry, last
+  4096 characters of output). Next: Cursor implements A, then B, then C, one commit each,
+  each reviewed; then Karthik's manual check (snippets in the plan). Karthik creates
+  `C:\JarvisSandbox` before that check. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -287,6 +292,7 @@ Newest session entry goes at the top of the Session log.
   For P3: `open_app`, `focus_window`, `run_named_script` have no path parameters, so the
   path sweep does not cover them; validate their arguments against `config/apps.toml` and
   `config/scripts.toml` with refusal tests when the handlers are written.
+  (`open_app`: done in P3.2 D. `run_named_script`: planned in P3.3 B and C.)
 
 - (Resolved 2026-11-12 by Karthik at the P2 gate, P2.7 commit B test details: (1) KEEP: a
   budget breach stops the task and cancels allowed calls that have not reached their
@@ -320,11 +326,25 @@ Newest session entry goes at the top of the Session log.
 - (Resolved in P2.6: the repo sits inside the Obsidian vault, and the whole repo folder is now
   a protected folder, so a vault docs root in P4.2 can never reach `safety/`, `config/` or
   any other repo file.)
-- `C:\JarvisSandbox` does not exist yet. Create it in P2/P3, or should Karthik create it?
+- (Decided 2026-11-14: Karthik creates it himself before the P3.3 manual check.)
+  `C:\JarvisSandbox` does not exist yet. Create it in P2/P3, or should Karthik create it?
 
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.3: `run_named_script` waits for the script (timeout from its
+  `scripts.toml` entry, 1 to 60 s, default 30), returns the exit code and the last 4096
+  characters of output, and taints the task. — "Run my tests" is useless without the
+  result; the output is untrusted text, so it taints like `read_text_file`. Fire-and-forget
+  was the alternative. — Karthik (planned by Claude Code)
+- 2026-11-14 — P3.3: `config/scripts.toml` ships `dev_server`, `run_tests`, `backup_notes`,
+  each running `C:\Windows\System32\HOSTNAME.EXE` as a placeholder. — The names match the
+  eval set, so it stays at 41 cases; real commands come when the sandbox project exists.
+  — Karthik
+- 2026-11-14 — P3.3: `delete_file` takes plain files only (`lstat`), moves them with
+  `UndoLog.quarantine`, and returns the undo id. — Rule 3 of P3.2 (files only in v1) and
+  "Jarvis code never permanently deletes". — Karthik (planned by Claude Code)
 
 - 2026-11-14 — P3.2d implemented: `_to_front` tries the plain call, then
   `ShowWindow(SW_MINIMIZE)` and `ShowWindow(SW_RESTORE)`, and reports success only when
@@ -742,6 +762,17 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Claude Code (P3.3 plan)
+
+- Explored what P3.3 already has: both policy entries (T2), `UndoLog.quarantine`, the
+  confirm queue and routes, the `scripts` allowlist loading. Missing: two handlers,
+  `config/scripts.toml`, a script loader.
+- Karthik chose: wait-and-capture scripts, eval-name placeholders in `scripts.toml`, he
+  creates `C:\JarvisSandbox`. Plan written and approved in plan mode.
+- Files: `docs/plans/P3.3.md` (new), `docs/PROGRESS.md`. No code changed. No tests run.
+- Next concrete step: Cursor implements section A of `docs/plans/P3.3.md`
+  (`P3.3: delete_file`), stops for review, then B, then C.
 
 ### 2026-11-14 — Agent: Claude Code (review of P3.2d, manual checks, focus_window closed)
 
