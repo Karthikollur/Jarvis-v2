@@ -51,6 +51,7 @@ Never assume the repo matches what you remember. Another agent may have worked s
 When stopping for any reason, add a Session log entry to PROGRESS.md containing: what you did,
 files changed, tests run with results, the exact point where unfinished work stopped, and the
 next concrete step. Commit it. Write it for an agent that has never seen this repo.
+Push to origin after the final commit.
 
 ## Hard rules
 
