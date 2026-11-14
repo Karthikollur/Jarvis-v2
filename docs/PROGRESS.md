@@ -55,13 +55,18 @@ Newest session entry goes at the top of the Session log.
   implementation (a minimised window lands on the first restore). Manual check 2026-11-14
   by Karthik through a running bridge: covered PASS (327 ms), minimised PASS (123 ms),
   maximised-and-covered PASS (563 ms, Notepad came back maximised). `focus_window` works
-  from a background bridge. Reviewed by Claude Code: PASS. P3.3 planned and approved
-  2026-11-14 (`docs/plans/P3.3.md`, docs only, no code): section A `delete_file` (plain
-  file to quarantine, undo id returned), B `config/scripts.toml` + `load_scripts` +
-  `run_named_script` taints, C `run_named_script` (waits, timeout from the entry, last
-  4096 characters of output). Next: Cursor implements A, then B, then C, one commit each,
-  each reviewed; then Karthik's manual check (snippets in the plan). Karthik creates
-  `C:\JarvisSandbox` before that check. P0 and P1 are complete, every task ticked in PLAN.md.
+  from a background bridge. Reviewed by Claude Code: PASS. P3.3 section A DONE
+  2026-11-15 (`docs/plans/P3.3.md`, commit `P3.3: delete_file`): `delete_file` inside
+  `mutating()` checks `os.lstat` for a plain file and moves it with
+  `UndoLog.quarantine` (nothing is unlinked). Result `{"deleted": True, "undo_id"}`.
+  534 passed, 3 skipped. 5 mutants killed (baseline 8). The `stat` mutant is killed by
+  an lstat stand-in, approved by Karthik 2026-11-15. Sections B and C are not started:
+  B is `config/scripts.toml` + `load_scripts` + `run_named_script` taint; C is
+  `run_named_script` (waits, timeout from the entry, last 4096 characters of output).
+  Next: Claude Code reviews A, then Cursor implements B, then C, one commit each;
+  Karthik's manual check is after C. Karthik creates `C:\JarvisSandbox` before that
+  check. P0 and P1 are complete, every task ticked in PLAN.md. PLAN.md P3.3 stays
+  unticked until C.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -762,6 +767,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.3 A delete_file)
+
+- Start: HEAD `0647d0f`, tree clean, `main` one commit ahead of `origin/main` (the plan
+  commit). `uv run python -m pytest` in this session failed to import `safety` before
+  collecting (the failure already logged for a non-PowerShell pytest). With `PYTHONPATH`
+  set to the repo root: 526 passed, 3 skipped.
+- Red run of the eight new tests against the missing handler: 5 failed, 3 passed. The
+  four direct calls were `KeyError: delete_file`. `/approve` was 501. Deny, the junction
+  swapped in while pending, and the root / protected-folder refusals already passed.
+- `bridge/tools.py`: `delete_file` inside `mutating()`. `os.lstat` must say a plain file,
+  then `undo_log.quarantine`. Nothing is unlinked. `tests/test_tools.py`: the seven plan
+  tests plus `test_delete_file_trusts_lstat_not_the_name`, copied from the rename_file
+  stand-in and approved by Karthik 2026-11-15. The junction half always runs; a real
+  symlink is attempted and, when this account cannot create one, that half returns
+  without skipping the junction.
+- Green: `uv run python -m pytest` with `PYTHONPATH` -> 534 passed, 3 skipped. Mutants
+  from `%TEMP%\p33a_mutants.py` (not in the repo): baseline 8 passed, all 5 killed.
+  Table in `docs/plans/P3.3.md`.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.3.md`,
+  `docs/PROGRESS.md`. PLAN.md P3.3 stays unticked. No change to `safety/`, `config/`,
+  routes, or `.claude/`.
+- Stopped at: this commit, pushed (the push also carries `0647d0f`). Not done: section B,
+  section C, Karthik's manual check. Next concrete step: Claude Code reviews this
+  commit, then section B (`P3.3: scripts.toml`) on Karthik's go.
 
 ### 2026-11-14 — Agent: Claude Code (P3.3 plan)
 

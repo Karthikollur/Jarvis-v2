@@ -1197,3 +1197,135 @@ def test_focus_window_refuses_odd_titles(bridge, desktop):
     for title in ["", "a\nb", "a\u202eb", "x" * 10_000]:
         assert call(client, fresh_task(client), "focus_window", title=title).status_code == 403
     assert desktop.calls == []
+
+
+# --- delete_file (P3.3 A) ---------------------------------------------------------
+
+
+def delete(undo_log, path):
+    return tools.mutating(undo_log, {})["delete_file"]({"path": path})
+
+
+def test_delete_file_quarantines_a_plain_file(folders, undo_log):
+    root, outside = folders
+    victim = root / "a.txt"
+    victim.write_bytes(b"keep")
+    result = delete(undo_log, victim)
+    assert not victim.exists()
+    record = undo_log.get(result["undo_id"])
+    assert record.kind == "quarantined"
+    assert (root.parent / "quarantine" / record.id / "item").read_bytes() == b"keep"
+    assert result == {"deleted": True, "undo_id": record.id}
+    assert_plain(result)
+
+
+def test_delete_file_refuses_a_folder(folders, undo_log):
+    root, outside = folders
+    (root / "dir").mkdir()
+    with pytest.raises(OSError, match="not a plain file"):
+        delete(undo_log, root / "dir")
+    assert (root / "dir").is_dir() and undo_log.list() == []
+
+
+def test_delete_file_refuses_a_link(folders, undo_log):
+    """A junction is refused by lstat. A real symlink is too, when this account can make one.
+    A failed symlink create returns here: the junction half has already run."""
+    root, outside = folders
+    (outside / "secret.txt").write_bytes(b"secret")
+    _winapi.CreateJunction(str(outside), str(root / "jump"))
+    with pytest.raises(OSError, match="not a plain file"):
+        delete(undo_log, root / "jump")
+    assert os.path.lexists(root / "jump")
+    assert (outside / "secret.txt").read_bytes() == b"secret" and undo_log.list() == []
+    try:
+        os.symlink(outside / "secret.txt", root / "link.txt")
+    except OSError:
+        return
+    with pytest.raises(OSError, match="not a plain file"):
+        delete(undo_log, root / "link.txt")
+    assert os.path.lexists(root / "link.txt")
+    assert (outside / "secret.txt").read_bytes() == b"secret" and undo_log.list() == []
+
+
+def test_delete_file_trusts_lstat_not_the_name(folders, undo_log, monkeypatch):
+    """Approved by Karthik 2026-11-15. Copied from the rename_file stand-in: a link as
+    `lstat` reports it is refused. This is what kills `stat` instead of `lstat`."""
+    root, outside = folders
+    (root / "a.txt").write_text("keep")
+    real = os.lstat(root / "a.txt")
+    as_link = os.stat_result((stat.S_IFLNK | 0o777, *tuple(real)[1:]))
+    # Undone on leaving the block, even on failure: the temp folder's cleanup needs the real lstat.
+    with monkeypatch.context() as patch, pytest.raises(OSError, match="not a plain file"):
+        patch.setattr(tools.os, "lstat", lambda path: as_link)
+        delete(undo_log, root / "a.txt")
+    assert (root / "a.txt").exists() and undo_log.list() == []
+
+
+def test_delete_file_through_the_bridge_is_undoable(bridge):
+    client, root = bridge
+    victim = root / "a.txt"
+    victim.write_bytes(b"keep")
+    queued = call(client, fresh_task(client), "delete_file", path=str(victim))
+    assert queued.status_code == 202
+    [pending] = client.get("/pending", headers=ui(root)).json()["pending"]
+    assert (pending["reason"], pending["tool"]) == ("T2", "delete_file")
+    assert victim.read_bytes() == b"keep"
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 200
+    result = approved.json()["result"]
+    assert result == {"deleted": True, "undo_id": result["undo_id"]}
+    assert not victim.exists()
+    undone = client.post("/undo", json={"record_id": result["undo_id"]}, headers=ui(root))
+    assert undone.status_code == 200
+    assert victim.read_bytes() == b"keep"
+
+
+def test_delete_file_deny_leaves_the_file(bridge):
+    client, root = bridge
+    victim = root / "a.txt"
+    victim.write_bytes(b"keep")
+    queued = call(client, fresh_task(client), "delete_file", path=str(victim))
+    assert queued.status_code == 202
+    denied = client.post("/deny", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert denied.status_code == 200 and victim.read_bytes() == b"keep"
+    outcome = client.post("/outcome", json={"pending_id": queued.json()["pending_id"]})
+    assert outcome.json() == {"status": "denied"}
+
+
+def test_delete_file_change_while_pending_moves_nothing(bridge):
+    client, root = bridge
+    outside = root.parent / "outside"
+    victim = root / "a.txt"
+    victim.write_bytes(b"keep")
+    (outside / "secret.txt").write_bytes(b"secret")
+    queued = call(client, fresh_task(client), "delete_file", path=str(victim))
+    assert queued.status_code == 202
+    victim.rename(root / "kept.txt")  # the path is now a junction pointing outside the root
+    _winapi.CreateJunction(str(outside), str(victim))
+    approved = client.post("/approve", json={"pending_id": queued.json()["pending_id"]}, headers=ui(root))
+    assert approved.status_code == 403
+    assert (root / "kept.txt").read_bytes() == b"keep"
+    assert (outside / "secret.txt").read_bytes() == b"secret" and os.path.lexists(victim)
+    assert client.get("/undo", headers=ui(root)).json()["records"] == []
+
+
+def test_delete_file_refuses_the_root_and_a_protected_folder(folders):
+    root, outside = folders
+    locked = root / "locked"
+    locked.mkdir()
+    secret = locked / "secret.txt"
+    secret.write_text("secret")
+    storage = root.parent / "storage"
+    storage.mkdir()
+    ran = []
+    app = create_app(
+        storage, roots=[root], protected=[locked], hotkey=None,
+        handlers={"delete_file": lambda args: ran.append(args)},
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        on_root = call(client, fresh_task(client), "delete_file", path=str(root))
+        on_secret = call(client, fresh_task(client), "delete_file", path=str(secret))
+    assert on_root.status_code == 403 and on_root.json()["detail"] == "path: the root itself"
+    assert on_secret.status_code == 403 and on_secret.json()["detail"] == "path: protected folder"
+    assert ran == [] and secret.read_text() == "secret" and root.is_dir()

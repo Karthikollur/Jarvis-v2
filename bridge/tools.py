@@ -398,7 +398,15 @@ def mutating(undo_log, commands: dict[str, list[str]]) -> dict[str, Any]:
         )
         return {"opened": name, "pid": process.pid}
 
+    def delete_file(args: dict[str, Any]) -> dict[str, Any]:
+        path = args["path"]  # resolved by the policy (rule 1)
+        if not stat.S_ISREG(os.lstat(path).st_mode):  # lstat: never follow a link
+            raise OSError("not a plain file")  # files only in v1 (rule 3)
+        record = undo_log.quarantine(path, "delete_file")
+        return {"deleted": True, "undo_id": record.id}
+
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,
         "move_files": move_files, "open_app": open_app, "focus_window": focus_window,
+        "delete_file": delete_file,
     }
