@@ -45,9 +45,14 @@ Newest session entry goes at the top of the Session log.
   P3.2c planned and approved 2026-11-14 (`docs/plans/P3.2c.md`). P3.2c DONE 2026-11-14
   (one commit): `_settled` polls `GetForegroundWindow` every 10 ms for up to 250 ms after
   each focus call, and `front` is read only after that wait returns false. 532 passed,
-  3 skipped. 6 mutants killed (baseline 26). Manual check (Notepad covered, then
-  minimised) is still Karthik's. Next: that check, then P3.3 (T2 tools) on Karthik's go.
-  P3.3 is not started. P0 and P1 are complete, every task ticked in PLAN.md.
+  3 skipped. 6 mutants killed (baseline 26). Manual check 2026-11-14 through a running
+  bridge: covered Notepad FAIL (`OSError` 518 ms after `allow`: both waits timed out, a
+  genuine refusal; the attach route has never worked through the bridge); minimised
+  Notepad PASS (`focused: true`, 228 ms: `ShowWindow(SW_RESTORE)` lands past the lock).
+  P3.2d planned and approved 2026-11-14 (`docs/plans/P3.2d.md`, docs only, no code):
+  minimise + restore when the plain call does not land, attach code removed, cap 500 ms.
+  Next: Cursor implements P3.2d, then Karthik's manual check, then P3.3 (T2 tools) on
+  Karthik's go. P3.3 is not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -179,6 +184,13 @@ Newest session entry goes at the top of the Session log.
   to 250 ms for the activation, planned as P3.2c; see Decisions. Karthik. Implemented
   2026-11-14 as P3.2c. The manual re-check, Notepad covered then minimised, is still
   Karthik's. If it still fails, stop and ask. Do not add another trick.)
+  Re-check after P3.2c (Karthik, running bridge, audit read back): covered Notepad FAIL,
+  `OSError` 518 ms after `allow` (both 250 ms waits ran out: plain call refused, attached
+  call refused). Minimised Notepad PASS, `focused: true` after 228 ms: the
+  `ShowWindow(SW_RESTORE)` step landed it. Probes from the planning session were discarded:
+  a fresh child of the foreground window inherits the foreground right, so they do not show
+  what the bridge sees. (Decided 2026-11-14: minimise + restore when the plain call does not
+  land, attach removed, planned as P3.2d; see Decisions. Karthik.)
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -305,6 +317,16 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.2d: when the plain `SetForegroundWindow` does not land, `_to_front`
+  does `ShowWindow(SW_MINIMIZE)` then `ShowWindow(SW_RESTORE)` and waits (cap 500 ms).
+  The `AttachThreadInput` route from P3.2b is removed, not kept as a fallback. — Through
+  the bridge, the attach route was refused every time and the restore landed every time;
+  `ShowWindow` needs no foreground right and touches only the target window. A route never
+  seen working is dead code. Cost accepted: one flicker when the plain call is refused.
+  Fallback if the restore ever fails: `AllowSetForegroundWindow` from the UI (P6). —
+  Karthik (chose among minimise+restore / keep attach too / wait for P6; planned by Claude
+  Code)
 
 - 2026-11-14 — P3.2c implemented: `_to_front` waits up to 250 ms after each
   `SetForegroundWindow` for `GetForegroundWindow` to become that window. The focus
@@ -705,6 +727,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Claude Code (review of P3.2c, manual checks, P3.2d plan)
+
+- Reviewed Cursor's `a50674f` (P3.2c) against `docs/plans/P3.2c.md`: PASS. Own run:
+  532 passed, 3 skipped.
+- Karthik's manual checks through a running bridge (normal PowerShell, not admin):
+  covered Notepad FAIL (518 ms, genuine refusal), minimised Notepad PASS (228 ms).
+- Diagnosis probes run from this session (scripts outside the repo, not committed) gave
+  contradictory results and were discarded: children of the foreground window inherit the
+  foreground right. Lesson recorded in `docs/plans/P3.2d.md`: only checks through the bridge
+  count for focus behaviour.
+- Karthik chose minimise + restore with the attach code removed. Plan written.
+- Files: `docs/plans/P3.2d.md` (new), `docs/PROGRESS.md`. No code changed.
+- Next concrete step: Cursor implements `docs/plans/P3.2d.md` (one commit), then Karthik
+  repeats the manual check (covered, minimised, maximised-and-covered). P3.3 not started.
 
 ### 2026-11-14 — Agent: Cursor (P3.2c focus_window waits for the activation)
 
