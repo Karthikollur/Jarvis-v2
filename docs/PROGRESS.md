@@ -84,7 +84,11 @@ Newest session entry goes at the top of the Session log.
   policy name set in `apps` and passes `app_entries`. 589 passed, 4 skipped (the new
   skip is the symlink half; this account cannot create one; the junction half runs
   first). 8 mutants killed (baseline 5 passed, 1 skipped). P3.4 ticked in PLAN.md.
-  Manual check by Karthik still pending.
+  Section B reviewed and accepted by Claude Code 2026-11-15 (suite re-run in PowerShell:
+  589 passed, 4 skipped; the 8 mutants re-run: all killed). Manual check by Karthik
+  still pending, deferred to the next session: restart the bridge, then the five
+  `Jtool` calls in `docs/plans/P3.4.md`. P3.5 is not planned yet (Claude Code, after
+  the manual check).
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -814,6 +818,39 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.4 B review; manual check deferred)
+
+- Start: HEAD `42a7ed3`, tree clean, in sync with `origin/main`. `uv run python -m pytest`
+  in PowerShell: 577 passed, 3 skipped.
+- Reviewed Cursor's section B pre-edit summary: approved with three notes, all applied
+  in `37cfde7`. (1) Keep the nine existing bad `apps.toml` cases (the plan said five) and
+  give each new `accepts` case a valid `command`, or the `accepts` validation mutant
+  survives on the missing command. (2) Do not rebind `apps` in `create_app`: it is the
+  policy's name set; the loaded entries are `app_entries`. (3) The lstat stand-in sets
+  `st_reparse_tag=0`, so the refusal comes from the mode check, not an `AttributeError`.
+- Reviewed `37cfde7` (`P3.4: open_in_app`) against `docs/plans/P3.4.md`: handler,
+  `load_apps`, `apps.toml`, tests 1-10 and the Decisions entry match. Accepted. Nit, not
+  fixed: `open_in_app(args)` has no type hints (the plan's code had none either).
+- Tests: full suite re-run in PowerShell after `37cfde7`: 589 passed, 4 skipped.
+  Mutants re-run with Cursor's `%TEMP%\p34b_mutants.py` (not committed): baseline
+  5 passed, 1 skipped; all 8 killed; tree clean afterwards. That script edits
+  `bridge/tools.py` on disk and restores it in `finally`, so never run it during a pytest
+  run or a bridge start.
+- Manual check NOT done: Karthik deferred it to the next session. Checked before stopping:
+  `C:\JarvisSandbox\bye.txt` exists (5 bytes) and the vscode command in `apps.toml`
+  exists, so steps 1-3 have their targets.
+- Note for P3.5 planning: OpenJarvis `_build_tools`
+  (`OpenJarvis/src/openjarvis/cli/ask.py:304`) silently skips a tool name that is not in
+  `ToolRegistry`. The runtime tools guard must check the tool objects the agent actually
+  holds, not the list of names passed to `ask_full`.
+- Files: `docs/PROGRESS.md`. No code change.
+- Stopped at: this commit. Next concrete step: Karthik runs the P3.4 manual check
+  (restart the bridge in tab 1 so it loads `37cfde7`, then the tab 2 setup and the five
+  `Jtool` calls in `docs/plans/P3.4.md`). The agent reads the audit lines back from
+  `%LOCALAPPDATA%\Jarvis\audit.jsonl`, records them here, and commits
+  `docs: P3.4 manual check passes, P3.4 closed`. Then Claude Code plans P3.5 (plan mode,
+  docs only).
 
 ### 2026-11-15 — Agent: Cursor (P3.4 B open_in_app)
 
