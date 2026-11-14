@@ -42,10 +42,12 @@ Newest session entry goes at the top of the Session log.
   3 skipped. 8 mutants killed (baseline 21). Manual check 2026-11-14 FAILED, but on timing,
   not refusal: `SetForegroundWindow` returned 1, `GetForegroundWindow` read `None` during the
   activation handoff, so `_to_front` returned False; Notepad was in front 25 ms later.
-  P3.2c planned and approved 2026-11-14 (`docs/plans/P3.2c.md`, docs only, no code): a
-  bounded 250 ms wait for the activation after each focus call. Next: Cursor implements
-  P3.2c, then Karthik's manual check, then P3.3 (T2 tools) on Karthik's go. P3.3 is not
-  started. P0 and P1 are complete, every task ticked in PLAN.md.
+  P3.2c planned and approved 2026-11-14 (`docs/plans/P3.2c.md`). P3.2c DONE 2026-11-14
+  (one commit): `_settled` polls `GetForegroundWindow` every 10 ms for up to 250 ms after
+  each focus call, and `front` is read only after that wait returns false. 532 passed,
+  3 skipped. 6 mutants killed (baseline 26). Manual check (Notepad covered, then
+  minimised) is still Karthik's. Next: that check, then P3.3 (T2 tools) on Karthik's go.
+  P3.3 is not started. P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -174,7 +176,9 @@ Newest session entry goes at the top of the Session log.
   Re-check 2026-11-14 (Karthik, running bridge, audit read back): FAIL, `OSError` 22 ms
   after `allow`. Not a refusal: a read-only diagnosis showed `SetForegroundWindow` -> 1,
   `GetForegroundWindow` -> `None` at 0 ms, Notepad at 25 ms. (Decided 2026-11-14: wait up
-  to 250 ms for the activation, planned as P3.2c; see Decisions. Karthik.)
+  to 250 ms for the activation, planned as P3.2c; see Decisions. Karthik. Implemented
+  2026-11-14 as P3.2c. The manual re-check, Notepad covered then minimised, is still
+  Karthik's. If it still fails, stop and ask. Do not add another trick.)
 
 - (Decided 2026-11-13: 41st case t24, arguments checked; see Decisions.) P3.2 F1
   (2026-11-13, Opus 5.5): plan gap, F1 stopped before commit. Adding `move_files`
@@ -301,6 +305,12 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-14 — P3.2c implemented: `_to_front` waits up to 250 ms after each
+  `SetForegroundWindow` for `GetForegroundWindow` to become that window. The focus
+  request is still issued at most twice. `settles_after` then reveals the window the
+  call actually produced. — the manual check's `None` was the activation handoff, not a
+  refusal. 532 passed, 3 skipped; 6 mutants killed. — Karthik (go), Cursor
 
 - 2026-11-14 — P3.2c: after each `SetForegroundWindow`, `_to_front` polls
   `GetForegroundWindow` every 10 ms for up to 250 ms before judging the call. — The P3.2b
@@ -695,6 +705,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-14 — Agent: Cursor (P3.2c focus_window waits for the activation)
+
+- Start: HEAD `af989e8`, tree clean. `uv run python -m pytest` from this PowerShell
+  session sometimes failed to import `safety` before collecting (the failure already
+  noted for a non-PowerShell pytest). The green run below is `uv run python -m pytest`
+  in PowerShell, and it collected on that invocation. Not `pytest.main()`.
+- Red run of the five new tests against the pre-fix handler: 3 failed, 2 passed
+  (`never_settles` and `settles_too_late` already raise `OSError`).
+- `bridge/tools.py`: `_settled`, called after the plain `SetForegroundWindow` and after
+  the attached call's detach. `tests/test_tools.py`: `settles_after`, `FakeClock`, five
+  tests. No change to `safety/`, `config/`, routes, or the policy entry.
+- Green: `uv run python -m pytest` -> 532 passed, 3 skipped. Mutants from
+  `%TEMP%\p32c_mutants.py` (not in the repo): baseline 26 passed, all 6 killed. Table
+  in `docs/plans/P3.2c.md`.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.2c.md`, `docs/PLAN.md`,
+  `docs/PROGRESS.md`.
+- Stopped at: this commit, pushed. Not done: Karthik's manual check through a running
+  bridge (Notepad covered, then Notepad minimised; read the audit line back into this
+  file). Next concrete step: that check. P3.3 is not started.
 
 ### 2026-11-14 — Agent: Claude Code (review of P3.2b, manual check, P3.2c plan)
 

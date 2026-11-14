@@ -263,11 +263,22 @@ _user32.IsHungAppWindow.restype = wintypes.BOOL
 _user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 
 
+def _settled(hwnd, timeout=0.25, step=0.01) -> bool:
+    # ponytail: 250 ms cap; make it config if a slow app needs more
+    deadline = time.monotonic() + timeout
+    while True:
+        if _user32.GetForegroundWindow() == hwnd:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(step)
+
+
 def _to_front(hwnd) -> bool:
     """True only when `hwnd` is the foreground window afterwards. Attaches to the
     foreground thread for one call when the plain call is refused, and always detaches."""
     _user32.SetForegroundWindow(hwnd)
-    if _user32.GetForegroundWindow() == hwnd:
+    if _settled(hwnd):
         return True
     front = _user32.GetForegroundWindow()
     theirs = _user32.GetWindowThreadProcessId(front, None)
@@ -282,7 +293,7 @@ def _to_front(hwnd) -> bool:
         _user32.SetForegroundWindow(hwnd)
     finally:
         _user32.AttachThreadInput(ours, theirs, False)
-    return _user32.GetForegroundWindow() == hwnd
+    return _settled(hwnd)
 
 
 def focus_window(args: dict[str, Any]) -> dict[str, Any]:

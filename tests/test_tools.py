@@ -1006,13 +1006,16 @@ APPS_BY_PID = {4: "Notepad.exe", 5: "Code.exe", 6: "Notepad.exe"}
 
 class FakeUser32:
     """No real window. `SetForegroundWindow` changes `foreground` only when allowed:
-    `refuses` never, `needs_attach` only while attached, `lies` returns True and changes nothing."""
+    `refuses` never, `needs_attach` only while attached, `lies` returns True and changes nothing.
+    `settles_after` then hides that result for N reads (None) before revealing it."""
 
     def __init__(self, minimised=(), refuses=False):
         self.minimised, self.refuses, self.calls = set(minimised), refuses, []
         self.foreground, self.attached = 0, False
         self.needs_attach = self.lies = self.attach_refuses = self.raise_when_attached = False
         self.threads, self.hung = {}, set()
+        self.settles_after = 0
+        self._hidden = 0
 
     def IsIconic(self, hwnd):
         return hwnd in self.minimised
@@ -1022,6 +1025,9 @@ class FakeUser32:
         return True
 
     def GetForegroundWindow(self):
+        if self._hidden:
+            self._hidden -= 1
+            return 0
         return self.foreground
 
     def GetWindowThreadProcessId(self, hwnd, _process_id):
@@ -1041,12 +1047,32 @@ class FakeUser32:
         self.calls.append(("foreground", hwnd))
         if self.raise_when_attached and self.attached:
             raise RuntimeError("foreground failed")
+        if not (self.lies or self.refuses or (self.needs_attach and not self.attached)):
+            self.foreground = hwnd
+        self._hidden = self.settles_after
         if self.lies:
             return True
         if self.refuses or (self.needs_attach and not self.attached):
             return False
-        self.foreground = hwnd
         return True
+
+
+class FakeClock:
+    """`monotonic` is a counter. `sleep` advances it and counts the call. Past two 250 ms
+    waits plus one step, it raises so a wait with no deadline cannot hang the run."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+        if sum(self.sleeps) > 2 * 0.25 + 0.01:
+            raise RuntimeError("focus wait slept past 2 x 250 ms plus one step")
 
 
 @pytest.fixture
@@ -1056,6 +1082,7 @@ def desktop(monkeypatch):
     monkeypatch.setattr(tools, "_all_windows", lambda: WINDOWS)
     monkeypatch.setattr(tools, "_app", APPS_BY_PID.get)
     monkeypatch.setattr(tools, "_user32", user32)
+    monkeypatch.setattr(tools, "time", FakeClock())
     return user32
 
 
@@ -1193,6 +1220,53 @@ def test_focus_window_detaches_when_foreground_call_raises(desktop):
     ours = covered(desktop)
     with pytest.raises(RuntimeError, match="foreground failed"):
         focus("notepad")
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
+
+
+def test_focus_window_plain_call_settles_after_two_reads(desktop):
+    desktop.settles_after = 2
+    assert focus("notepad") == {"focused": True}
+    assert desktop.calls == [("foreground", 104)]
+    assert tools.time.sleeps == [0.01, 0.01]
+
+
+def test_focus_window_attached_call_settles_after_two_reads(desktop):
+    desktop.needs_attach = True
+    desktop.settles_after = 2
+    ours = covered(desktop)
+    assert focus("notepad") == {"focused": True}
+    assert desktop.calls == [
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, True),
+        ("foreground", 104),
+        ("attach", ours, OTHER_THREAD, False),
+    ]
+
+
+def test_focus_window_never_settles_and_the_wait_is_capped(desktop):
+    desktop.refuses = True
+    covered(desktop)
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+    assert sum(tools.time.sleeps) <= 2 * 0.25 + 0.01
+
+
+def test_focus_window_settles_too_late(desktop):
+    desktop.settles_after = 100
+    with pytest.raises(OSError, match="refused"):
+        focus("notepad")
+
+
+def test_focus_window_transient_none_then_another_window_attaches_once(desktop):
+    desktop.needs_attach = True
+    desktop.settles_after = 1
+    ours = covered(desktop)
+    assert focus("notepad") == {"focused": True}
     assert desktop.calls == [
         ("foreground", 104),
         ("attach", ours, OTHER_THREAD, True),

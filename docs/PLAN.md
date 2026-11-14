@@ -178,6 +178,8 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 - [x] P3.2b `focus_window` gets the foreground: attach to the foreground thread when Windows
       refuses, skip a hung window, always detach, and count success only from
       `GetForegroundWindow`. Plan: `docs/plans/P3.2b.md`.
+- [x] P3.2c `focus_window` waits for the activation: after each focus call, poll
+      `GetForegroundWindow` for up to 250 ms. Plan: `docs/plans/P3.2c.md`.
 - [ ] P3.3 T2 tools: `delete_file` (to quarantine), `run_named_script` (only entries in
       `config/scripts.toml`).
 - [ ] P3.4 Prefer CLIs and app APIs (e.g. `code <path>`) over UI clicking; pywinauto only where needed.
