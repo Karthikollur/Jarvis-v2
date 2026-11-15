@@ -92,7 +92,11 @@ Newest session entry goes at the top of the Session log.
   `BridgeTool` per `TOOLS` entry, stdlib `urllib` client, runtime guard before every
   request, `fresh` is the caller's statement, `evals/run.py --real`. Three commits, a go
   per commit: A `P3.5: bridge client`, B `P3.5: core agent`, C `P3.5: real evals`
-  (adds `get_time` to the bridge). Next: Cursor implements section A.
+  (adds `get_time` to the bridge). Section A DONE 2026-11-15 (commit `P3.5: bridge client`):
+  `core/specs.py` holds the moved tool schemas, `core/bridge_client.py` is the stdlib
+  urllib client (loopback only, no-proxy opener, no retries). 596 passed, 4 skipped.
+  7 mutants killed (baseline 7 passed). Next: Claude Code reviews section A. Do not
+  start section B. P3.5 stays unticked until section C.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -842,6 +846,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.5 A bridge client)
+
+- Start: HEAD `06b76dc` (`docs: session log, P3.5 A handed to Cursor`), tree clean, in sync
+  with `origin/main`. `uv run python -m pytest` in PowerShell: 589 passed, 4 skipped.
+  (A run outside PowerShell fails collection with `No module named 'safety'`.)
+- Red run, before `core/bridge_client.py` existed: collection of `tests/test_core.py`
+  failed with `ModuleNotFoundError: No module named 'core.bridge_client'`. 0 tests ran.
+- `live_bridge` keeps the bound socket and calls `server.run(sockets=[sock])` (`workers=1`).
+  `server.started` is a bool; the fixture polls it for 10 s. Uvicorn 0.54 did not raise
+  on signal handlers off the main thread. No signal patch.
+- Test 7: `urlopen` caches one process-wide opener on first use. In a full
+  `tests/test_core.py` run the urlopen mutant survived, because tests 1-6 built that
+  opener before `HTTP_PROXY` was set. Run alone, the same mutant died with `URLError`
+  (port 9 refused). The test now clears `urllib.request._opener` after the env change
+  and restores it. The client is unchanged.
+- `fresh` inverted is also killed by `test_outcome_pending_approve_and_deny` (a
+  non-fresh task becomes fresh, so `create_folder` is 200 instead of 202). The table
+  names `test_non_fresh_task_then_fresh`, which failed as well.
+- Files: `core/specs.py`, `core/bridge_client.py`, `evals/stub_tools.py`,
+  `tests/test_core.py`, `docs/plans/P3.5.md`, `docs/PROGRESS.md`. Nothing in `safety/`,
+  `bridge/`, `config/`, or `.claude/`. P3.5 is not ticked in PLAN.md.
+- Tests: `uv run python -m pytest` in PowerShell: 596 passed, 4 skipped.
+- Mutants: baseline 7 passed. All 7 killed. Script (not committed):
+  `C:\Users\karth\AppData\Local\Temp\p35a_mutants.py`. It edits `core/bridge_client.py`
+  and restores it; `git diff` on that file was clean when the script exited. Do not run
+  it during a pytest run or a bridge start.
+- Stopped at: this commit. Next concrete step: Claude Code reviews section A. Do not
+  start section B.
 
 ### 2026-11-15 — Agent: Claude Code (P3.4 manual check, P3.4 closed; P3.5 plan)
 
