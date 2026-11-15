@@ -1,5 +1,6 @@
 """P3.5: the bridge client (section A) and the core agent (section B)."""
 
+from datetime import datetime
 import json
 import os
 import socket
@@ -7,6 +8,7 @@ import tempfile
 import threading
 import time
 import tomllib
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -330,9 +332,13 @@ def test_guard_refuses_a_changed_tool_set(live_bridge, change):
 
 
 def test_fast_path_get_time_and_open_notepad(live_bridge, monkeypatch):
-    """get_time stays 501 until section C. open notepad must not launch a real process."""
+    """open notepad must not launch a real process."""
     core, engine, _client, _root, storage, _base = make_core(live_bridge, [])
-    assert core.handle("what time is it") == "Could not get_time: bridge 501: Tool not implemented"
+    reply = json.loads(core.handle("what time is it"))
+    when = datetime.fromisoformat(reply["time"])
+    assert set(reply) == {"time"}
+    assert when.tzinfo is not None and when.utcoffset() is not None
+    assert abs((datetime.now().astimezone() - when).total_seconds()) <= 5
     assert engine.calls == []
     tasks = [line for line in audit(storage) if line["event"] == "task"]
     requests = [line for line in audit(storage) if line["event"] == "request"]
@@ -499,3 +505,17 @@ def test_build_reads_config(monkeypatch):
     assert seen == {"host": "http://127.0.0.1:11434", "client": True}
     assert built._agent._model == "qwen3.5:4b"
     assert built._agent._system_prompt == PROMPT
+    assert build(router=None)._router is None
+
+
+def test_cli_says_when_the_bridge_is_down(monkeypatch, capsys):
+    import core.__main__ as cli
+
+    def down(*args, **kwargs):
+        raise urllib.error.URLError("refused")
+
+    monkeypatch.setattr(cli, "build", down)
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["what time is it"])
+    assert raised.value.code == 1
+    assert capsys.readouterr().out == "bridge is not running\n"

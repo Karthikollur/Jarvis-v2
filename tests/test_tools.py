@@ -1,6 +1,7 @@
 """P3.1: the real T0 tool handlers in bridge/tools.py, called directly and through the bridge."""
 
 import _winapi
+from datetime import datetime
 import json
 import os
 import socket
@@ -408,6 +409,23 @@ def test_system_stats_does_not_taint(bridge):
     response = call(client, task, "system_stats")
     assert response.status_code == 200 and "cpu_percent" in response.json()["result"]
     assert call(client, task, "create_folder", path=str(root / "b")).status_code == 200
+
+
+def test_get_time_returns_an_aware_local_time(bridge):
+    client, _root = bridge
+    response = call(client, fresh_task(client), "get_time")
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert set(result) == {"time"}
+    when = datetime.fromisoformat(result["time"])
+    assert when.tzinfo is not None and when.utcoffset() is not None
+    assert abs((datetime.now().astimezone() - when).total_seconds()) <= 5
+
+
+def test_get_time_refuses_an_extra_argument(bridge):
+    client, _root = bridge
+    response = call(client, fresh_task(client), "get_time", extra="no")
+    assert (response.status_code, response.json()["detail"]) == (403, "unknown argument")
 
 
 def test_read_text_file_taints_so_a_following_t1_call_waits(bridge):

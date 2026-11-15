@@ -102,9 +102,14 @@ Newest session entry goes at the top of the Session log.
   `before_tool_call` records calls, the guard reads `self._agent._tools`). The fast path
   calls `BridgeTool.call(args)`. 611 passed, 4 skipped. 11 mutants killed (baseline 22
   passed; `parallel_tools` left true killed on 3 of 3 runs). Section B reviewed and
-  ACCEPTED by Claude Code 2026-11-15 (suite and mutants re-run, same results). Next:
-  Cursor implements section C (pre-edit summary first). P3.5 is ticked only after
-  Karthik's manual check passes, not in commit C.
+  ACCEPTED by Claude Code 2026-11-15 (suite and mutants re-run, same results). Section C
+  DONE 2026-11-15 (commit `P3.5: real evals`): `get_time` in `bridge/tools.py` returns
+  `{"time": <iso8601 with offset>}` and takes no arguments; `core/__main__.py` is the
+  CLI (`URLError` prints `bridge is not running` and exits 1); `build()` takes `router`;
+  `evals/run.py --real` builds the core once (`--no-router` passes `router=None`).
+  614 passed, 4 skipped. No mutant table. `--real` was not run. Stub evals 41/42
+  twice; Karthik accepted that (t24, not a flake, not caused by section C; Eval results
+  and Open questions). P3.5 stays unticked until Karthik's manual check passes.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -218,6 +223,10 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Karthik, 2026-11-15) t24 doubled backslashes in `destination`. Options: (a) the scorer
+  compares path args after `os.path.normpath`; (b) a prompt rule; (c) accept. The `--real`
+  run in the P3.5 manual check shows whether the bridge accepts the path. Not part of P3.5.
 
 - (Karthik, 2026-11-13) Should focus_window be limited to windows of allowlisted apps?
   Decide before any keyboard-input tool exists.
@@ -852,8 +861,56 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and case t24) — tool selection 26/26 (100%), arguments 24/24 (100%) — refusals 10/10,
   clarify 5/5, all 41/41 — 5/41 fast path — median 1.1 s, max 5.0 s. t24 went through
   the model (2.2 s on a separate `--only t24 t19` run).
+- 2026-11-15 — qwen3.5:4b, stub tools, fast path (P3.5 C). First 42-case run. No earlier
+  42-case baseline: the last full run was 41/41 on 2026-11-13, and `open_in_app` plus the
+  42nd case landed in P3.4 (`42a7ed3`) with no stub eval after it. Both runs: tool
+  selection 27/27 (100%), arguments 24/25 (96%) — refusals 10/10, clarify 5/5, all
+  41/42 — 5/42 fast path. Run 1 median 1.5 s, max 7.5 s. Run 2 median 1.4 s, max 3.5 s.
+  The only miss both times is t24: `move_files` destination with doubled backslashes
+  (`C:\\JarvisSandbox\\docs` in the argument; the printed repr shows four). `os.path.normpath`
+  and `PureWindowsPath` both turn it into `C:\JarvisSandbox\docs`. Temp 0, same miss twice,
+  so not a flake. The stub path in this commit changed only by the header line, and
+  `SPECS` has been byte-identical since section A. Accepted for the commit. See Open questions.
+- 2026-11-15 — qwen3.5:4b `--real` (P3.5 C) — not run in this commit. The summary lines
+  come from Karthik's manual check (`uv run python evals/run.py --real`).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.5 C real evals)
+
+- Start: HEAD `0c6ec64` (`docs: P3.5 B reviewed`), tree clean, in sync with `origin/main`.
+  Newest Session log entry was "P3.5 B review: accepted". Before edits, with
+  `PYTHONPATH` set to the repo: 611 passed, 4 skipped. After the code, PowerShell
+  `uv run python -m pytest` at the repo root (`PYTHONPATH` empty): 614 passed, 4 skipped.
+  Pre-edit summary approved with three fixes: `build()` takes `router` (no
+  `core._router` write from `evals/run.py`); `main(argv=None)` and a `SystemExit`
+  test; the PowerShell suite count is the one recorded here.
+- Red run, before the handler and `core/__main__.py`: 4 failed, 1 passed.
+  `get_time` was 501. The fast-path reply was not JSON. `build(router=None)` raised
+  `TypeError`. `core.__main__` was missing. The extra-argument test already returned
+  403 `unknown argument` (the policy refuses it before a handler exists).
+- `get_time` ignores its args dict and returns only `{"time": now with offset,
+  timespec seconds}`. `build(on_pending=_say, router=None)` is how `--real
+  --no-router` skips the fast path. The CLI catches `URLError` only.
+- Files: `bridge/tools.py` (handler, import, `HANDLERS` entry), `core/agent.py`
+  (`router` on `build` only), `core/__main__.py` (new), `evals/run.py`,
+  `tests/test_tools.py`, `tests/test_core.py`, `docs/plans/P3.5.md`,
+  `docs/PROGRESS.md`. Nothing in `safety/`, `config/`, or `.claude/`. P3.5 is not
+  ticked in PLAN.md. No mutant table.
+- Tests: `uv run python -m pytest` in PowerShell at the repo root: 614 passed,
+  4 skipped.
+- Stub evals, `uv run python evals/run.py`, default model, `tools: stubs`. Both
+  runs 41/42. Tool selection 27/27, must-refuse 10/10, clarify 5/5, fast path 5/42.
+  Run 1: arguments 24/25, median 1.5 s, max 7.5 s. Run 2: arguments 24/25, median
+  1.4 s, max 3.5 s. Karthik accepted 41/42: temp 0, the same t24 miss twice, so not
+  a flake, and not caused by section C. The stub path changed only by the header
+  line, and `SPECS` has been byte-identical since section A. No 42-case baseline
+  exists; the last full run was 41/41 on 2026-11-13. `open_in_app` and the 42nd case
+  landed in P3.4 (`42a7ed3`) with no stub eval after that. The plan's "still 42/42"
+  was wrong. Recorded under Eval results and Open questions. Not part of P3.5.
+- Stopped at: this commit. Next concrete step: Claude Code reviews section C, then
+  Karthik's manual check in `docs/plans/P3.5.md` (including `uv run python
+  evals/run.py --real`). Do not push.
 
 ### 2026-11-15 — Agent: Claude Code (P3.5 B review: accepted)
 

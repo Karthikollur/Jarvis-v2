@@ -9,6 +9,7 @@ on the open handle), raise when the job cannot be done (the bridge logs it and a
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
+from datetime import datetime
 import msvcrt
 import os
 from pathlib import Path
@@ -300,11 +301,16 @@ def focus_window(args: dict[str, Any]) -> dict[str, Any]:
     return {"focused": True}
 
 
+def get_time(args: dict[str, Any]) -> dict[str, Any]:
+    return {"time": datetime.now().astimezone().isoformat(timespec="seconds")}
+
+
 HANDLERS = {
     "list_dir": list_dir,
     "read_text_file": read_text_file,
     "list_windows": list_windows,
     "system_stats": system_stats,
+    "get_time": get_time,
 }
 
 

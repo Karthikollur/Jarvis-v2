@@ -3,6 +3,7 @@
     uv run python evals/run.py                  # default model from core/config.toml
     uv run python evals/run.py --model qwen3.5:9b
     uv run python evals/run.py --only r t19     # ids starting with r, and t19
+    uv run python evals/run.py --real           # real core and a running bridge
 
 Runs every case in commands.yaml through the orchestrator agent with the stub
 tools and reports tool selection, argument accuracy, refusals, clarifications
@@ -60,47 +61,77 @@ def main() -> None:
     parser.add_argument("--model", default=None)
     parser.add_argument("--only", nargs="*", default=[], help="case id prefixes")
     parser.add_argument("--no-router", action="store_true", help="LLM only, skip the fast path")
+    parser.add_argument("--real", action="store_true", help="real core and a running bridge")
     opts = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     import yaml
-
-    import core.openjarvis_env  # noqa: F401  (must precede openjarvis imports)
-    from core.router import route
-    from evals.stub_tools import CALLS, SPECS
-    from openjarvis import Jarvis
 
     cases = yaml.safe_load((REPO / "evals" / "commands.yaml").read_text(encoding="utf-8"))
     if opts.only:
         cases = [c for c in cases if c["id"].startswith(tuple(opts.only))]
 
     rows = []
-    with Jarvis(config_path=str(REPO / "core" / "config.toml"), model=opts.model) as jarvis:
-        jarvis.ask("Say ok.", context=False)  # load the model so case 1 is not a cold start
+    if opts.real:
+        from core.agent import build
+
+        def _say(pending_id):
+            print(f"pending {pending_id}: approve or deny in tab 2")
+
+        if opts.no_router:
+            core = build(on_pending=_say, router=None)
+        else:
+            core = build(on_pending=_say)
+        core.handle("Say ok.")  # one throwaway task, so case 1 is not a cold start
+        print("tools: real (bridge)")
         for case in cases:
-            CALLS.clear()
+            core.calls.clear()
             started = time.perf_counter()
-            routed = None if opts.no_router else route(case["say"])
-            if routed:
-                CALLS.append(routed)
-                reply = "[fast path, no LLM]"
-            else:
-                try:
-                    result = jarvis.ask_full(
-                        case["say"], agent="orchestrator", tools=list(SPECS), context=False
-                    )
-                    reply = result["content"] or ""
-                except Exception as exc:  # one broken case must not hide the other 39
-                    reply = f"[ERROR] {type(exc).__name__}: {exc}"
+            try:
+                reply = core.handle(case["say"], fresh=True)
+            except Exception as exc:  # one broken case must not hide the others
+                reply = f"[ERROR] {type(exc).__name__}: {exc}"
             seconds = time.perf_counter() - started
-            calls = list(CALLS)
+            calls = list(core.calls)
             rows.append((case, calls, reply, seconds, score(case, calls, reply)))
             mark = "ok  " if rows[-1][4]["passed"] else "FAIL"
-            path = "fast" if routed else "llm "
-            print(f"{mark} {case['id']} {path} {seconds:5.1f}s  {case['say'][:60]}")
+            print(f"{mark} {case['id']} real {seconds:5.1f}s  {case['say'][:60]}")
             if not rows[-1][4]["passed"] or case["expect"] != "tool":
                 print(f"       calls={calls}")
                 print(f"       reply={reply[:160]!r}")
+    else:
+        import core.openjarvis_env  # noqa: F401  (must precede openjarvis imports)
+        from core.router import route
+        from evals.stub_tools import CALLS, SPECS
+        from openjarvis import Jarvis
+
+        with Jarvis(config_path=str(REPO / "core" / "config.toml"), model=opts.model) as jarvis:
+            jarvis.ask("Say ok.", context=False)  # load the model so case 1 is not a cold start
+            print("tools: stubs")
+            for case in cases:
+                CALLS.clear()
+                started = time.perf_counter()
+                routed = None if opts.no_router else route(case["say"])
+                if routed:
+                    CALLS.append(routed)
+                    reply = "[fast path, no LLM]"
+                else:
+                    try:
+                        result = jarvis.ask_full(
+                            case["say"], agent="orchestrator", tools=list(SPECS), context=False
+                        )
+                        reply = result["content"] or ""
+                    except Exception as exc:  # one broken case must not hide the other 39
+                        reply = f"[ERROR] {type(exc).__name__}: {exc}"
+                seconds = time.perf_counter() - started
+                calls = list(CALLS)
+                rows.append((case, calls, reply, seconds, score(case, calls, reply)))
+                mark = "ok  " if rows[-1][4]["passed"] else "FAIL"
+                path = "fast" if routed else "llm "
+                print(f"{mark} {case['id']} {path} {seconds:5.1f}s  {case['say'][:60]}")
+                if not rows[-1][4]["passed"] or case["expect"] != "tool":
+                    print(f"       calls={calls}")
+                    print(f"       reply={reply[:160]!r}")
 
     def rate(kinds: set[str], key: str) -> str:
         picked = [r for r in rows if r[0]["expect"] in kinds]

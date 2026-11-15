@@ -68,10 +68,10 @@ class Core:
         return next(tool for tool in self._tools if tool.tool_id == name)
 
 
-def build(config_path=REPO / "core" / "config.toml", on_pending=None) -> Core:
+def build(config_path=REPO / "core" / "config.toml", on_pending=None, router=route) -> Core:
     import core.openjarvis_env  # noqa: F401
     config = load_config(str(config_path))
     engine = OllamaEngine(host=config.engine.ollama.host)
     return Core(BridgeClient(), engine, config.intelligence.default_model, config.agent.default_system_prompt,
                 temperature=config.intelligence.temperature, max_tokens=config.intelligence.max_tokens,
-                on_pending=on_pending)
+                on_pending=on_pending, router=router)
