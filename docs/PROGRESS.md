@@ -95,10 +95,14 @@ Newest session entry goes at the top of the Session log.
   (adds `get_time` to the bridge). Section A DONE 2026-11-15 (commit `P3.5: bridge client`):
   `core/specs.py` holds the moved tool schemas, `core/bridge_client.py` is the stdlib
   urllib client (loopback only, no-proxy opener, no retries). 596 passed, 4 skipped.
-  7 mutants killed (baseline 7 passed). Section A reviewed and ACCEPTED by Claude Code
-  2026-11-15 (suite and mutants re-run, same results). Next: Cursor implements section B
-  (pre-edit summary first, Claude Code approves before any edit). P3.5 stays unticked
-  until section C.
+  7 mutants killed (baseline 7 passed).   Section A reviewed and ACCEPTED by Claude Code
+  2026-11-15 (suite and mutants re-run, same results). Section B DONE 2026-11-15
+  (commit `P3.5: core agent`): `core/tools.py` `BridgeTool` and `core/agent.py` `Core`
+  build `OrchestratorAgent` (`parallel_tools` false, `max_turns` `MAX_CALLS + 1`,
+  `before_tool_call` records calls, the guard reads `self._agent._tools`). The fast path
+  calls `BridgeTool.call(args)`. 611 passed, 4 skipped. 11 mutants killed (baseline 22
+  passed; `parallel_tools` left true killed on 3 of 3 runs). P3.5 stays unticked until
+  section C. Next: Claude Code reviews section B. Do not start section C.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -848,6 +852,34 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Cursor (P3.5 B core agent)
+
+- Start: HEAD `411e283` (`docs: P3.5 A reviewed`), tree clean, in sync with `origin/main`.
+  PowerShell `uv run python -m pytest`: 596 passed, 4 skipped. Newest Session log entry
+  was "P3.5 A review: accepted". Pre-edit summary approved with test 9 replaced: a tainted
+  task, one turn with `create_folder root/p` and `create_folder root/q`, approve each as
+  it appears.
+- Red run, before `core/agent.py` existed: collection of `tests/test_core.py` failed with
+  `ModuleNotFoundError: No module named 'core.agent'`.
+- `BridgeTool.call(params)` holds the request body. `execute(**params)` only returns
+  `self.call(params)`. The fast path is `self._tool(name).call(args)`, so a new router
+  route is not sent `app=`, and `core/` has no `**` call (`test_no_call_hides_its_keywords`
+  refuses those). `execute`'s signature `**` is a `def`, which that scan allows.
+- Files: `core/tools.py`, `core/agent.py`, `tests/test_core.py` (B1–B11),
+  `tests/test_core_tools.py` (`allowed` gains `"self._tools"` only), `docs/plans/P3.5.md`,
+  `docs/PROGRESS.md`. Nothing in `safety/`, `bridge/`, `config/`, or `.claude/`. No
+  `core/config.toml` change. P3.5 is not ticked in PLAN.md.
+- Tests: `uv run python -m pytest` in PowerShell: 611 passed, 4 skipped.
+- Mutants: baseline 22 passed (`tests/test_core.py`). All 11 killed.
+  `parallel_tools` left true: `test_sequential_confirmations` killed on run 1, run 2, and
+  run 3. Karthik's bridge on `127.0.0.1:8765` was left up (it imports nothing from `core/`).
+  Script (not committed): `C:\Users\karth\AppData\Local\Temp\p35b_mutants.py`. It edits
+  `core/agent.py` and `core/tools.py` and restores both (sha256 match). After it exited,
+  `git diff -- core/` was empty: the two new files are untracked, and no tracked file
+  under `core/` changed. Do not run it during a pytest run.
+- Stopped at: this commit. Next concrete step: Claude Code reviews section B. Do not start
+  section C. Do not push.
 
 ### 2026-11-15 — Agent: Claude Code (P3.5 A review: accepted)
 

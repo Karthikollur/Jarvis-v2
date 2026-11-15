@@ -82,6 +82,7 @@ def test_every_tools_list_names_only_bridge_tools():
     allowed = {
         "list(SPECS)",  # evals: the stubs that mirror the bridge tools
         "['hello_bridge']",  # core/hello_tool.py: the throwaway P0 wiring proof
+        "self._tools",  # core/agent.py: the BridgeTool list built from TOOLS
     }
     for file, line, value in keyword_values("tools"):
         assert value in allowed, f"{file}:{line}: tools={value} is not a known bridge tool list"

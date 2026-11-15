@@ -1,4 +1,4 @@
-"""P3.5 section A: the core's HTTP client for the bridge."""
+"""P3.5: the bridge client (section A) and the core agent (section B)."""
 
 import json
 import os
@@ -6,14 +6,23 @@ import socket
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.request
 from pathlib import Path
 
 import pytest
 import uvicorn
 
+import core.openjarvis_env  # noqa: F401  before openjarvis
 from bridge.app import create_app, load_token
+from core.agent import Core, GuardError, build
 from core.bridge_client import BridgeClient, BridgeError
+from core.specs import SPECS
+from core.tools import BridgeTool, bridge_tools
+from openjarvis.core.types import Role
+from openjarvis.engine._stubs import InferenceEngine
+from openjarvis.tools._stubs import BaseTool, ToolSpec
+from safety.policy import MAX_SECONDS, TOOLS
 
 REPO = Path(__file__).resolve().parents[1]
 _no_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -163,3 +172,330 @@ def test_proxy_env_is_ignored(live_bridge, monkeypatch):
         assert client.new_task(fresh=True)
     finally:
         urllib.request._opener = cached
+
+
+PROMPT = tomllib.loads((REPO / "core" / "config.toml").read_text(encoding="utf-8"))["agent"]["default_system_prompt"]
+
+
+class FakeEngine(InferenceEngine):
+    """Pops scripted generate() results and records (messages, tools)."""
+
+    engine_id = "fake"
+
+    def __init__(self, scripts):
+        self._scripts = list(scripts)
+        self.calls = []
+
+    def generate(self, messages, *, model, temperature=0.7, max_tokens=1024, **kwargs):
+        self.calls.append((list(messages), kwargs.get("tools")))
+        return self._scripts.pop(0)
+
+    async def stream(self, messages, *, model, temperature=0.7, max_tokens=1024, **kwargs):
+        yield ""
+
+    def list_models(self):
+        return []
+
+    def health(self):
+        return True
+
+
+def tool_call(name, arguments="{}"):
+    return {"content": "", "tool_calls": [{"id": name, "name": name, "arguments": arguments}], "usage": {}}
+
+
+def answer(text):
+    return {"content": text, "tool_calls": [], "usage": {}}
+
+
+def make_core(live_bridge, scripts, on_pending=None):
+    client, root, storage, base = live_bridge
+    engine = FakeEngine(scripts)
+    core = Core(client, engine, "fake", PROMPT, temperature=0, max_tokens=64, on_pending=on_pending)
+    return core, engine, client, root, storage, base
+
+
+def pending(base, storage):
+    """GET /pending with the ui token. ui() stays POST-only."""
+    request = urllib.request.Request(
+        base + "/pending",
+        headers={"x-jarvis-token": load_token(storage, "ui.token")},
+        method="GET",
+    )
+    with _no_proxy.open(request, timeout=5) as response:
+        return json.loads(response.read())
+
+
+def started(core, text):
+    """handle() on a daemon thread. A leftover wait must not hold the process for MAX_SECONDS."""
+    box = []
+
+    def run():
+        try:
+            box.append(core.handle(text))
+        except Exception as caught:
+            box.append(caught)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, box
+
+
+def joined(thread):
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+
+
+def outcome_of(box):
+    assert box, "handle did not return"
+    if isinstance(box[0], Exception):
+        raise box[0]
+    return box[0]
+
+
+def tool_contents(messages):
+    return [message.content for message in messages if message.role == Role.TOOL]
+
+
+def test_one_task_per_request(live_bridge):
+    root, storage = live_bridge[1], live_bridge[2]
+    core, _engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        tool_call("system_stats"),
+        tool_call("create_folder", json.dumps({"path": str(root / "x")})),
+        answer("Done."),
+    ])
+    before = [line for line in audit(storage) if line["event"] == "task"]
+    assert core.handle("sort it") == "Done."
+    assert (root / "x").is_dir()
+    tasks = [line for line in audit(storage) if line["event"] == "task"]
+    requests = [line for line in audit(storage) if line["event"] == "request"]
+    assert len(tasks) == len(before) + 1
+    assert [line["task_id"] for line in requests] == [tasks[-1]["task_id"], tasks[-1]["task_id"]]
+
+
+def test_fresh_is_passed_to_new_task(live_bridge):
+    core, _engine, _client, _root, storage, _base = make_core(live_bridge, [
+        tool_call("system_stats"), answer("a-done"),
+        tool_call("system_stats"), answer("b-done"),
+    ])
+    core.handle("a", fresh=True)
+    core.handle("b", fresh=False)
+    flags = [line["fresh_context"] for line in audit(storage) if line["event"] == "task"]
+    assert flags == [True, False]
+
+
+def test_history_carries_until_fresh(live_bridge):
+    core, engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        answer("first-answer"), answer("second-answer"), answer("third-answer"),
+    ])
+    core.handle("a")
+    core.handle("b", fresh=False)
+    carried = engine.calls[1][0]
+    assert any(message.content == "a" for message in carried)
+    assert any(message.content == "first-answer" for message in carried)
+    core.handle("c", fresh=True)
+    reset = engine.calls[2][0]
+    assert all(message.content != "a" for message in reset)
+    assert all(message.content != "first-answer" for message in reset)
+
+
+@pytest.mark.parametrize("change", ["replaced", "removed", "subclass"])
+def test_guard_refuses_a_changed_tool_set(live_bridge, change):
+    core, engine, client, _root, storage, _base = make_core(live_bridge, [])
+    if change == "replaced":
+        original = core._agent._tools[0]
+
+        class Foreign(BaseTool):
+            tool_id = original.tool_id
+
+            @property
+            def spec(self):
+                return original.spec
+
+            def execute(self, **params):
+                raise AssertionError("foreign tool ran")
+
+        core._agent._tools[0] = Foreign()
+    elif change == "removed":
+        core._agent._tools.pop()
+    else:
+        class Sub(BridgeTool):
+            pass
+
+        core._agent._tools.append(Sub("get_time", client, lambda: None))
+    with pytest.raises(GuardError):
+        core.handle("sort it")
+    assert engine.calls == []
+    assert [line for line in audit(storage) if line["event"] == "task"] == []
+
+
+def test_fast_path_get_time_and_open_notepad(live_bridge, monkeypatch):
+    """get_time stays 501 until section C. open notepad must not launch a real process."""
+    core, engine, _client, _root, storage, _base = make_core(live_bridge, [])
+    assert core.handle("what time is it") == "Could not get_time: bridge 501: Tool not implemented"
+    assert engine.calls == []
+    tasks = [line for line in audit(storage) if line["event"] == "task"]
+    requests = [line for line in audit(storage) if line["event"] == "request"]
+    assert len(tasks) == 1
+    assert [(line["tool"], line["task_id"]) for line in requests] == [("get_time", tasks[0]["task_id"])]
+    launched = []
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            launched.append((args, kwargs))
+            self.pid = 4321
+
+    monkeypatch.setattr("bridge.tools.subprocess.Popen", FakePopen)
+    core.handle("open notepad")
+    assert len(launched) == 1
+    opened = [line for line in audit(storage) if line["event"] == "request" and line["tool"] == "open_app"]
+    assert len(opened) == 1 and opened[0]["decision"] == "allow"
+    assert engine.calls == []
+
+
+def test_stop_ends_tasks_without_a_new_one(live_bridge):
+    core, _engine, _client, _root, storage, _base = make_core(live_bridge, [])
+    assert core.handle("stop") == "Stopped."
+    assert [line for line in audit(storage) if line["event"] == "task"] == []
+    stop = next(line for line in audit(storage) if line["event"] == "stop")
+    assert stop["source"] == "core" and stop["latched"] is False
+
+
+def test_refusal_is_an_observation(live_bridge):
+    _client, root, _storage, _base = live_bridge
+    outside = root.parent / "outside" / "x"
+    core, engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        tool_call("create_folder", json.dumps({"path": str(outside)})),
+        answer("No."),
+    ])
+    assert core.handle("make it") == "No."
+    messages, _tools = engine.calls[1]
+    assert any(
+        message.role == Role.TOOL and message.content == "refused: path: outside the allowed roots"
+        for message in messages
+    )
+    assert core.calls == [("create_folder", {"path": str(outside)})]
+    assert not outside.exists()
+
+
+@pytest.mark.parametrize("decision", ["approve", "deny"])
+def test_pending_approve_and_deny(live_bridge, decision):
+    root, storage, base = live_bridge[1], live_bridge[2], live_bridge[3]
+    ids = []
+    core, engine, _client, _root, _storage, _base = make_core(
+        live_bridge,
+        [
+            tool_call("list_dir", json.dumps({"path": str(root)})),
+            tool_call("create_folder", json.dumps({"path": str(root / "y")})),
+            answer("Done."),
+        ],
+        on_pending=ids.append,
+    )
+    thread, box = started(core, "make y")
+    approved = None
+    deadline = time.monotonic() + 10
+    while thread.is_alive() and time.monotonic() < deadline:
+        waiting = pending(base, storage)["pending"]
+        if waiting:
+            approved = waiting[0]["id"]
+            ui(base, storage, "/" + decision, {"pending_id": approved})
+            break
+        time.sleep(0.05)
+    joined(thread)
+    outcome_of(box)
+    assert ids == [approved]
+    texts = tool_contents(engine.calls[-1][0])
+    if decision == "approve":
+        assert (root / "y").is_dir()
+        assert any('"created": true' in text for text in texts)
+    else:
+        assert not (root / "y").exists()
+        assert "denied" in texts
+
+
+def test_wait_times_out(live_bridge):
+    client, root, _storage, _base = live_bridge
+    task = client.new_task(fresh=False)  # the bridge starts tainted, so create_folder waits
+    reads = {"n": 0}
+    ticks = {"n": 0}
+
+    class Counting:
+        def tool(self, task_id, name, args):
+            return client.tool(task_id, name, args)
+
+        def outcome(self, pending_id):
+            reads["n"] += 1
+            return client.outcome(pending_id)
+
+    def clock():
+        ticks["n"] += 1
+        return 0 if ticks["n"] == 1 else MAX_SECONDS * ticks["n"]
+
+    tool = BridgeTool("create_folder", Counting(), lambda: task, clock=clock, sleep=lambda _seconds: None)
+    result = tool.execute(path=str(root / "late"))
+    assert result.success is False and result.content == "timed out"
+    assert reads["n"] == 1
+    assert not (root / "late").exists()
+
+
+def test_sequential_confirmations(live_bridge):
+    """Two confirms in one turn. Parallel refuses the second with 'awaiting confirmation'."""
+    root, storage, base = live_bridge[1], live_bridge[2], live_bridge[3]
+    core, engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        tool_call("list_dir", json.dumps({"path": str(root)})),
+        {
+            "content": "",
+            "tool_calls": [
+                {"id": "p", "name": "create_folder", "arguments": json.dumps({"path": str(root / "p")})},
+                {"id": "q", "name": "create_folder", "arguments": json.dumps({"path": str(root / "q")})},
+            ],
+            "usage": {},
+        },
+        answer("Done."),
+    ])
+    thread, box = started(core, "make both")
+    approved = []
+    deadline = time.monotonic() + 10
+    while thread.is_alive() and time.monotonic() < deadline:
+        for action in pending(base, storage)["pending"]:
+            if action["id"] not in approved:
+                approved.append(action["id"])
+                ui(base, storage, "/approve", {"pending_id": action["id"]})
+        time.sleep(0.05)
+    joined(thread)
+    assert outcome_of(box) == "Done."
+    assert (root / "p").is_dir() and (root / "q").is_dir()
+    created = [text for text in tool_contents(engine.calls[-1][0]) if '"created": true' in text]
+    assert len(created) == 2
+    every_tool = [text for messages, _tools in engine.calls for text in tool_contents(messages)]
+    assert all("awaiting confirmation" not in text for text in every_tool)
+    queued = [line for line in audit(storage) if line["event"] == "queued"]
+    assert len(queued) == 2
+    assert all("pending_id" in line and "refused" not in line for line in queued)
+
+
+def test_bridge_tools_match_the_table():
+    made = bridge_tools(None, lambda: "t")
+    assert [tool.spec.name for tool in made] == list(TOOLS)
+    for tool in made:
+        assert tool.spec.parameters == SPECS[tool.spec.name][1]
+        assert tool.spec.timeout_seconds > MAX_SECONDS
+
+
+def test_build_reads_config(monkeypatch):
+    seen = {}
+
+    def fake_engine(*, host):
+        seen["host"] = host
+        return object()
+
+    def fake_client():
+        seen["client"] = True
+        return object()
+
+    monkeypatch.setattr("core.agent.OllamaEngine", fake_engine)
+    monkeypatch.setattr("core.agent.BridgeClient", fake_client)
+    built = build()
+    assert seen == {"host": "http://127.0.0.1:11434", "client": True}
+    assert built._agent._model == "qwen3.5:4b"
+    assert built._agent._system_prompt == PROMPT
