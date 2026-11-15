@@ -192,6 +192,8 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
       Runtime tools guard (P3.1b review): one `BridgeTool` class in `core/`; before every
       request the agent's real tool set must equal `TOOLS` by name and be exactly
       `BridgeTool` by type, else refuse. Tests include the refused case.
+      Plan: `docs/plans/P3.5.md`. (Bridge restart, decided 2026-11-15: the core does not
+      detect it; the bridge starts tainted, so only a fresh request clears it.)
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
       (history stays in the audit log).
 

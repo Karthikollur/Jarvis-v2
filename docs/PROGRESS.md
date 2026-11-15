@@ -87,7 +87,12 @@ Newest session entry goes at the top of the Session log.
   Section B reviewed and accepted by Claude Code 2026-11-15 (suite re-run in PowerShell:
   589 passed, 4 skipped; the 8 mutants re-run: all killed). Manual check by Karthik
   PASSED 2026-11-15 through a running bridge on `37cfde7` (five `Jtool` calls; audit
-  lines in the Session log). P3.4 is DONE. P3.5 is not planned yet (Claude Code, next).
+  lines in the Session log). P3.4 is DONE. P3.5 planned and approved 2026-11-15
+  (`docs/plans/P3.5.md`, docs only, no code): core builds `OrchestratorAgent` with one
+  `BridgeTool` per `TOOLS` entry, stdlib `urllib` client, runtime guard before every
+  request, `fresh` is the caller's statement, `evals/run.py --real`. Three commits, a go
+  per commit: A `P3.5: bridge client`, B `P3.5: core agent`, C `P3.5: real evals`
+  (adds `get_time` to the bridge). Next: Cursor implements section A.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -360,6 +365,26 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-15 — P3.5: the core builds `OrchestratorAgent` itself with `BridgeTool` objects
+  and `parallel_tools=False`; it does not call the SDK's `ask_full` or register bridge tools
+  in `ToolRegistry`. — `ask_full` silently drops unknown tool names, runs tool calls in
+  parallel (the bridge answers 409 to a second call on one task), and never returns the
+  agent, so the runtime guard could not check the real tool set. — Karthik (planned by
+  Claude Code)
+- 2026-11-15 — P3.5: `fresh_context` is the caller's statement (`Core.handle(text,
+  fresh=True)`); the core does not detect a bridge restart and `/health` is unchanged. —
+  A bridge restart does not change the model's context; a bridge starts tainted, so the
+  core's next non-fresh request stays tainted (fail-closed). — Karthik (planned by Claude
+  Code)
+- 2026-11-15 — P3.5: core -> bridge HTTP uses stdlib `urllib`; no new dependency. Tests run
+  the real bridge with uvicorn in a thread on a free loopback port. — AGENTS.md: ask before
+  adding a dependency; urllib is enough for four POST routes. — Karthik (planned by Claude
+  Code)
+- 2026-11-15 — P3.5: `evals/run.py --real` runs the eval set through the real core and a
+  running bridge; T2 cases wait for Karthik's approve or deny. The stub run stays the
+  default. — PLAN.md P3.5 "rerun evals against real tools"; only the ui token may approve.
+  — Karthik (planned by Claude Code)
 
 - 2026-11-15 — P3.4: apps are driven through their command line or a documented API. UI
   automation (pywinauto, key presses, clicks) needs its own plan naming the app, what was
@@ -818,7 +843,7 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
-### 2026-11-15 — Agent: Claude Code (P3.4 manual check, P3.4 closed)
+### 2026-11-15 — Agent: Claude Code (P3.4 manual check, P3.4 closed; P3.5 plan)
 
 - Start: HEAD `7c8e244`, tree clean, in sync with `origin/main`. `uv run python -m pytest`
   in PowerShell: 589 passed, 4 skipped. (In Git Bash collection fails with
@@ -840,9 +865,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
      opened.
   5. `open_in_app vscode C:\Windows`: request `deny`, reason `path: outside the allowed
      roots`, `tier null`, no result line; PowerShell 403.
-- Files: `docs/PROGRESS.md`, `docs/plans/P3.4.md`. No code change.
-- Stopped at: this commit. Next concrete step: Claude Code plans P3.5 (plan mode, docs
-  only), Karthik approves, then Cursor implements.
+- Files: `docs/PROGRESS.md`, `docs/plans/P3.4.md`. No code change. Committed `f7598c4`.
+- Planned P3.5 in plan mode (`docs/plans/P3.5.md`, approved by Karthik): four decisions
+  (direct `OrchestratorAgent`, `fresh` as the caller's statement, `--real` evals with T2
+  waiting for a click, stdlib `urllib`), recorded under Decisions. Checked in OpenJarvis
+  `e6b7137`: `ToolExecutor` cuts a tool at `spec.timeout_seconds` (default 30 s), so a
+  `BridgeTool` waiting for an approval declares `MAX_SECONDS + 10`; `get_time` and
+  `recall_memory` have no bridge handler (501), `get_time` is added in section C.
+- Files (second commit): `docs/plans/P3.5.md` (new), `docs/PLAN.md`, `docs/PROGRESS.md`.
+- Stopped at: the `docs: P3.5 plan` commit. Next concrete step: Cursor implements P3.5
+  section A (`P3.5: bridge client`); Claude Code reviews before section B.
 
 ### 2026-11-15 — Agent: Claude Code (P3.4 B review; manual check deferred)
 
