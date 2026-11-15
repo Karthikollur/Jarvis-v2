@@ -876,6 +876,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-15 — Agent: Claude Code (P3.5 C pre-commit decisions; session closed)
+
+- Section C pre-edit summary approved with three fixes (`build(router=)` forward instead
+  of setting `core._router` from evals; `main(argv=None)`; suite reported from
+  PowerShell). Read the uncommitted C code before the t24 decision: `get_time`,
+  `core/__main__.py`, the router forward and the tests were fine.
+- t24 decision: accept stub evals 41/42. Temp 0, same miss twice, so not a flake; not
+  caused by C (stub path changed by one header line; `SPECS` byte-identical since A).
+  No 42-case baseline existed; the 42nd case and `open_in_app` landed in P3.4 (`42a7ed3`).
+  The doubled-backslash destination normalises to `C:\JarvisSandbox\docs`.
+- Cursor committed `c43f13b` (`P3.5: real evals`). NOT reviewed yet and NOT pushed: this
+  session closed to save context. The review gate holds: push `c43f13b` only with the
+  review commit.
+- Next concrete step: review `c43f13b` against section C of `docs/plans/P3.5.md`, re-run
+  the suite in PowerShell (expect 614 passed, 4 skipped), check the four docs items from
+  the t24 decision, then commit `docs: P3.5 C reviewed` and push both. Then Karthik's
+  manual check (section "Manual check" in P3.5.md); P3.5 is ticked only after it passes.
+
 ### 2026-11-15 — Agent: Cursor (P3.5 C real evals)
 
 - Start: HEAD `0c6ec64` (`docs: P3.5 B reviewed`), tree clean, in sync with `origin/main`.
