@@ -95,14 +95,16 @@ Newest session entry goes at the top of the Session log.
   (adds `get_time` to the bridge). Section A DONE 2026-11-15 (commit `P3.5: bridge client`):
   `core/specs.py` holds the moved tool schemas, `core/bridge_client.py` is the stdlib
   urllib client (loopback only, no-proxy opener, no retries). 596 passed, 4 skipped.
-  7 mutants killed (baseline 7 passed).   Section A reviewed and ACCEPTED by Claude Code
+  7 mutants killed (baseline 7 passed). Section A reviewed and ACCEPTED by Claude Code
   2026-11-15 (suite and mutants re-run, same results). Section B DONE 2026-11-15
   (commit `P3.5: core agent`): `core/tools.py` `BridgeTool` and `core/agent.py` `Core`
   build `OrchestratorAgent` (`parallel_tools` false, `max_turns` `MAX_CALLS + 1`,
   `before_tool_call` records calls, the guard reads `self._agent._tools`). The fast path
   calls `BridgeTool.call(args)`. 611 passed, 4 skipped. 11 mutants killed (baseline 22
-  passed; `parallel_tools` left true killed on 3 of 3 runs). P3.5 stays unticked until
-  section C. Next: Claude Code reviews section B. Do not start section C.
+  passed; `parallel_tools` left true killed on 3 of 3 runs). Section B reviewed and
+  ACCEPTED by Claude Code 2026-11-15 (suite and mutants re-run, same results). Next:
+  Cursor implements section C (pre-edit summary first). P3.5 is ticked only after
+  Karthik's manual check passes, not in commit C.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -852,6 +854,30 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.5 B review: accepted)
+
+- Pre-edit review of section B: test 9 replaced (two `system_stats` calls are T0 and pass
+  in parallel too, so the `parallel_tools` mutant survived). New test 9: two
+  `create_folder` confirms in one turn. After the first implementation: the fast path's
+  `execute() if get_time else execute(app=...)` was tied to today's two routes; replaced
+  by `BridgeTool.call(params)`. Mutants allowed with Karthik's bridge on 8765 up:
+  `bridge/` and `safety/` import nothing from `core/` (checked with grep).
+- Review of `ddc3049` (`P3.5: core agent`): `core/tools.py` and `core/agent.py` match the
+  plan apart from the recorded `call()` change; the guard reads the agent's own list and
+  checks `type(t) is BridgeTool`; `parallel_tools=False`, `max_turns=MAX_CALLS + 1`,
+  `before_tool_call=self._record`; `tests/test_core_tools.py` gains only `"self._tools"`.
+  Nothing in `safety/`, `bridge/`, `config/`, `.claude/`.
+- Noted, not changed: the guard compares name SETS, so an extra exact `BridgeTool` with a
+  duplicate name passes. Harmless (it is still a bridge tool, the bridge still decides).
+  A `BridgeTool` wait that times out leaves the action queued, but the task's own 120 s
+  budget started before the 202, so `expire()` removes it before the core's deadline.
+- Re-ran in PowerShell: `uv run python -m pytest` 611 passed, 4 skipped. Mutants
+  (`%LOCALAPPDATA%\Temp\p35b_mutants.py`, read before running): baseline green, all 11
+  killed, `parallel_tools` 3 of 3, both files restored (sha256), `git status` clean.
+- Plan change (docs only): P3.5 is ticked in PLAN.md after Karthik's manual check, not in
+  commit C, same as P3.3 and P3.4.
+- Next concrete step: Cursor sends a pre-edit summary for section C (`P3.5: real evals`).
 
 ### 2026-11-15 — Agent: Cursor (P3.5 B core agent)
 
