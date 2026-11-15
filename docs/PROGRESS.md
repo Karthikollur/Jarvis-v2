@@ -95,8 +95,10 @@ Newest session entry goes at the top of the Session log.
   (adds `get_time` to the bridge). Section A DONE 2026-11-15 (commit `P3.5: bridge client`):
   `core/specs.py` holds the moved tool schemas, `core/bridge_client.py` is the stdlib
   urllib client (loopback only, no-proxy opener, no retries). 596 passed, 4 skipped.
-  7 mutants killed (baseline 7 passed). Next: Claude Code reviews section A. Do not
-  start section B. P3.5 stays unticked until section C.
+  7 mutants killed (baseline 7 passed). Section A reviewed and ACCEPTED by Claude Code
+  2026-11-15 (suite and mutants re-run, same results). Next: Cursor implements section B
+  (pre-edit summary first, Claude Code approves before any edit). P3.5 stays unticked
+  until section C.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -846,6 +848,34 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.5 A review: accepted)
+
+- Start: HEAD `06b76dc`, tree clean, in sync with `origin/main`. PowerShell suite:
+  589 passed, 4 skipped. Approved Cursor's pre-edit summary with 4 fixes (stale HEAD in
+  its summary; `server.run(sockets=[sock])` instead of close-and-rebind; fixture yields
+  `(client, root, storage, base)` and `ui(base, storage, path, body)`; mutant run rules).
+  All 4 applied in `7d1b875`.
+- Review of `7d1b875` (`P3.5: bridge client`): `core/specs.py` block is byte-identical to
+  the one removed from `evals/stub_tools.py` (checked with `diff`); no `openjarvis` import
+  in `core/specs.py` or `core/bridge_client.py`; client body matches the plan; nothing in
+  `safety/`, `bridge/`, `config/`, `.claude/`.
+- Test 1 opens both tasks before either tool call. Still valid: the taint is stored per
+  task (`policy.new_task(tainted)`), so the first task stays tainted after the fresh one
+  clears the global flag. It also pins that.
+- Test 7 resets the private `urllib.request._opener` (urlopen's process-wide cache) and
+  restores it. Accepted: without it the urlopen mutant survives a full-file run. If a
+  Python upgrade renames that attribute, test 7 stops killing that mutant silently;
+  re-run the mutants after any Python upgrade.
+- Re-ran in PowerShell: `uv run python -m pytest` 596 passed, 4 skipped. Mutants
+  (`%LOCALAPPDATA%\Temp\p35a_mutants.py`, read before running, nothing else running):
+  baseline green, all 7 killed by the tests in the plan table, file restored (digest
+  match), `git status` clean.
+- Plan text fixed in section B (docs only): `execute` raises on a connection or JSON
+  decode error (the agent path's `ToolExecutor` turns that into a `Tool execution error`
+  observation, the fast path propagates it); `live_bridge` yields 4 values; test 8 needs
+  a GET for `/pending`.
+- Next concrete step: Cursor sends a pre-edit summary for section B (`P3.5: core agent`).
 
 ### 2026-11-15 — Agent: Cursor (P3.5 A bridge client)
 
