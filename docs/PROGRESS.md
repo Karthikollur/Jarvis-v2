@@ -86,9 +86,8 @@ Newest session entry goes at the top of the Session log.
   first). 8 mutants killed (baseline 5 passed, 1 skipped). P3.4 ticked in PLAN.md.
   Section B reviewed and accepted by Claude Code 2026-11-15 (suite re-run in PowerShell:
   589 passed, 4 skipped; the 8 mutants re-run: all killed). Manual check by Karthik
-  still pending, deferred to the next session: restart the bridge, then the five
-  `Jtool` calls in `docs/plans/P3.4.md`. P3.5 is not planned yet (Claude Code, after
-  the manual check).
+  PASSED 2026-11-15 through a running bridge on `37cfde7` (five `Jtool` calls; audit
+  lines in the Session log). P3.4 is DONE. P3.5 is not planned yet (Claude Code, next).
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -818,6 +817,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   the model (2.2 s on a separate `--only t24 t19` run).
 
 ## Session log
+
+### 2026-11-15 — Agent: Claude Code (P3.4 manual check, P3.4 closed)
+
+- Start: HEAD `7c8e244`, tree clean, in sync with `origin/main`. `uv run python -m pytest`
+  in PowerShell: 589 passed, 4 skipped. (In Git Bash collection fails with
+  `No module named 'safety'`; run tests from PowerShell.)
+- Manual check by Karthik, PASSED, through a bridge restarted on `37cfde7` (audit `start`
+  04:50:33Z). Audit lines read back from `%LOCALAPPDATA%\Jarvis\audit.jsonl` (lines 52-66),
+  every task `fresh_context true`, `tainted false`:
+  1. `open_in_app vscode C:\JarvisSandbox`: request `allow` T1, `paths.path` the root;
+     result `done` `{"opened": "vscode", "pid": 3196}`. VS Code opened on the sandbox
+     (Restricted Mode banner is VS Code's own workspace trust).
+  2. `open_in_app notepad C:\JarvisSandbox\bye.txt`: `allow` T1; `done`, pid 14332.
+     Notepad showed bye.txt as a new tab in an already open Notepad window, so the pid
+     is likely a launcher, not the window's process (matters only if a tool ever
+     focuses by pid).
+  3. `open_in_app explorer C:\JarvisSandbox`: `allow` T1; `done`, pid 30732. Explorer
+     window on the sandbox.
+  4. `open_in_app calculator C:\JarvisSandbox`: `allow` T1; result `failed`
+     `OSError: calculator does not open a path`; PowerShell 500 `Tool failed`; nothing
+     opened.
+  5. `open_in_app vscode C:\Windows`: request `deny`, reason `path: outside the allowed
+     roots`, `tier null`, no result line; PowerShell 403.
+- Files: `docs/PROGRESS.md`, `docs/plans/P3.4.md`. No code change.
+- Stopped at: this commit. Next concrete step: Claude Code plans P3.5 (plan mode, docs
+  only), Karthik approves, then Cursor implements.
 
 ### 2026-11-15 — Agent: Claude Code (P3.4 B review; manual check deferred)
 
