@@ -109,7 +109,9 @@ Newest session entry goes at the top of the Session log.
   `evals/run.py --real` builds the core once (`--no-router` passes `router=None`).
   614 passed, 4 skipped. No mutant table. `--real` was not run. Stub evals 41/42
   twice; Karthik accepted that (t24, not a flake, not caused by section C; Eval results
-  and Open questions). P3.5 stays unticked until Karthik's manual check passes.
+  and Open questions). Section C reviewed and ACCEPTED by Claude Code 2026-11-16 (suite
+  re-run: 614 passed, 4 skipped). Next: Karthik's manual check (`docs/plans/P3.5.md`
+  "Manual check"). P3.5 stays unticked until it passes.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -875,6 +877,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   come from Karthik's manual check (`uv run python evals/run.py --real`).
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (P3.5 C review: accepted)
+
+- Start: HEAD `10254d3`, tree clean, main 2 ahead of `origin/main` (`c43f13b`, `10254d3`).
+- Review of `c43f13b` (`P3.5: real evals`) against section C: `bridge/` gains only the
+  `get_time` handler, its `datetime` import and the `HANDLERS` entry. `get_time` tests: 200
+  with an aware time within 5 s; an extra argument is 403 `unknown argument`. Test B5's
+  `get_time` half parses the real reply and still asserts no model call. CLI test: `URLError`
+  from `build` prints `bridge is not running`, exit 1. `evals/run.py`: a whitespace-blind
+  diff of the stub path shows only the moved imports and the `tools: stubs` header; `--real`
+  builds the core once, warms up with `core.handle("Say ok.")`, then per case
+  `calls.clear()` / `handle(fresh=True)` / `list(calls)`; `--no-router` goes through
+  `build(router=None)`. Nothing in `safety/`, `config/`, `.claude/`. P3.5 unticked.
+- Docs from the t24 decision all present: Eval results line (41/42, first 42-case run,
+  normpath note; the `--real` line is a placeholder for the manual check), Open question
+  (normpath / prompt rule / accept), P3.5.md Verification 2 rewritten, Session log.
+- The CLI's `URLError` catch fires only on a failed connection: `BridgeClient._post`
+  catches `HTTPError` (a `URLError` subclass) and returns the status, so a 401 or 409 is
+  not reported as "bridge is not running". A non-200 on `/task` raises `BridgeError` with a
+  traceback; honest, left as is.
+- Noted, not changed: `--real --model X` ignores `--model` (the core builds from
+  `core/config.toml`), but the summary still prints `model: X`. The manual check runs
+  without `--model`, so its summary is correct. Later: refuse `--model` with `--real`, or
+  pass it to `build`.
+- Re-ran in PowerShell at the repo root: `uv run python -m pytest` 614 passed, 4 skipped.
+  No mutants for C (none planned).
+- This commit is pushed together with `c43f13b` and `10254d3`.
+- Next concrete step: Karthik's manual check (`docs/plans/P3.5.md` "Manual check"). Record
+  the `--real` summary lines under Eval results. Tick P3.5 in PLAN.md only after it passes.
 
 ### 2026-11-15 — Agent: Claude Code (P3.5 C pre-commit decisions; session closed)
 
