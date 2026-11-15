@@ -873,8 +873,14 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   `BridgeTool` waiting for an approval declares `MAX_SECONDS + 10`; `get_time` and
   `recall_memory` have no bridge handler (501), `get_time` is added in section C.
 - Files (second commit): `docs/plans/P3.5.md` (new), `docs/PLAN.md`, `docs/PROGRESS.md`.
-- Stopped at: the `docs: P3.5 plan` commit. Next concrete step: Cursor implements P3.5
-  section A (`P3.5: bridge client`); Claude Code reviews before section B.
+- Plan fixes before hand-off (`a85c8ad`): section A test 1 opens the non-fresh task FIRST
+  (a fresh task clears the bridge's taint, so the reverse order never sees 202); the
+  client uses `build_opener(ProxyHandler({}))` because `urlopen` honours `HTTP_PROXY`;
+  new test 7 and a seventh mutant cover it. Hand-off prompt for section A given to Karthik
+  (Cursor sends a pre-edit summary first and waits for an OK).
+- Stopped at: `a85c8ad`, then this Session-log commit. Next concrete step: Cursor
+  implements P3.5 section A (`P3.5: bridge client`); Claude Code reviews it in a fresh
+  session (pre-edit summary, then the commit) before section B.
 
 ### 2026-11-15 — Agent: Claude Code (P3.4 B review; manual check deferred)
 
