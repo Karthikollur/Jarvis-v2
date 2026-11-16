@@ -1,6 +1,6 @@
 # AGENTS.md — JARVIS (local-first desktop assistant)
 
-Shared rulebook for every coding agent on this repo: Codex, Claude Code, or anything else.
+Shared rulebook for every coding agent on this repo: Cursor, Claude Code, Codex, or anything else.
 Claude Code loads it through CLAUDE.md. Read it fully before doing anything.
 
 ## What this project is
@@ -19,6 +19,29 @@ It is NOT an operating system. It runs on top of Windows.
 
 - Full plan, phases, task IDs: `docs/PLAN.md`
 - Current state and handoff log: `docs/PROGRESS.md`
+
+## Roles
+
+- Planner and reviewer: Claude Code. Writes `docs/plans/<task>.md`, reviews each commit,
+  records the review in PROGRESS.md. Does not write product code unless Karthik says so.
+- Implementer: Cursor. Implements one plan section per commit, exactly as planned.
+- Karthik: approves every plan, gives the go per commit, does the manual checks.
+
+Implementer rules:
+
+- No code without an APPROVED plan. A plan marked DRAFT is not approved.
+- Before editing: run the plan's "Verify before executing" list if it has one, then post a
+  pre-edit summary and wait for Karthik's go.
+- If the plan is wrong or unclear: stop and report. Do not improvise, do not widen scope.
+- After the commit: tests green, mutant table and results in the Session log. Do not tick
+  the PLAN.md checkbox; the reviewer does that after review (and after the manual check
+  where the plan has one).
+
+Reviewer rules:
+
+- Re-run the suite and the mutants; do not trust the implementer's numbers.
+- Findings go to PROGRESS.md. Fixes go back to the implementer as a plan change, not as a
+  silent edit.
 
 ## Start-of-session protocol (every session, every agent)
 
@@ -77,6 +100,7 @@ Push to origin after the final commit.
 - Codex: run in the sandboxed, workspace-write mode with approvals on. Never use full-access or
   approval-bypass modes on this laptop.
 - Claude Code: respect `.claude/settings.json`. Never use bypass-permissions mode.
+- Cursor: keep command approvals on. Never use auto-run (YOLO) mode on this laptop.
 - Never edit agent permission files (`.claude/`, Codex config) unless Karthik asks.
 - Anything that downloads and executes code (install scripts, installers, model pulls) must be
   approved by Karthik, not run silently.

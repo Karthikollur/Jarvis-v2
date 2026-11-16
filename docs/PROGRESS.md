@@ -439,6 +439,12 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-16 — Roles are written into AGENTS.md ("Roles"): Claude Code plans and reviews,
+  Cursor implements one plan section per commit, Karthik approves and does manual checks.
+  The implementer never ticks a PLAN.md checkbox. No separate roles file; `CODEX_TASK.md`
+  removed. — The split existed only in each plan's header; PLAN.md and PROGRESS.md stay
+  the only planning files (decision of 2026-11-11). — Karthik
+
 - 2026-11-15 — P3.5: the core builds `OrchestratorAgent` itself with `BridgeTool` objects
   and `parallel_tools=False`; it does not call the SDK's `ask_full` or register bridge tools
   in `ToolRegistry`. — `ask_full` silently drops unknown tool names, runs tool calls in
@@ -951,6 +957,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (review of P0 to P3; roles in AGENTS.md)
+
+Read-only review of `safety/`, `bridge/`, `core/` as they stand on `14d5d3b`. No code
+changed. Suite not re-run for the review (619 passed, 4 skipped earlier the same day).
+No way found outside the roots, past the token, or to a T2 action without a click.
+Findings, none fixed, none planned yet (Karthik decides: one small plan `P3.7`, or leave
+as open questions):
+
+1. `accepts` in `config/apps.toml` is a security boundary for `explorer` (Explorer handed
+   a file launches it), but `bridge/tools.py` (comment in `open_in_app`) and the Decision
+   of 2026-11-15 call it "not a security boundary". Safe today (`accepts = 'folder'`,
+   pinned by `test_open_in_app_explorer_opens_a_folder_not_a_file`). Risk: a later edit
+   to `apps.toml`. `open_in_app` and `rename_file` are both T1.
+2. `safety/undo.py` `undo` of a `created` record quarantines the folder with whatever is
+   in it; the `moved` records for those files then refuse. Recoverable, untested.
+   Proposal: refuse a non-empty folder.
+3. `core/bridge_client.py` `_post` runs `json.loads` on every HTTP error body; a
+   plain-text 500 from uvicorn raises `JSONDecodeError` in the core.
+4. "Current state" in this file holds stale lines ("Next task: P3.1b commit A",
+   "`C:\JarvisSandbox` is still not created", "Tests: 423 passed"). Proposal: cut it to
+   what is true now.
+5. The `WinError 5` seen once in `test_quarantine_folder_and_undo` may be a real
+   intermittent rename failure (another process holding a handle), not only a test
+   flake. Unproven.
+
+Nits: `open_app` / `open_in_app` start apps with the repo as working directory;
+`run_named_script` buffers all output in memory; `focus_window` success or failure
+reveals whether a title contains a string without tainting; `.claude/settings.json`
+allowlists `uv run pytest`, not `uv run python -m pytest`.
+
+Also this session: AGENTS.md gained a "Roles" section and a Cursor safety line;
+`CODEX_TASK.md` removed (Decisions, 2026-11-16).
+
+Next step: unchanged. Karthik's P3.5b manual check, then his answers on `docs/plans/P3.6.md`
+and on the five findings above.
 
 ### 2026-11-16 — Agent: Claude Code (plans written ahead: P3.6 to P8)
 
