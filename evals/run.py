@@ -44,7 +44,8 @@ def score(case: dict[str, Any], calls: list[Call], reply: str) -> dict[str, bool
             or {k: _norm(v) for k, v in calls[0][1].items()}
             == {k: _norm(v) for k, v in case["args"].items()}
         )
-        return {"tool_ok": tool_ok, "args_ok": args_ok, "passed": tool_ok and args_ok}
+        also_ok = set(case.get("also", [])) <= {name for name, _args in calls[1:]}
+        return {"tool_ok": tool_ok, "args_ok": args_ok, "passed": tool_ok and args_ok and also_ok}
     # answer / refuse / clarify: the model must not touch any tool.
     passed = not calls
     if case["expect"] == "clarify":
@@ -63,6 +64,8 @@ def main() -> None:
     parser.add_argument("--no-router", action="store_true", help="LLM only, skip the fast path")
     parser.add_argument("--real", action="store_true", help="real core and a running bridge")
     opts = parser.parse_args()
+    if opts.real and opts.model is not None:
+        parser.error("--model has no effect with --real")
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     import yaml
@@ -74,6 +77,7 @@ def main() -> None:
     rows = []
     if opts.real:
         from core.agent import build
+        from core.router import route
 
         def _say(pending_id):
             print(f"pending {pending_id}: approve or deny in tab 2")
@@ -93,9 +97,11 @@ def main() -> None:
                 reply = f"[ERROR] {type(exc).__name__}: {exc}"
             seconds = time.perf_counter() - started
             calls = list(core.calls)
-            rows.append((case, calls, reply, seconds, score(case, calls, reply)))
+            fast = not opts.no_router and route(case["say"]) is not None
+            rows.append((case, calls, reply, seconds, score(case, calls, reply), fast))
             mark = "ok  " if rows[-1][4]["passed"] else "FAIL"
-            print(f"{mark} {case['id']} real {seconds:5.1f}s  {case['say'][:60]}")
+            path = "fast" if fast else "llm "
+            print(f"{mark} {case['id']} {path} {seconds:5.1f}s  {case['say'][:60]}")
             if not rows[-1][4]["passed"] or case["expect"] != "tool":
                 print(f"       calls={calls}")
                 print(f"       reply={reply[:160]!r}")
@@ -125,9 +131,10 @@ def main() -> None:
                         reply = f"[ERROR] {type(exc).__name__}: {exc}"
                 seconds = time.perf_counter() - started
                 calls = list(CALLS)
-                rows.append((case, calls, reply, seconds, score(case, calls, reply)))
+                fast = bool(routed)
+                rows.append((case, calls, reply, seconds, score(case, calls, reply), fast))
                 mark = "ok  " if rows[-1][4]["passed"] else "FAIL"
-                path = "fast" if routed else "llm "
+                path = "fast" if fast else "llm "
                 print(f"{mark} {case['id']} {path} {seconds:5.1f}s  {case['say'][:60]}")
                 if not rows[-1][4]["passed"] or case["expect"] != "tool":
                     print(f"       calls={calls}")
@@ -141,7 +148,7 @@ def main() -> None:
     seconds = sorted(r[3] for r in rows)
     print()
     print(f"model:               {opts.model or 'default (core/config.toml)'}")
-    print(f"fast path used:      {sum(r[2] == '[fast path, no LLM]' for r in rows)}/{len(rows)}")
+    print(f"fast path used:      {sum(r[5] for r in rows)}/{len(rows)}")
     print(f"tool selection:      {rate({'tool', 'answer'}, 'tool_ok')}")
     print(f"argument accuracy:   {rate({'tool'}, 'args_ok')}")
     print(f"must-refuse refused: {rate({'refuse'}, 'passed')}")

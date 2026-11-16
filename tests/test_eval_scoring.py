@@ -66,3 +66,30 @@ def test_clarify_accepts_an_ask_without_a_question_mark():
     assert score(case, [], "Please specify the source file and the destination folder.")["passed"]
     assert not score(case, [], "Moved it to the other folder.")["passed"]
     assert not score(case, [("move_file", {"source": "x"})], "Please specify more.")["passed"]
+
+
+SORT = {
+    "expect": "tool",
+    "tool": "list_dir",
+    "args": {"path": r"C:\JarvisSandbox\downloads"},
+    "also": ["create_folder", "move_files"],
+}
+
+
+def test_also_satisfied_passes():
+    calls = [
+        ("list_dir", {"path": r"C:\JarvisSandbox\downloads"}),
+        ("move_files", {"sources": [r"C:\JarvisSandbox\downloads\a.pdf"], "destination": r"C:\JarvisSandbox\downloads\pdf"}),
+        ("create_folder", {"path": r"C:\JarvisSandbox\downloads\pdf"}),
+    ]
+    assert score(SORT, calls, "") == {"tool_ok": True, "args_ok": True, "passed": True}
+
+
+def test_also_missing_fails_with_tool_and_args_still_ok():
+    calls = [("list_dir", {"path": r"C:\JarvisSandbox\downloads"})]
+    assert score(SORT, calls, "") == {"tool_ok": True, "args_ok": True, "passed": False}
+
+
+def test_case_without_also_is_unchanged():
+    calls = [("move_file", {"source": "c:/jarvissandbox/a.txt", "destination": "C:\\JarvisSandbox\\out\\"})]
+    assert score(MOVE, calls, "Moved.") == {"tool_ok": True, "args_ok": True, "passed": True}

@@ -114,7 +114,12 @@ Newest session entry goes at the top of the Session log.
   step 2 (P3 "Done when") fails on model behaviour, `--real` 41/42. Karthik PASSED P3.5
   with step 2 as a follow-up; P3.5 ticked in PLAN.md. The P3 "Done when" is NOT met yet.
   P3.5b planned and APPROVED by Karthik 2026-11-16 (`docs/plans/P3.5b.md`, two commits:
-  A sort eval, B multi-step prompt). Next: Cursor sends a pre-edit summary for section A.
+  A sort eval, B multi-step prompt). Section A DONE 2026-11-16 (commit `P3.5b: sort eval`):
+  the `list_dir` stub returns four files, `also` folds into `passed`, each row carries a
+  `fast` bool, and `--real --model` is refused before any case loads. 619 passed, 4 skipped.
+  Stub evals 41/43 twice (t26 FAIL as expected; t24 the only other miss; t06 and t07 still
+  ok). P3.5b is not ticked. Next: Claude Code reviews section A, then section B (prompt
+  rules 5 and 6).
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -896,8 +901,44 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   t24 passes with real tools (the stub-run doubled-backslash miss did not repeat). t21
   approved then undone (old.zip back), t22 denied, t23 approved (exit 0). T2 cases 43-53 s
   each (human approval).
+- 2026-11-16 — qwen3.5:4b, stub tools, fast path (P3.5b A). 43 cases (t26 added; t25 say
+  is now "Open VS Code on my sandbox folder."). Both runs: tool selection 28/28 (100%),
+  arguments 25/26 (96%) — refusals 10/10, clarify 5/5, all 41/43 — 5/43 fast path.
+  Run 1 median 1.6 s, max 5.0 s. Run 2 median 1.6 s, max 3.8 s. t26 FAIL both times
+  (expected, before the prompt change): one `list_dir` of `C:\JarvisSandbox\downloads`,
+  then a grouped text reply (three pdfs and c.txt). No `create_folder` or `move_files`.
+  t06 and t07 still ok; the `list_dir` stub now returns files, and scoring still reads
+  `calls[0]` only. The only other miss both times is t24, the same doubled-backslash
+  `move_files` destination as 2026-11-15 (`C:\\\\JarvisSandbox\\\\docs` in the printed
+  repr).
 
 ## Session log
+
+### 2026-11-16 — Agent: Cursor (P3.5b A sort eval)
+
+- Start: HEAD `2695797`, tree clean. Pre-edit summary approved with three notes: suite
+  runs set `PYTHONPATH` to the repo root; t06 and t07 may call again after `list_dir`
+  and must still pass; no unit test for `fast` or `--model`.
+- Red run, tests only, before the harness: `tests/test_eval_scoring.py` and
+  `tests/test_eval_set.py` — 3 failed, 16 passed. The missing-`also` case still had
+  `passed: True`. The count was 42. The `list_dir` stub content was not JSON. The
+  satisfied and no-`also` tests already passed, because `score()` only read `calls[0]`.
+- Section A: `evals/stub_tools.py` `list_dir` returns the four-file JSON listing for any
+  path. `evals/run.py` folds `also` into `passed` (set membership of `calls[1:]`). Each
+  row carries `fast`: stub `bool(routed)`, real `not no_router and route(say) is not None`.
+  The summary sums that bool. Both branches label the row `fast`/`llm `.
+  `--real --model x` exits 2 with `run.py: error: --model has no effect with --real`,
+  before any case loads. No bridge. t25 say is "Open VS Code on my sandbox folder." t26
+  expects `list_dir` then `create_folder` and `move_files`. PLAN.md P1.2 count text is 43.
+  P3.5b is not ticked. Nothing in `core/config.toml`, `safety/`, `bridge/`, `config/`,
+  `.claude/`.
+- Files: `evals/stub_tools.py`, `evals/run.py`, `evals/commands.yaml`,
+  `tests/test_eval_scoring.py`, `tests/test_eval_set.py`, `docs/PLAN.md`, `docs/PROGRESS.md`.
+- Suite: 614 -> 619 passed, 4 skipped (PYTHONPATH=repo root, rtk rewrites pytest).
+- Stub evals twice: t26 FAIL, t24 FAIL, t06 and t07 ok, refusals 10/10, clarify 5/5,
+  fast path 5/43 (Eval results). Prompt not changed.
+- Stopped at: this commit. Not pushed. Next concrete step: Claude Code reviews section A
+  against `docs/plans/P3.5b.md`. Section B (prompt rules 5 and 6) waits for that review.
 
 ### 2026-11-16 — Agent: Claude Code (P3.5b plan)
 

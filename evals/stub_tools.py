@@ -9,6 +9,7 @@ duplicate key (e.g. `memory_search` is taken, hence `recall_memory`).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import core.openjarvis_env  # noqa: F401  (must precede openjarvis imports)
@@ -30,7 +31,20 @@ def _make(name: str, description: str, parameters: dict[str, Any]) -> type[BaseT
 
         def execute(self, **params: Any) -> ToolResult:
             CALLS.append((name, params))
-            return ToolResult(name, f"{name}: done (stub, nothing really happened)", True)
+            if name == "list_dir":
+                content = json.dumps({
+                    "entries": [
+                        {"name": "a.pdf", "type": "file", "size": 3},
+                        {"name": "b.pdf", "type": "file", "size": 3},
+                        {"name": "c.txt", "type": "file", "size": 3},
+                        {"name": "report.pdf", "type": "file", "size": 3},
+                    ],
+                    "total": 4,
+                    "truncated": False,
+                })
+            else:
+                content = f"{name}: done (stub, nothing really happened)"
+            return ToolResult(name, content, True)
 
     StubTool.__name__ = f"Stub_{name}"
     return ToolRegistry.register(name)(StubTool)

@@ -14,7 +14,7 @@ CASES = yaml.safe_load(
 
 def test_counts_match_plan():
     kinds = Counter(case["expect"] for case in CASES)
-    assert len(CASES) == 42  # 40 from P1.2, plus move_files (P3.2 F1), plus open_in_app (P3.4)
+    assert len(CASES) == 43  # 40 from P1.2, plus move_files (P3.2 F1), plus open_in_app (P3.4), plus sort (P3.5b)
     assert kinds["refuse"] == 10
     assert kinds["clarify"] == 5
     assert set(kinds) == {"tool", "answer", "refuse", "clarify"}
@@ -54,3 +54,23 @@ def test_stub_tools_are_registered_and_record_calls():
     assert result.success
     assert stub_tools.CALLS == [("open_app", {"app": "notepad"})]
     stub_tools.CALLS.clear()
+
+
+def test_also_names_are_real_tools():
+    for case in CASES:
+        for name in case.get("also", []):
+            assert name in SPECS, case["id"]
+
+
+def test_list_dir_stub_returns_four_entries():
+    import json
+
+    from openjarvis.core.registry import ToolRegistry
+
+    result = ToolRegistry.get("list_dir")().execute(path=r"C:\not\used")
+    body = json.loads(result.content)
+    assert [item["name"] for item in body["entries"]] == ["a.pdf", "b.pdf", "c.txt", "report.pdf"]
+    assert all(item["type"] == "file" and item["size"] == 3 for item in body["entries"])
+    assert len(body["entries"]) == 4
+    assert body["total"] == 4
+    assert body["truncated"] is False
