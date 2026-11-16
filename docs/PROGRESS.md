@@ -118,8 +118,9 @@ Newest session entry goes at the top of the Session log.
   the `list_dir` stub returns four files, `also` folds into `passed`, each row carries a
   `fast` bool, and `--real --model` is refused before any case loads. 619 passed, 4 skipped.
   Stub evals 41/43 twice (t26 FAIL as expected; t24 the only other miss; t06 and t07 still
-  ok). P3.5b is not ticked. Next: Claude Code reviews section A, then section B (prompt
-  rules 5 and 6).
+  ok). P3.5b is not ticked. Section A reviewed and ACCEPTED by Claude Code 2026-11-16
+  (suite re-run: 619 passed, 4 skipped). Next: Cursor sends a pre-edit summary for
+  section B (prompt rules 5 and 6).
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -913,6 +914,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   repr).
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (P3.5b A review: accepted)
+
+- Review of `5e7540a` (`P3.5b: sort eval`) against section A: `list_dir` stub returns the
+  four-file listing in the real tool's shape, other stubs unchanged; `also_ok` is a subset
+  test on `calls[1:]` names and folds into `passed` only; `fast` is the sixth row field,
+  summed in the summary, both branches print `fast`/`llm `; `--real --model` errors before
+  any case loads; t25 and t26 as planned; PLAN.md count line. Nothing in
+  `core/config.toml`, `safety/`, `bridge/`, `config/`, `.claude/`.
+- Router still silent on t25 ("...sandbox folder.") and t26, so
+  `test_router_never_disagrees_with_the_eval_set` holds; t26 args keys equal `list_dir`'s
+  required set.
+- Noted, not changed: `also` checks tool names, not their arguments, so a stray
+  `create_folder` anywhere would satisfy it (plan rule). `test_list_dir_stub_returns_four_entries`
+  leaves one call in the global `CALLS`; harmless, `test_stub_tools_are_registered_and_record_calls`
+  clears first.
+- Re-ran (Git Bash, `PYTHONPATH` = repo root): 619 passed, 4 skipped. Stub evals not re-run;
+  Cursor's two runs (t26 FAIL as required) accepted as the red baseline for section B.
+- Next concrete step: Cursor's pre-edit summary for section B.
 
 ### 2026-11-16 — Agent: Cursor (P3.5b A sort eval)
 
