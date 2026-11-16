@@ -122,8 +122,11 @@ Newest session entry goes at the top of the Session log.
   (suite re-run: 619 passed, 4 skipped). Section B DONE 2026-11-16 (commit
   `P3.5b: multi-step prompt`): rules 5 and 6 only. Variant 3 accepted on two runs
   (t26 ok, refusals 10/10, clarify 5/5, all 43/43 both times). Variants 1 and 2
-  rejected (Session log). P3.5b stays unticked until Karthik's manual check. Next:
-  Claude Code reviews section B, then the manual check in `docs/plans/P3.5b.md`.
+  rejected (Session log); variant 4 (rule 5 without the quoted a05 sentence) rejected,
+  a05 fails without it (Open questions). Section B reviewed and ACCEPTED by Claude Code
+  2026-11-16 as variant 3, overfit on a05 noted. P3.5b stays unticked until Karthik's
+  manual check. Next: the manual check in `docs/plans/P3.5b.md` plus the held-out clarify
+  check from the B review entry.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -928,6 +931,28 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (P3.5b B review: accepted, variant 3)
+
+- Review of `310658e` (`P3.5b: multi-step prompt`, amend of `b24a11c`) against section B:
+  only rules 5 and 6 in `core/config.toml` change, plus PROGRESS.md. Nothing in `safety/`,
+  `bridge/`, `config/`, `.claude/`. Rules 1-4 unchanged. No router or test change.
+- Finding: variant 3's rule 5 quotes a05 (`"Run the script" does not name one`). Variant 4
+  removed it: a05 fails both runs (`run_named_script` `dev_server`), although rule 4 and
+  rule 6 already say "ask when the script is not named". So the 4b model follows the
+  concrete example, not the general rule. Clarify 5/5 is a seen-case score, not held out.
+  Karthik chose to test variant 4; accepted variant 3 as the result, overfit recorded
+  under Open questions (Cursor entry).
+- Suite re-runs by Claude Code: once 618 passed + 1 failed
+  (`test_quarantine_folder_and_undo`, `PermissionError: [WinError 5]` in
+  `safety/undo.py _rename`); `tests/test_undo.py` alone passed every time, and Cursor's
+  variant 4 run was 619 passed. `safety/undo.py` unchanged since P2.9. Treated as a Windows
+  file-lock flake in the shared test storage; not fixed here (needs its own task if it
+  recurs).
+- Added to the manual check (held out, not in the eval set): with the bridge running,
+  `uv run python -m core "Start a script for me."` must ask which script and queue nothing.
+- Not pushed before this entry; pushed with it. P3.5b not ticked. Next: Karthik's manual
+  check in `docs/plans/P3.5b.md`, plus the held-out check above.
 
 ### 2026-11-16 — Agent: Cursor (P3.5b B multi-step prompt)
 
