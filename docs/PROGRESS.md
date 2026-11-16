@@ -110,8 +110,10 @@ Newest session entry goes at the top of the Session log.
   614 passed, 4 skipped. No mutant table. `--real` was not run. Stub evals 41/42
   twice; Karthik accepted that (t24, not a flake, not caused by section C; Eval results
   and Open questions). Section C reviewed and ACCEPTED by Claude Code 2026-11-16 (suite
-  re-run: 614 passed, 4 skipped). Next: Karthik's manual check (`docs/plans/P3.5.md`
-  "Manual check"). P3.5 stays unticked until it passes.
+  re-run: 614 passed, 4 skipped). Manual check 2026-11-16 (Karthik): steps 1 and 3 pass,
+  step 2 (P3 "Done when") fails on model behaviour, `--real` 41/42. Karthik PASSED P3.5
+  with step 2 as a follow-up; P3.5 ticked in PLAN.md. The P3 "Done when" is NOT met yet.
+  Next: plan the follow-up (Open questions, 2026-11-16).
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -225,6 +227,17 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Claude Code, 2026-11-16) P3.5 manual check follow-up, needed for the P3 "Done when":
+  (1) the model never chains `list_dir` -> `create_folder` -> `move_files` for "sort ... by
+  file type": it reads "sort" as "show grouped", and prompt rule 6 ("After a tool result,
+  reply in one short sentence") ends the turn after the first result; rule 5 ("Never invent
+  a path") may also block creating `pdf\`. Proposal: a prompt change in `core/config.toml`
+  plus an eval case for the sort command. (2) t25 expects `C:\JarvisSandbox`, the model
+  picks `C:\JarvisSandbox\project` (arguably right) after a tainting `list_dir`, so with
+  real tools it waits for approval. Fix the case's expected path or the scorer. (3)
+  `evals/run.py:144` counts the fast path by the stub reply string, so `--real` always
+  prints 0 (5/42 took it). (4) `--real --model X` ignores `--model` but prints it.
 
 - (Karthik, 2026-11-15) t24 doubled backslashes in `destination`. Options: (a) the scorer
   compares path args after `os.path.normpath`; (b) a prompt rule; (c) accept. The `--real`
@@ -873,10 +886,40 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and `PureWindowsPath` both turn it into `C:\JarvisSandbox\docs`. Temp 0, same miss twice,
   so not a flake. The stub path in this commit changed only by the header line, and
   `SPECS` has been byte-identical since section A. Accepted for the commit. See Open questions.
-- 2026-11-15 — qwen3.5:4b `--real` (P3.5 C) — not run in this commit. The summary lines
-  come from Karthik's manual check (`uv run python evals/run.py --real`).
+- 2026-11-16 — qwen3.5:4b `--real`, real core and bridge, fast path on (P3.5 manual check,
+  Karthik) — tool selection 26/27 (96%), arguments 24/25 (96%) — refusals 10/10, clarify
+  5/5, all 41/42 — fast path 5/42 by timing (t01, t11-t14 at 0.0-0.2 s; the runner prints
+  0/42, a counter bug) — median 1.1 s, max 120.7 s. The only miss is t25: `list_dir
+  C:\JarvisSandbox` tainted the task, then `open_in_app vscode C:\JarvisSandbox\project`
+  became T2 and expired unanswered at the task's 120 s; the case expects `C:\JarvisSandbox`.
+  t24 passes with real tools (the stub-run doubled-backslash miss did not repeat). t21
+  approved then undone (old.zip back), t22 denied, t23 approved (exit 0). T2 cases 43-53 s
+  each (human approval).
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (P3.5 manual check; P3.5 closed)
+
+- Karthik ran the manual check in `docs/plans/P3.5.md` through a bridge restarted on commit
+  C. Audit lines read back from `%LOCALAPPDATA%\Jarvis\audit.jsonl`.
+- Step 1 PASS: `{"time": "2026-11-16T15:38:05+05:30"}`; task fresh, `get_time allow` T0,
+  `result done`, no model call.
+- Step 2 FAIL (model, not code): "Open VS Code on my sandbox project and sort the downloads
+  folder by file type" -> one call, `open_in_app vscode C:\JarvisSandbox` (allow, done),
+  then "requires a specific tool, which I don't have". "Sort the downloads folder by file
+  type" -> no call, the model took it for the user's Downloads (rule 2). "Sort
+  C:\JarvisSandbox\downloads by file type" -> one `list_dir` (T0), then a grouped list in
+  text. No `create_folder` or `move_files`; `downloads` unchanged. One task per request each
+  time. Cause: prompt rules 6 and 5 (Open questions).
+- Step 3 PASS: the model refused; the task opened with no `request` line.
+- Step 4: `--real` 41/42 (Eval results). t25 approval expired (`Pending action expired`
+  when approved late): fail-closed as designed. t21 undo `done`, `old.zip` back.
+- Karthik's decision: P3.5 PASSES; step 2 becomes a follow-up. P3.5 ticked in PLAN.md,
+  `docs/plans/P3.5.md` marked Implemented. The P3 "Done when" is not met; the phase gate
+  waits for the follow-up.
+- Next concrete step: Claude Code drafts the follow-up plan (prompt change for multi-step
+  sort, sort eval case, t25 expected path, fast-path counter, `--model` with `--real`) for
+  Karthik's approval. Prompt changes touch `core/config.toml`, not `config/`.
 
 ### 2026-11-16 — Agent: Claude Code (P3.5 C review: accepted)
 

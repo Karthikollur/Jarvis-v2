@@ -186,7 +186,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 - [x] P3.3 T2 tools: `delete_file` (to quarantine), `run_named_script` (only entries in
       `config/scripts.toml`). Plan: `docs/plans/P3.3.md`.
 - [x] P3.4 Prefer CLIs and app APIs (e.g. `code <path>`) over UI clicking; pywinauto only where needed.
-- [ ] P3.5 Register tools in core; rerun evals against real tools in the sandbox. The core
+- [x] P3.5 Register tools in core; rerun evals against real tools in the sandbox. The core
       opens exactly one task per user request and sends `fresh_context` only when it has
       dropped the model's context (also after a bridge restart); tests for both.
       Runtime tools guard (P3.1b review): one `BridgeTool` class in `core/`; before every
