@@ -200,7 +200,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
       list -> create -> move chain; fast-path count and `--model` fixed for `--real`.
       Plan: `docs/plans/P3.5b.md`.
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
-      (history stays in the audit log).
+      (history stays in the audit log). Plan (draft, not approved): `docs/plans/P3.6.md`.
 
 **Done when:** "Open VS Code on my sandbox project and sort the test downloads folder by file
 type" completes, every step appears in the audit log, and undo restores the folder.

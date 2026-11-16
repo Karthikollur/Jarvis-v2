@@ -932,6 +932,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-16 — Agent: Claude Code (plans written ahead: P3.6 to P8)
+
+Karthik asked for plans for the remaining phases to be written now (Fable 5.2 access ends
+today), to be adjusted later by whichever model executes them. Docs only, no code.
+Start of session: tree clean on `d884783`; `uv run python -m pytest` -> 619 passed,
+4 skipped.
+
+Every plan written in this session is a DRAFT. None is approved. Each starts with
+"Verify before executing": facts about the code that must be re-checked first. Depth
+falls with distance: P3.6 is step-level; later phases are design-level (decisions,
+interfaces, test lists, open questions) and need a step-level pass when their turn comes.
+The phase order and the "one task at a time" rule are unchanged: a plan existing does not
+mean its phase may start.
+
+- `docs/plans/P3.6.md` — task lifecycle. Three sections (evict, `/end` route, core ends
+  its task). Decisions D1 to D3 are Karthik's.
+
+Next step: the P3.5b manual check is still the next task (unchanged). After it, Karthik
+reads `docs/plans/P3.6.md`, answers D1 to D3, and approves or changes it.
+
 ### 2026-11-16 — Agent: Claude Code (P3.5b B review: accepted, variant 3)
 
 - Review of `310658e` (`P3.5b: multi-step prompt`, amend of `b24a11c`) against section B:
