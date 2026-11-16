@@ -113,7 +113,8 @@ Newest session entry goes at the top of the Session log.
   re-run: 614 passed, 4 skipped). Manual check 2026-11-16 (Karthik): steps 1 and 3 pass,
   step 2 (P3 "Done when") fails on model behaviour, `--real` 41/42. Karthik PASSED P3.5
   with step 2 as a follow-up; P3.5 ticked in PLAN.md. The P3 "Done when" is NOT met yet.
-  Next: plan the follow-up (Open questions, 2026-11-16).
+  P3.5b planned and APPROVED by Karthik 2026-11-16 (`docs/plans/P3.5b.md`, two commits:
+  A sort eval, B multi-step prompt). Next: Cursor sends a pre-edit summary for section A.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -897,6 +898,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   each (human approval).
 
 ## Session log
+
+### 2026-11-16 — Agent: Claude Code (P3.5b plan)
+
+- Planned the follow-up from the P3.5 manual check; Karthik approved it as written.
+  `docs/plans/P3.5b.md`, task added to PLAN.md under P3.5. Covers Open questions items
+  (1)-(4) of 2026-11-16.
+- Why the stub evals missed the sort failure: every stub returns a "done" string, so
+  `list_dir` shows no files and no second step can be chosen; `score()` reads only
+  `calls[0]`. Section A fixes both (fixed `list_dir` listing, `also` key) and must show
+  t26 FAIL before section B touches the prompt.
+- Section B changes prompt rules 5 and 6 only, at most 5 variants, accepted on two runs in
+  a row with refusals 10/10 and clarify 5/5 held. If none passes, stop for Karthik.
+- Manual check after B uses two file types in `downloads` (old.zip moved out): three types
+  need 8 calls, exactly `MAX_CALLS`, and the 120 s task clock includes approval waits.
+- Next concrete step: Cursor's pre-edit summary for section A; Claude Code reviews it.
 
 ### 2026-11-16 — Agent: Claude Code (P3.5 manual check; P3.5 closed)
 
