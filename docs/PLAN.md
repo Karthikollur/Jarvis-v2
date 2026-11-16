@@ -222,6 +222,8 @@ approval.
 
 ### P5 — Voice (~1 week)
 
+Phase design (draft, not approved): `docs/plans/P5.md`.
+
 - [ ] P5.1 Push-to-talk hotkey -> STT (CPU) -> core -> Piper TTS (CPU).
 - [ ] P5.2 Streaming TTS: speak the first sentence while the rest generates.
 - [ ] P5.3 Barge-in: speaking or the hotkey interrupts TTS.
@@ -232,6 +234,8 @@ approval.
 in a row.
 
 ### P6 — Desktop UI (~1 week)
+
+Phase design (draft, not approved): `docs/plans/P6.md`.
 
 - [ ] P6.1 Tauri 2 + React shell: floating panel + tray icon.
 - [ ] P6.2 Voice state animation, live task steps.
@@ -244,6 +248,8 @@ within 1 s.
 
 ### P7 — Supervised workflows (ongoing)
 
+Phase design (draft, not approved): `docs/plans/P7.md`.
+
 - [ ] P7.1 Plan -> execute -> verify loop inside budgets.
 - [ ] P7.2 Named recipes, e.g. "start dev session": open VS Code on project X, run its named dev
       script, open localhost in the browser.
@@ -252,6 +258,8 @@ within 1 s.
 **Done when:** 3 recipes pass 10/10 runs each.
 
 ### P8 — Hardening and always-on
+
+Phase design (draft, not approved): `docs/plans/P8.md`.
 
 - [ ] P8.1 Start at logon via Task Scheduler as the normal user (not admin); crash restart.
 - [ ] P8.2 Log rotation, resource caps.

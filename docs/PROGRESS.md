@@ -127,6 +127,8 @@ Newest session entry goes at the top of the Session log.
   2026-11-16 as variant 3, overfit on a05 noted. P3.5b stays unticked until Karthik's
   manual check. Next: the manual check in `docs/plans/P3.5b.md` plus the held-out clarify
   check from the B review entry.
+  Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
+  `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
@@ -240,6 +242,24 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Claude Code, 2026-11-16, from the plans written ahead; none decided, none blocks P3)
+  (1) Smart App Control blocks unsigned `.exe` files, and a Tauri build is one. P6 may
+  need a signing certificate or a different shell (`docs/plans/P6.md` D1). Cheap to find
+  out early: a ten-minute Tauri hello-world.
+  (2) PLAN.md P7.3 (a browser) and the hard rule "no outbound network calls, localhost
+  only" disagree. Proposal: browser tools limited to localhost origins in v1
+  (`docs/plans/P7.md` D7).
+  (3) Proposal to change phase order: do P8.3 (gate script + permanent offline test) and
+  the model-free layer of P8.4 (injection matrix against the bridge) right after P3
+  closes, not last (`docs/plans/P8.md` D1).
+  (4) With crash restart (P8.1), a latched Stop is lost when the bridge restarts.
+  Proposal: keep the latch in a file (`docs/plans/P8.md` D2).
+  (5) A request that starts from the wake word, with no key pressed, could open a tainted
+  task so its T1 actions need a click (`docs/plans/P5.md` D3). Needs a small `/task`
+  change.
+  (6) Docs roots for P4 as a separate `config/memory.toml` instead of read-only allowed
+  roots as PLAN.md words it (`docs/plans/P4.md` D2).
 
 - (Cursor, 2026-11-16) Rule 5 quotes eval case a05 verbatim; clarify 5/5 is not a held-out
   result. The 4b model needs the example. Revisit with a bigger model or a held-out
@@ -953,6 +973,32 @@ mean its phase may start.
   `remember_fact` + review CLI, taint tests, doc eval). Decisions D1 to D8 are Karthik's;
   D1 (embedding model) is a download. Not checked against the installed Ollama: the
   `/api/embed` route shape and the model names.
+- `docs/plans/P5.md` — voice (design level). One `python -m voice` process with the core
+  in-process; press-to-start talk key (no keyboard hook); sentence-level TTS streaming;
+  key-only barge-in; wake-word requests open a tainted task. Decisions D1 to D10. No voice
+  library is installed, so every library fact in it is unchecked; it starts with a spike.
+- `docs/plans/P6.md` — desktop UI (design level). Token stays in Rust; fixed command set;
+  polling; approval-dialog guards against a tricked click. Decisions D1 to D8. Starts
+  with a spike: Smart App Control may block the Tauri binary.
+- `docs/plans/P7.md` — workflows (decisions and risks). Recipes as data run by core code;
+  checks last because checks taint; a detached script kind for the dev server; browser
+  kept to localhost. Decisions D1 to D11.
+- `docs/plans/P8.md` — hardening (decisions and risks). Gate script and offline test,
+  red-team matrix in two layers, audit checker for the "Done when", Stop latch across
+  restarts. Decisions D1 to D7.
+
+Files changed: `docs/plans/P3.6.md`, `P4.md`, `P5.md`, `P6.md`, `P7.md`, `P8.md` (new);
+`docs/PLAN.md` (one pointer line per phase, no task or order change); this file.
+Tests: `uv run python -m pytest` -> 619 passed, 4 skipped at session start; no code
+changed afterwards. Evals not run (no code change).
+Checked while planning (2026-11-16): `ollama list` has `qwen3.5:2b`, `4b`, `9b` and no
+embedding model; `numpy` is importable, `pypdf` and every voice library are not; `sqlite3`
+3.49.1 has FTS5; Node 24, npm 11, cargo and rustc 1.97 are installed; there is no
+`memory/`, `voice/` or `ui/` folder.
+Note for agents using Claude Code with the `rtk` hook: it rewrites
+`uv run python -m pytest` to `uv run rtk pytest`, which fails on
+`ModuleNotFoundError: No module named 'safety'`. That is the rewrite, not the suite. Run
+`rtk proxy uv run python -m pytest`.
 
 Next step: the P3.5b manual check is still the next task (unchanged). After it, Karthik
 reads `docs/plans/P3.6.md`, answers D1 to D3, and approves or changes it.
