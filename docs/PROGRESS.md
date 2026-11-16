@@ -948,6 +948,11 @@ mean its phase may start.
 
 - `docs/plans/P3.6.md` — task lifecycle. Three sections (evict, `/end` route, core ends
   its task). Decisions D1 to D3 are Karthik's.
+- `docs/plans/P4.md` — memory and documents. Sections A to G (schema with a SQLite
+  authorizer per role, embedding client, ingest CLI, `recall_memory` handler,
+  `remember_fact` + review CLI, taint tests, doc eval). Decisions D1 to D8 are Karthik's;
+  D1 (embedding model) is a download. Not checked against the installed Ollama: the
+  `/api/embed` route shape and the model names.
 
 Next step: the P3.5b manual check is still the next task (unchanged). After it, Karthik
 reads `docs/plans/P3.6.md`, answers D1 to D3, and approves or changes it.

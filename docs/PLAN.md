@@ -207,6 +207,8 @@ type" completes, every step appears in the audit log, and undo restores the fold
 
 ### P4 — Memory and local documents (~1 week)
 
+Phase plan (draft, not approved): `docs/plans/P4.md`.
+
 - [ ] P4.1 SQLite schema: `facts`, `pending_facts`, `task_history`, `documents`, `chunks`.
 - [ ] P4.2 Local embedding pipeline; ingest PDF/MD/TXT from a read-only docs root
       (for example the Obsidian vault, once Karthik adds it to allowed roots as read-only).
