@@ -202,9 +202,10 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
       (history stays in the audit log). Plan (draft, not approved): `docs/plans/P3.6.md`.
 - [ ] P3.7 P3 review fixes: Explorer comma rule for `open_in_app`, the core guard also checks
-      the OpenJarvis executor, `run_named_script` runs in a Job Object; optional D to G
-      (undo of a non-empty folder, client errors, rename retry, tool status in the core).
-      A and B land before P4. Plan (draft): `docs/plans/P3.7.md`.
+      the OpenJarvis executor, `recall_memory` hidden from the model until P4,
+      `run_named_script` runs in a Job Object; undo keeps a non-empty folder, client errors
+      (Karthik), tool status in the core. A, B and B2 land before P4.
+      Plan (approved 2026-11-18): `docs/plans/P3.7.md`.
 
 **Done when:** "Open VS Code on my sandbox project and sort the test downloads folder by file
 type" completes, every step appears in the audit log, and undo restores the folder.

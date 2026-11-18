@@ -26,3 +26,6 @@ OpenJarvis/
 # Starter bundle leftovers
 files/
 *.zip
+
+# Karthik's raw P3.5b report (content in PROGRESS.md, 2026-11-18)
+jarvis_p35b_report.txt

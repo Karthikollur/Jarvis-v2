@@ -128,11 +128,13 @@ Newest session entry goes at the top of the Session log.
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
   Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
   `docs/plans/P3.6.md` and approves it before any code. P3 phase review 2026-11-18: PASS
-  WITH FIXES, three Important findings (Session log). P3.7 plan written 2026-11-18
-  (`docs/plans/P3.7.md`, DRAFT, docs only, no code): A Explorer comma rule, B guard checks
-  the executor, C script runs in a Job Object (A and B before P4); D to G optional. Next:
-  Karthik runs the Explorer probe in the plan and answers D1 to D8, then approves; P3.6
-  D1 to D3 are still open too.
+  WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
+  2026-11-18 with changes (`docs/plans/P3.7.md`, docs only, no code yet): A Explorer comma
+  rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
+  Job Object with `KILL_ON_JOB_CLOSE`, D undo keeps a non-empty folder, E client errors
+  (Karthik writes it), G core prints tool status; F (rename retry) cut. A, B, B2 before P4.
+  Next: the Explorer probe in the plan, then section A by Cursor on Karthik's go. P3.6 D1
+  to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -459,6 +461,20 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-18 — P3.7 approved with changes: F (rename retry) cut, B2 hides `recall_memory`
+  until P4, C sets `KILL_ON_JOB_CLOSE`, E written by Karthik. — F fixes an error never seen
+  outside a test; a 501 tool wastes one of 8 calls; a bridge crash must not leave a
+  script's tree running. — Karthik
+- 2026-11-18 — Known limits, not fixed (P3.7 D7): handlers re-open a checked path by name, so
+  a parent swapped to a junction between check and act escapes (needs a same-user local
+  process); a part-way `move_files` counts as success, and a failed move-back inside it logs
+  only the error type. Also: time spent waiting for an approval counts toward the 120 s task
+  budget; decide before P6's approval dialog. — Cheap fixes would be partial; the budget is
+  a design change. — Karthik (planned by Claude Code)
+- 2026-11-18 — Process: a full mutant table only for changes to a safety boundary or process
+  control; small fixes are tests first, then code. — Thoroughness was slowing small fixes. —
+  Karthik
 
 - 2026-11-16 — Roles are written into AGENTS.md ("Roles"): Claude Code plans and reviews,
   Cursor implements one plan section per commit, Karthik approves and does manual checks.
@@ -978,6 +994,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 plan approved with changes)
+
+Karthik approved P3.7 with changes; plan rewritten to match. No code changed.
+- F (rename retry for `WinError 5`) cut: never seen outside a test.
+- B2 added: `recall_memory` is hidden from the model until P4 (`core/tools.py` `HIDDEN`, the
+  guard compares with `TOOLS - HIDDEN`). Not one line as first proposed: B's guard pins the
+  full set. `--real` t10 fails until P4; stub evals are unchanged.
+- C sets `KILL_ON_JOB_CLOSE` now (one struct, plus a crash test), instead of naming it a limit.
+- E is written by Karthik and reviewed by Claude Code; Cursor does A, B, B2, C, D, G.
+- Approval wait counting toward the 120 s budget (Open question 2026-11-18 (2)) is now a
+  known limit in the plan, carried to P4 and P6.
+- Process: only A, B, B2 and C keep mutant tables; D, E, G are tests first, then code.
+- `jarvis_p35b_report.txt` added to `.gitignore` (kept on disk; its content is in the
+  2026-11-18 P3.5b entry). Karthik may delete the file.
+D2, D3, D6 and D8 were not named in the changes and are recorded as approved as
+recommended; Karthik says so if not.
+
+Files changed: `docs/plans/P3.7.md`, `docs/PLAN.md`, `.gitignore`, this file.
+Next step: the Explorer probe (`docs/plans/P3.7.md`), then section A by Cursor on
+Karthik's go.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 plan, draft)
 
