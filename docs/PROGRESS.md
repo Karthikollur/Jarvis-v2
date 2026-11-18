@@ -152,7 +152,9 @@ Newest session entry goes at the top of the Session log.
   ticked. Section C reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Section D
   DONE (commit `P3.7: undo keeps a non-empty folder`): a created folder that still holds
   anything is refused before quarantine, and the record stays not undone. 636 passed,
-  4 skipped. No mutant table. PLAN.md not ticked. Next: Claude Code reviews D before G.
+  4 skipped. No mutant table. PLAN.md not ticked. Section D reviewed by Claude Code
+  2026-11-18: ACCEPTED (Session log). Next: section G by Cursor (`P3.7: core prints tool
+  status`). E is Karthik's and does not block G.
   Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
   there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
@@ -1022,6 +1024,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 D review: accepted)
+
+Reviewed `bd52ecf` against `docs/plans/P3.7.md` section D (with Karthik's plan-gap ruling
+on the old quarantine test). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 636 passed, 4 skipped (matches),
+  tree clean. No mutant table for D (plan).
+- Code is the plan's two lines, after the `is_dir` check and before `self.quarantine`, so
+  a refusal moves nothing and never writes `undone`. `bridge/app.py` already maps
+  `UndoRefused` to 409; no route change.
+- Tests: the old `..._quarantines_then_restores` is rewritten in place and renamed, as
+  approved. A folder with content still has quarantine-and-restore coverage in
+  `test_quarantine_folder_and_undo`. The bridge test checks the 409 detail, that the folder
+  and file stay, and that the only record is the `created` one, not undone.
+- Known consequence (no fix): any file in the folder blocks the undo, including one the
+  user did not put there by hand (for example a `desktop.ini` from a customised Explorer
+  view). The refusal says what to do, and nothing is lost. Fails closed.
+
+PLAN.md not ticked. Files changed: this file. Next step: Cursor posts the pre-edit summary
+for section G.
 
 ### 2026-11-18 — Agent: Cursor (P3.7 D)
 
