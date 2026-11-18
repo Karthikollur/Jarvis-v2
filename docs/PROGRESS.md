@@ -140,7 +140,8 @@ Newest session entry goes at the top of the Session log.
   reviewed by Claude Code 2026-11-18: ACCEPTED (suite and mutants re-run, Session log).
   Section B DONE (commit `P3.7: guard checks the executor`): `_guard` also checks
   `self._agent._executor._tools` by identity (`is`). 627 passed, 4 skipped. 3 mutants
-  killed (baseline 3). PLAN.md not ticked. Next: Claude Code reviews B before B2.
+  killed (baseline 3). PLAN.md not ticked. Section B reviewed by Claude Code 2026-11-18:
+  ACCEPTED (suite and mutants re-run, Session log). Next: section B2 by Cursor.
   Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
   there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
@@ -1007,6 +1008,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 B review: accepted)
+
+Reviewed `219c73a` against `docs/plans/P3.7.md` section B. No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 627 passed, 4 skipped (matches).
+  `%TEMP%\p37b_mutants.py` read first, then run: baseline 3 passed, all 3 killed, sha256 of
+  `core/agent.py` after the run `585f34bc...e0120` (matches the commit), tree clean.
+- `_guard` is the plan's code verbatim. Upstream re-checked on `e6b71376`:
+  `agents/_stubs.py:443` builds the executor, `tools/_stubs.py:206` copies the list into a
+  dict of the same objects, so identity holds in the green state.
+- Tests: `replaced` keeps the key and swaps the object, so it alone separates the key-set
+  check from the identity check. `Foreign` is local; the existing list test is unedited.
+- Minor (no fix): `added` puts a known `BridgeTool` under `shell` rather than a foreign
+  tool. It still kills its mutant, and it is the sharper case: an alias of an allowed
+  tool under an unknown name.
+- Fails closed past the mutant table: with the key-set line gone, `removed` gives
+  `KeyError` from `run[t.spec.name]` before any task opens.
+
+PLAN.md not ticked. Files changed: this file. Next step: Cursor posts the pre-edit summary
+for section B2 (`P3.7: hide recall_memory until P4`).
 
 ### 2026-11-18 — Agent: Cursor (P3.7 B)
 
