@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import tempfile
 import time
 import tomllib
 from typing import Any
@@ -58,6 +59,27 @@ _kernel32.GetFinalPathNameByHandleW.argtypes = [
     wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
 ]
 _kernel32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+
+
+class _JobLimits(ctypes.Structure):  # JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+        ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+        ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+        ("SchedulingClass", wintypes.DWORD), ("IoInfo", ctypes.c_ulonglong * 6),
+        ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+JOB_EXTENDED_LIMITS = 9  # JobObjectExtendedLimitInformation
+KILL_ON_JOB_CLOSE = 0x2000  # the tree dies when the last job handle closes, also if the bridge crashes
+_kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+_kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+_kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+_kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+_kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
 
 
 def _final_path(fd: int) -> str:
@@ -502,22 +524,39 @@ def mutating(undo_log, apps: dict[str, App], scripts=None) -> dict[str, Any]:
     def run_named_script(args: dict[str, Any]) -> dict[str, Any]:
         # The model supplies only the name (the policy checked it against scripts.toml).
         # No undo record: the audit line carries the result.
-        # ponytail: subprocess.run kills the direct child only; children of a .cmd can
-        # outlive it. Upgrade path: a Job Object when a real script needs it.
         # ponytail: the handler blocks the worker up to timeout; Stop does not interrupt
         # a running handler (known P2.6 limit). The 60 s cap stays under the 120 s budget.
         name = args["name"]
         script = scripts[name]
+        job = _kernel32.CreateJobObjectW(None, None)
+        if not job:
+            raise ctypes.WinError(ctypes.get_last_error())
         try:
-            done = subprocess.run(
-                script.command, shell=False, cwd=script.cwd, timeout=script.timeout,
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            )
-        except subprocess.TimeoutExpired as expired:
-            return {"ran": name, "timed_out": True, "exit_code": None,
-                    "output": _tail(expired.output or b"")}
-        return {"ran": name, "timed_out": False, "exit_code": done.returncode,
-                "output": _tail(done.stdout)}
+            limits = _JobLimits(LimitFlags=KILL_ON_JOB_CLOSE)
+            if not _kernel32.SetInformationJobObject(job, JOB_EXTENDED_LIMITS, ctypes.byref(limits), ctypes.sizeof(limits)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            with tempfile.TemporaryFile() as out:  # a file, not a pipe: nothing waits for EOF
+                process = subprocess.Popen(
+                    script.command, shell=False, cwd=script.cwd,
+                    stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+                # ponytail: a grandchild started before this line escapes the job (microseconds).
+                if not _kernel32.AssignProcessToJobObject(job, int(process._handle)):  # CPython's handle (3.12)
+                    process.kill()
+                    process.wait(timeout=5)
+                    raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    code = process.wait(timeout=script.timeout)
+                except subprocess.TimeoutExpired:
+                    code = None
+                _kernel32.TerminateJobObject(job, 1)  # the whole tree, also after a normal exit
+                process.wait(timeout=5)
+                out.seek(0)
+                output = _tail(out.read())
+        finally:
+            _kernel32.CloseHandle(job)
+        return {"ran": name, "timed_out": code is None, "exit_code": code, "output": output}
 
     return {
         "create_folder": create_folder, "rename_file": rename_file, "move_file": move_file,

@@ -1,14 +1,18 @@
 """P3.1: the real T0 tool handlers in bridge/tools.py, called directly and through the bridge."""
 
 import _winapi
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 import json
 import os
 import socket
 import stat
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
+import time
 import types
 
 import pytest
@@ -1536,7 +1540,7 @@ _SCRIPT = f"command = ['{_HOST}']"
 def test_real_scripts_toml_loads_and_matches_the_allowlist():
     scripts = tools.load_scripts(SCRIPTS_TOML)
     assert set(scripts) == set(load_names(SCRIPTS_TOML)) == {"dev_server", "run_tests", "backup_notes"}
-    assert set(scripts) <= set(SCRIPTS)
+    assert set(scripts) == set(SCRIPTS)
     for name, script in scripts.items():
         assert script.command == [_HOST], name
         assert Path(script.command[0]).is_absolute() and Path(script.command[0]).is_file()
@@ -1584,25 +1588,70 @@ def _one_script(command, cwd, timeout=30):
     return tools.Script(list(command), Path(cwd), timeout)
 
 
+_QUERY = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+_TERMINATE = 0x0001
+_STILL_ACTIVE = 259
+_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_k32.OpenProcess.restype = wintypes.HANDLE
+_k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+_k32.GetExitCodeProcess.restype = wintypes.BOOL
+_k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+_k32.TerminateProcess.restype = wintypes.BOOL
+_k32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+_HANG = (
+    "import subprocess, sys, time\n"
+    "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'], stdout=sys.stdout)\n"
+    "print(p.pid, flush=True)\n"
+    "time.sleep(20)\n"
+)
+_LEAVE = (
+    "import subprocess, sys\n"
+    "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'], stdout=sys.stdout)\n"
+    "print(p.pid, flush=True)\n"
+)
+
+
+def _gone(pid, seconds):
+    """True once pid has exited. OpenProcess failing means the process is already gone."""
+    deadline = time.monotonic() + seconds
+    while True:
+        handle = _k32.OpenProcess(_QUERY, False, pid)
+        if not handle:
+            return True
+        code = wintypes.DWORD()
+        ok = _k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        _k32.CloseHandle(handle)
+        if ok and code.value != _STILL_ACTIVE:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def _kill_pid(pid):
+    handle = _k32.OpenProcess(_TERMINATE, False, pid)
+    if not handle:
+        return
+    try:
+        _k32.TerminateProcess(handle, 1)
+    finally:
+        _k32.CloseHandle(handle)
+
+
 @pytest.fixture
-def fake_run(monkeypatch):
-    """Stands in for subprocess.run inside bridge.tools only. The bridge's own icacls calls
-    keep the real subprocess. Set `box['result']` to a CompletedProcess or an exception."""
-    box = {"calls": [], "result": subprocess.CompletedProcess(["x"], 0, stdout=b"ok\n")}
+def popen_spy(monkeypatch):
+    """Records tools.subprocess.Popen, then runs the real one."""
+    calls = []
+    real = subprocess.Popen
 
-    def run(*args, **kwargs):
-        box["calls"].append((args, kwargs))
-        result = box["result"]
-        if isinstance(result, Exception):
-            raise result
-        return result
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real(*args, **kwargs)
 
-    fake = types.SimpleNamespace(
-        run=run, Popen=subprocess.Popen, DEVNULL=subprocess.DEVNULL,
-        PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT, TimeoutExpired=subprocess.TimeoutExpired,
-    )
-    monkeypatch.setattr(tools, "subprocess", fake)
-    return box
+    monkeypatch.setattr(tools.subprocess, "Popen", spy)
+    return calls
 
 
 def _run_script(script, **extra):
@@ -1611,44 +1660,108 @@ def _run_script(script, **extra):
     )
 
 
-def test_run_named_script_runs_the_fixed_command_only(fake_run):
-    script = _one_script([_HOST], Path(_HOST).parent, timeout=12)
+def test_run_named_script_runs_the_fixed_command_only(popen_spy, tmp_path):
+    command = [sys.executable, "-c", "raise SystemExit(0)"]
+    script = _one_script(command, tmp_path, timeout=12)
     result = _run_script(script, args=["--evil"], path=r"C:\x")
-    assert result == {"ran": "run_tests", "timed_out": False, "exit_code": 0, "output": "ok\n"}
+    assert result["ran"] == "run_tests" and result["timed_out"] is False and result["exit_code"] == 0
     assert_plain(result)
-    [(args, kwargs)] = fake_run["calls"]
-    assert args == ([_HOST],)
-    assert kwargs == {
-        "shell": False, "cwd": script.cwd, "timeout": 12,
-        "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT,
-    }
+    [(args, kwargs)] = popen_spy
+    assert args == (command,)
+    assert kwargs["shell"] is False and kwargs["cwd"] == script.cwd
+    assert kwargs["stdin"] == subprocess.DEVNULL and kwargs["stderr"] == subprocess.STDOUT
+    assert kwargs["stdout"] is not subprocess.PIPE
+    assert kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
 
 
-def test_run_named_script_returns_the_output_tail(fake_run):
-    text = "START" + ("m" * 10000) + "END"
-    fake_run["result"] = subprocess.CompletedProcess([_HOST], 0, stdout=text.encode())
-    result = _run_script(_one_script([_HOST], Path(_HOST).parent))
+def test_run_named_script_returns_the_output_tail(tmp_path):
+    code = "import sys; sys.stdout.write('START' + ('m' * 10000) + 'END')"
+    result = _run_script(_one_script([sys.executable, "-c", code], tmp_path))
     assert len(result["output"]) == 4096
     assert result["output"].endswith("END") and "START" not in result["output"]
 
 
-def test_run_named_script_timeout_is_a_result(fake_run):
-    fake_run["result"] = subprocess.TimeoutExpired([_HOST], 12, output=b"partial")
-    result = _run_script(_one_script([_HOST], Path(_HOST).parent, timeout=12))
-    assert result == {"ran": "run_tests", "timed_out": True, "exit_code": None, "output": "partial"}
-    assert_plain(result)
+def test_run_named_script_timeout_kills_the_grandchild(tmp_path):
+    pid = None
+    try:
+        started = time.monotonic()
+        result = _run_script(_one_script([sys.executable, "-c", _HANG], tmp_path, timeout=1))
+        elapsed = time.monotonic() - started
+        pid = int(result["output"].strip())
+        assert elapsed < 8
+        assert result["timed_out"] is True and result["exit_code"] is None
+        assert _gone(pid, 2)
+    finally:
+        if pid is not None:
+            _kill_pid(pid)
 
 
-def test_run_named_script_nonzero_exit_is_a_result(fake_run):
-    fake_run["result"] = subprocess.CompletedProcess([_HOST], 3, stdout=b"nope")
-    result = _run_script(_one_script([_HOST], Path(_HOST).parent))
-    assert result == {"ran": "run_tests", "timed_out": False, "exit_code": 3, "output": "nope"}
+def test_run_named_script_kills_a_leftover_grandchild(tmp_path):
+    pid = None
+    try:
+        result = _run_script(_one_script([sys.executable, "-c", _LEAVE], tmp_path, timeout=5))
+        pid = int(result["output"].strip())
+        assert result["exit_code"] == 0 and result["timed_out"] is False
+        assert _gone(pid, 2)
+    finally:
+        if pid is not None:
+            _kill_pid(pid)
 
 
-def test_run_named_script_replaces_bytes_that_are_not_utf8(fake_run):
-    fake_run["result"] = subprocess.CompletedProcess([_HOST], 0, stdout=b"ok\xff")
-    result = _run_script(_one_script([_HOST], Path(_HOST).parent))
-    assert result["output"] == "ok\ufffd"
+def test_run_named_script_dies_with_the_bridge(tmp_path):
+    pid_file = tmp_path / "grandchild.pid"
+    child = (
+        "import subprocess, sys, time\n"
+        "from pathlib import Path\n"
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], stdout=sys.stdout)\n"
+        "Path(sys.argv[1]).write_text(str(p.pid))\n"
+        "time.sleep(30)\n"
+    )
+    helper_code = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "import bridge.tools as tools\n"
+        "pid_path, code = sys.argv[1], sys.argv[2]\n"
+        "script = tools.Script([sys.executable, '-c', code, pid_path], Path(sys.executable).parent, 30)\n"
+        "tools.mutating(None, {}, {'run_tests': script})['run_named_script']({'name': 'run_tests'})\n"
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO) + os.pathsep + env.get("PYTHONPATH", "")
+    err_file = (tmp_path / "helper.err").open("w")
+    helper = subprocess.Popen(
+        [sys.executable, "-c", helper_code, str(pid_file), child],
+        cwd=REPO, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=err_file,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        text = ""
+        while time.monotonic() < deadline and not text:
+            if pid_file.is_file():
+                text = pid_file.read_text().strip()
+            time.sleep(0.05)
+        assert text, "pid file never appeared"
+        helper.kill()
+        assert _gone(int(text), 2)
+    finally:
+        if helper.poll() is None:
+            helper.kill()
+        helper.wait(timeout=5)
+        err_file.close()
+
+
+def test_job_limits_is_the_64_bit_layout():
+    assert ctypes.sizeof(tools._JobLimits) == 144
+
+
+def test_run_named_script_nonzero_exit_is_a_result(tmp_path):
+    result = _run_script(_one_script([sys.executable, "-c", "import sys; sys.exit(3)"], tmp_path))
+    assert result["ran"] == "run_tests" and result["timed_out"] is False and result["exit_code"] == 3
+
+
+def test_run_named_script_replaces_bytes_that_are_not_utf8(tmp_path):
+    code = "import sys; sys.stdout.buffer.write(b'ok\\xff')"
+    result = _run_script(_one_script([sys.executable, "-c", code], tmp_path))
+    assert result["output"] == "ok\ufffd" and result["exit_code"] == 0
 
 
 def test_run_named_script_through_the_bridge_taints(bridge):
@@ -1671,16 +1784,16 @@ def test_run_named_script_through_the_bridge_taints(bridge):
     assert not (root / "new").exists()
 
 
-def test_run_named_script_refuses_names_not_on_the_allowlist(bridge, fake_run):
+def test_run_named_script_refuses_names_not_on_the_allowlist(bridge, popen_spy):
     client, root = bridge
     for name in ["cmd", "RUN_TESTS", "run_tests.cmd"]:
         response = call(client, fresh_task(client), "run_named_script", name=name)
         assert response.status_code == 403, name
         assert response.json()["detail"] == "name: not on the allowlist"
-    assert fake_run["calls"] == []
+    assert popen_spy == []
 
 
-def test_run_named_script_deny_never_runs(bridge, fake_run):
+def test_run_named_script_deny_never_runs(bridge, popen_spy):
     client, root = bridge
     queued = call(client, fresh_task(client), "run_named_script", name="run_tests")
     assert queued.status_code == 202
@@ -1688,4 +1801,4 @@ def test_run_named_script_deny_never_runs(bridge, fake_run):
     assert denied.status_code == 200
     outcome = client.post("/outcome", json={"pending_id": queued.json()["pending_id"]})
     assert outcome.json() == {"status": "denied"}
-    assert fake_run["calls"] == []
+    assert not any(args and str(args[0][0]).casefold() == _HOST.casefold() for args, _kwargs in popen_spy)

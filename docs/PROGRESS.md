@@ -145,9 +145,12 @@ Newest session entry goes at the top of the Session log.
   `P3.7: hide recall_memory until P4`): `HIDDEN` is `recall_memory`, `bridge_tools` skips
   it, and `_guard` compares the list and the executor with `set(TOOLS) - HIDDEN`.
   631 passed, 4 skipped. 4 mutants killed (baseline 4). PLAN.md not ticked. Section B2
-  reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Next: section C by Cursor
-  (`P3.7: script runs in a job`). Karthik's manual check of A can run any time before
-  the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
+  reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Section C DONE (commit
+  `P3.7: script runs in a job`): `run_named_script` runs in a Job Object with
+  `KILL_ON_JOB_CLOSE`, and `TerminateJobObject` still runs after every exit. 634 passed,
+  4 skipped. 10 mutants killed (baseline 12); one row not run, equivalent. PLAN.md not
+  ticked. Next: Claude Code reviews C before D. Karthik's manual check of A can run any
+  time before the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1015,6 +1018,36 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (P3.7 C)
+
+Section C, on Karthik's go. `run_named_script` still used `subprocess.run` with
+`stdout=PIPE` before the edit.
+
+Plan change, approved after the first mutant run: "`TerminateJobObject` only on timeout"
+is equivalent. With `KILL_ON_JOB_CLOSE` and the bridge holding the only job handle,
+`CloseHandle` kills the tree on a normal exit anyway. No new test and no spy. The handler
+still always calls `TerminateJobObject`. The C mutant table row is now "equivalent:
+`KILL_ON_JOB_CLOSE` kills the tree at `CloseHandle`; not run".
+
+Red run before the handler change: 6 failed, 6 passed. The hang test returned in 20.2 s.
+Test 5's grandchild was still alive after `helper.kill()`.
+- `bridge/tools.py`: `_JobLimits`, the job `kernel32` declarations, and the plan's
+  `run_named_script` body. `import tempfile` added. The direct-child ponytail is gone.
+  The Stop ponytail and the pre-assign ponytail stay. `tests/test_tools.py` `<=` is `==`.
+  `fake_run` was unused afterwards and is deleted. The Popen spy records the call and
+  runs the real one. `/deny` also calls `whoami` through the same `subprocess` module, so
+  that test asserts `HOSTNAME.EXE` was not launched. The 403 case still sees an empty spy.
+  Test 5 kills only the helper, with `helper.kill()`.
+- Files: `bridge/tools.py`, `tests/test_tools.py`, `docs/plans/P3.7.md`, this file.
+  PLAN.md not ticked. Nothing in `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 634 passed, 4 skipped. Mutants in
+  `%TEMP%\p37c_mutants.py` (not committed): baseline 12 passed. Killed: old shape, no
+  `AssignProcessToJobObject`, no `TerminateJobObject`, then the remaining 7. The
+  equivalent row was not run. `bridge/tools.py` restored (sha256
+  `10841616b20563b31177ecf64f780d044ffb315ab6ee0c44708e9b4fa3144caf`). `core/specs.py`
+  restored (sha256 `464fed833fc18dc7ebcbfcbfd78e7b1a89b707449ecb967d90510d2fab61c263`).
+- Stopped at: this commit. Next concrete step: Claude Code reviews C before D.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 B2 review: accepted)
 
