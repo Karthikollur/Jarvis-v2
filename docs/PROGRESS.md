@@ -128,8 +128,11 @@ Newest session entry goes at the top of the Session log.
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
   Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
   `docs/plans/P3.6.md` and approves it before any code. P3 phase review 2026-11-18: PASS
-  WITH FIXES, three Important findings (Session log); Karthik decides whether they become
-  plan `P3.7`.
+  WITH FIXES, three Important findings (Session log). P3.7 plan written 2026-11-18
+  (`docs/plans/P3.7.md`, DRAFT, docs only, no code): A Explorer comma rule, B guard checks
+  the executor, C script runs in a Job Object (A and B before P4); D to G optional. Next:
+  Karthik runs the Explorer probe in the plan and answers D1 to D8, then approves; P3.6
+  D1 to D3 are still open too.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -975,6 +978,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 plan, draft)
+
+Start of session: tree clean on `0e8a447` except the known untracked
+`jarvis_p35b_report.txt`. Test run skipped on Karthik's word (green on `0e8a447`: 619
+passed, 4 skipped; stub evals 43/43). No code changed.
+
+Planned P3.7 in plan mode; Karthik approved writing it. Every source finding was re-checked
+against `0e8a447` (table with file:line in the plan). Changes against the review text:
+- 11-16 #1 (`accepts`): the real `apps.toml` is already pinned by
+  `test_real_apps_toml_loads_and_matches_the_allowlist`; only the wording is wrong.
+- 11-18 #2 confirmed in the 3.12 stdlib (`subprocess.py:559`, `communicate()` after
+  `kill()` on Windows). Unreachable with today's `scripts.toml` (three `HOSTNAME.EXE`).
+- 11-18 #3 confirmed: the orchestrator offers and runs tools from `_executor`
+  (`orchestrator.py:207,361,450,515`), a dict copied once from the list.
+- 11-18 #5: a failed move-back logs the full error for `move_file`; only `move_files`
+  cuts it to the type. 11-18 #6: one direction is already tested.
+- Proposed cuts (D7): 11-18 #4 and #5, as known limits.
+
+Sections: A comma rule (+ `accepts` wording), B guard on the executor, C Job Object
+(+ #6, #7), optional D undo keeps a non-empty folder, E client errors, F rename retry,
+G core prints tool status (Open question 2026-11-18 (1)). P3.6 untouched.
+
+Files changed: `docs/plans/P3.7.md` (new), `docs/PLAN.md` (P3.7 line), this file.
+Next step: Karthik runs the Explorer probe (`docs/plans/P3.7.md`), answers D1 to D8, and
+approves; then Cursor starts section A.
 
 ### 2026-11-18 — Agent: Claude Code (P3 phase review: PASS WITH FIXES)
 
