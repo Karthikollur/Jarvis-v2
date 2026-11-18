@@ -1163,6 +1163,17 @@ def test_open_in_app_refused_before_any_launch(bridge, fake_popen, folders):
     assert ran == [] and secret.read_text() == "secret"
 
 
+def test_open_in_app_refuses_a_comma_before_anything_is_queued(bridge, fake_popen):
+    client, root = bridge
+    folder = root / "t," / "Users"
+    folder.mkdir(parents=True)
+    response = call(client, fresh_task(client), "open_in_app", app="explorer", path=str(folder))
+    assert response.status_code == 403
+    assert response.json()["detail"] == "path: comma or semicolon"
+    assert fake_popen == []
+    assert client.get("/pending", headers=ui(root)).json()["pending"] == []
+
+
 def test_open_in_app_on_a_tainted_task_waits_for_approval(bridge, fake_popen):
     client, root = bridge
     task = client.post("/task").json()["task_id"]  # the bridge starts tainted (P2.9 R2)

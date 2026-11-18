@@ -555,6 +555,53 @@ def test_open_in_app_recheck_refuses_junction_to_outside(policy, dirs):
     assert policy.recheck(task, "open_in_app", args, decision.paths) == "path: outside the allowed roots"
 
 
+def test_open_in_app_refuses_a_comma_or_semicolon(policy, dirs):
+    """Explorer splits a comma out of one argument. A semicolon is refused too (P3.7 D2)."""
+    root = dirs[0]
+    for name in ("a,b", "a;b"):
+        folder = root / name
+        folder.mkdir()
+        assert _decide(policy, "open_in_app", app="notepad", path=str(folder)) == (
+            "deny", "path: comma or semicolon")
+
+
+def test_open_in_app_refuses_a_junction_whose_target_name_holds_a_comma(policy, dirs):
+    """The check reads the resolved path. The junction's own name has no comma."""
+    root = dirs[0]
+    target = root / "x,y"
+    target.mkdir()
+    link = root / "jump"
+    _winapi.CreateJunction(str(target), str(link))
+    assert "," not in link.name
+    assert _decide(policy, "open_in_app", app="notepad", path=str(link)) == (
+        "deny", "path: comma or semicolon")
+
+
+def test_create_folder_may_use_a_comma(policy, dirs):
+    """The comma rule is for opens only. Creating the name is still allowed."""
+    assert _decide(policy, "create_folder", path=str(dirs[0] / "a,b")) == ("allow", "")
+
+
+def test_open_in_app_recheck_refuses_a_comma_resolved_after_the_request(policy, dirs):
+    """Queued on `keep`. Before approve that path is a junction to `a,b`.
+
+    A rename of `keep` itself would leave the queued string missing, and realpath of a
+    missing path has no comma, so recheck would not see the rule.
+    """
+    root = dirs[0]
+    keep = root / "keep"
+    keep.mkdir()
+    task = policy.new_task(tainted=True)
+    args = {"app": "notepad", "path": str(keep)}
+    decision = policy.check(task, "open_in_app", args)
+    assert decision.action == "confirm"
+    keep.rmdir()
+    renamed = root / "a,b"
+    renamed.mkdir()
+    _winapi.CreateJunction(str(renamed), str(keep))
+    assert policy.recheck(task, "open_in_app", args, decision.paths) == "path: comma or semicolon"
+
+
 def test_folder_containing_a_protected_folder_cannot_be_changed(nested):
     policy, root, keep = nested
     refused = "contains a protected folder"

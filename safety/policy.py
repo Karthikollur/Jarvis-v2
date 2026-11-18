@@ -316,6 +316,8 @@ class Policy:
             try:
                 changed = mutating and name not in rule.into
                 paths[name] = resolve_inside(args.get(name), self.roots, self.protected, changed)
+                if rule.opens and re.search(r"[,;]", str(paths[name])):
+                    raise PathRefused("comma or semicolon")  # Explorer splits its arguments on these (P3.7)
             except PathRefused as refused:
                 raise PathRefused(f"{name}: {refused}") from None
         if rule.list_params:

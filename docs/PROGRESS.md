@@ -129,12 +129,16 @@ Newest session entry goes at the top of the Session log.
   Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
   `docs/plans/P3.6.md` and approves it before any code. P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
-  2026-11-18 with changes (`docs/plans/P3.7.md`, docs only, no code yet): A Explorer comma
+  2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
   Job Object with `KILL_ON_JOB_CLOSE`, D undo keeps a non-empty folder, E client errors
   (Karthik writes it), G core prints tool status; F (rename retry) cut. A, B, B2 before P4.
-  Next: the Explorer probe in the plan, then section A by Cursor on Karthik's go. P3.6 D1
-  to D3 are still open.
+  Explorer probe on KK_19: comma splits (finding 1 stays Important); semicolon does not,
+  and `;` stays in the rule. Section A DONE (commit `P3.7: open_in_app refuses commas`):
+  `open_in_app` refuses a resolved path containing `,` or `;` before anything is queued.
+  624 passed, 4 skipped. 5 mutants killed (baseline 5). PLAN.md not ticked. Next: Karthik's
+  manual check (recreate is not needed; `t,\Users` is still there), then Claude Code
+  reviews A before section B. P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -462,6 +466,11 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-18 — `accepts` for explorer is a security boundary, together with the policy comma
+  rule. Explorer launches a file it is handed, and it splits a command-line argument on
+  `,`. The 2026-11-15 line that called `accepts` "not a security boundary" is corrected.
+  The real `apps.toml` stays pinned by `test_real_apps_toml_loads_and_matches_the_allowlist`.
+  — The probe on KK_19 opened `C:\Users` from `C:\JarvisSandbox\t,\Users`. — Karthik (P3.7 A)
 - 2026-11-18 — P3.7 approved with changes: F (rename retry) cut, B2 hides `recall_memory`
   until P4, C sets `KILL_ON_JOB_CLOSE`, E written by Karthik. — F fixes an error never seen
   outside a test; a 501 tool wastes one of 8 calls; a bridge crash must not leave a
@@ -518,7 +527,7 @@ Format: `YYYY-MM-DD — decision — reason — who`
 - 2026-11-15 — P3.4: `apps.toml` entries declare `accepts = file | folder | any` (vscode any,
   explorer folder, notepad file, calculator none). The handler refuses a mismatch, not the
   policy. — Not a security boundary: the policy already bounds `app` and `path`; a third
-  allowlist is not worth it. — Karthik (planned by Claude Code)
+  allowlist is not worth it. (corrected, see 2026-11-18) — Karthik (planned by Claude Code)
 - 2026-11-15 — P3.4: eval case t25 "Open VS Code on my sandbox project." -> `open_in_app`;
   count 41 -> 42. — `test_every_stub_tool_is_exercised` needs a case per stub tool; same as
   `move_files`. — Karthik
@@ -994,6 +1003,43 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (Explorer probe, then P3.7 A)
+
+Explorer probe, run by Karthik on KK_19, 2026-11-18. Both windows closed. The probe
+folders stay until after A's manual check; Karthik removes them by hand.
+
+- Printed `C:\Windows\explorer.exe C:\JarvisSandbox\t,\Users`. The window opened the real
+  `C:\Users`. Explorer split the argument on the comma. Finding 1 is confirmed and stays
+  Important.
+- Printed `C:\Windows\explorer.exe C:\JarvisSandbox\s;\Users`. The window opened
+  `C:\JarvisSandbox\s;\Users`. The semicolon did not split. `;` stays in the rule as cheap
+  defence (D2).
+
+Section A, on Karthik's go. Red run before the policy change: 4 failed, 1 passed
+(`create_folder` of `a,b` was already allowed). The recheck test failed with
+`path: changed since the request`, which is what a missing comma rule returns.
+- `safety/policy.py` `_resolve` refuses an `opens` path whose resolved name contains
+  `,` or `;` (`path: comma or semicolon`, 403, before the queue).
+- Ruling: test 5 puts a junction to `a,b` at the queued path. Renaming the folder
+  leaves the queued string missing, and `realpath` of a missing path has no comma, so
+  recheck would allow it and would not kill "rule not reached by recheck". Cost if
+  wrong: the test does not match a plain rename; a plain rename is still allowed at
+  recheck because the queued path no longer exists.
+- Comment in `bridge/tools.py`: `accepts` is a security boundary for explorer. One
+  comment line above `[explorer]` in `config/apps.toml`. Decision 2026-11-15 marked
+  corrected; new decision dated 2026-11-18.
+- Files: `safety/policy.py`, `bridge/tools.py`, `config/apps.toml`, `tests/test_policy.py`,
+  `tests/test_tools.py`, `docs/plans/P3.7.md`, this file. PLAN.md not ticked. Nothing in
+  `.claude/`.
+- Tests: `uv run python -m pytest` with `PYTHONPATH` set to the repo -> 624 passed,
+  4 skipped. Red was the five new tests (4 failed). Mutants in
+  `%TEMP%\p37a_mutants.py` (not committed): baseline 5 passed, all 5 killed,
+  `safety/policy.py` restored (sha256
+  `461fb09a004edb60e6ae6d2ec3ada3b8f2454757b6a2d941b9b81c93497e21f9`).
+- Stopped at: this commit. Next concrete step: Karthik's manual check
+  (`Jtool 'open_in_app' @{ app = 'explorer'; path = 'C:\JarvisSandbox\t,\Users' }` ->
+  403 `path: comma or semicolon`, no window), then Claude Code reviews A before B.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 plan approved with changes)
 

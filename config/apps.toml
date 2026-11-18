@@ -10,6 +10,7 @@ accepts = 'file'
 [calculator]
 command = ['C:\Windows\System32\calc.exe']
 
+# accepts must stay 'folder': Explorer runs a file it is handed.
 [explorer]
 command = ['C:\Windows\explorer.exe']
 accepts = 'folder'

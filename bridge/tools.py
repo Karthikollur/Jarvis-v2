@@ -474,10 +474,10 @@ def mutating(undo_log, apps: dict[str, App], scripts=None) -> dict[str, Any]:
     def open_in_app(args):
         name, path = args["app"], args["path"]  # both checked by the policy (rule 1)
         app = apps[name]
-        # ponytail: an app that takes no path fails in the handler (500 Tool failed, one
-        # failure counted), not in the policy: a third allowlist is not worth a Policy
-        # kwarg for a refusal that is not a security boundary (the policy already bounds
-        # app and path).
+        # `accepts` is a security boundary for explorer: Explorer launches a file it is
+        # handed. It holds together with the policy's comma rule. The real config is pinned
+        # by test_real_apps_toml_loads_and_matches_the_allowlist.
+        # An app that takes no path still fails here (500, one failure counted), not in the policy.
         if app.accepts is None:
             raise OSError(f"{name} does not open a path")
         found = os.lstat(path)  # never follow a link or junction (rule 12)
