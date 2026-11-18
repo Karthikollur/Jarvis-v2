@@ -38,6 +38,7 @@ class Core:
 
     def handle(self, text: str, fresh: bool = True) -> str:
         self._guard()  # rule 14, before anything
+        self.results = []  # last request only; the reply strings below stay as they are
         routed = self._router(text) if self._router else None
         if routed == ("stop", {}):
             self._client.stop()  # a spoken stop: ends tasks, no latch
@@ -49,8 +50,11 @@ class Core:
             name, args = routed
             self._record(name, args)
             result = self._tool(name).call(args)
+            self.results = [result]
             return result.content if result.success else f"Could not {name}: {result.content}"
-        answer = self._agent.run(text, self._context).content
+        run = self._agent.run(text, self._context)
+        self.results = run.tool_results
+        answer = run.content
         self._context.conversation.add(Message(role=Role.USER, content=text))
         self._context.conversation.add(Message(role=Role.ASSISTANT, content=answer))
         return answer

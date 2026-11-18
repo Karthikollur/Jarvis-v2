@@ -15,7 +15,11 @@ def _say(pending_id) -> None:
 def main(argv=None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     try:
-        print(build(on_pending=_say).handle(" ".join(argv)))
+        core = build(on_pending=_say)
+        print(core.handle(" ".join(argv)))
+        for result in core.results:
+            line = "ok" if result.success else result.content
+            print(f"  {result.tool_name}: {line}")
     except urllib.error.URLError:
         print("bridge is not running")
         raise SystemExit(1)

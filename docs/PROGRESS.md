@@ -153,8 +153,10 @@ Newest session entry goes at the top of the Session log.
   DONE (commit `P3.7: undo keeps a non-empty folder`): a created folder that still holds
   anything is refused before quarantine, and the record stays not undone. 636 passed,
   4 skipped. No mutant table. PLAN.md not ticked. Section D reviewed by Claude Code
-  2026-11-18: ACCEPTED (Session log). Next: section G by Cursor (`P3.7: core prints tool
-  status`). E is Karthik's and does not block G.
+  2026-11-18: ACCEPTED (Session log). Section G DONE (commit `P3.7: core prints tool
+  status`): `Core.handle` keeps the last request's tool results, and the CLI prints
+  one status line under the unchanged reply. 639 passed, 4 skipped. No mutant table.
+  PLAN.md not ticked. E is Karthik's and does not block review of G.
   Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
   there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
@@ -1024,6 +1026,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (P3.7 G)
+
+Section G, on Karthik's go. The CLI printed only the model's reply.
+
+Red run before the code, three tests: 3 failed.
+`test_refused_create_folder_is_not_ok` and `test_results_reset_then_fast_path_keeps_one`
+raised `AttributeError`: `Core` has no `results`. The replies were already "I created it"
+and "Listed.". `test_cli_prints_ok_and_expired` printed only `I created it`.
+- `core/agent.py`: `self.results = []` right after `_guard()`. The fast path sets
+  `[result]` and keeps both reply strings. The agent path keeps the `AgentResult`, sets
+  `self.results = run.tool_results`, and returns `run.content`.
+- `core/__main__.py`: prints the reply, then `  {tool_name}: ok` or
+  `  {tool_name}: {content}`.
+- `tests/test_core.py`: the refused `create_folder`, the reset then the fast path, and
+  the CLI stub with one ok result and one `expired` result.
+- Files: those three, `docs/plans/P3.7.md`, this file. PLAN.md not ticked. Nothing in
+  `.claude/`. The stale "Verify before executing" line was left alone.
+- Tests: `uv run python -m pytest` from PowerShell -> 639 passed, 4 skipped.
+  No mutant table.
+- Stopped at: this commit. Next concrete step: Claude Code reviews G. E is still Karthik's.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 D review: accepted)
 

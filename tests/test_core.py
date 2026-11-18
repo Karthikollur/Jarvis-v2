@@ -21,7 +21,7 @@ from core.agent import Core, GuardError, build
 from core.bridge_client import BridgeClient, BridgeError
 from core.specs import SPECS
 from core.tools import BridgeTool, HIDDEN, bridge_tools
-from openjarvis.core.types import Role
+from openjarvis.core.types import Role, ToolResult
 from openjarvis.engine._stubs import InferenceEngine
 from openjarvis.tools._stubs import BaseTool, ToolSpec
 from safety.policy import MAX_SECONDS, TOOLS
@@ -443,6 +443,39 @@ def test_refusal_is_an_observation(live_bridge):
     assert not outside.exists()
 
 
+def test_refused_create_folder_is_not_ok(live_bridge):
+    """A refused tool stays a failed result. The reply is still the model's words."""
+    outside = live_bridge[1].parent / "outside" / "x"
+    core, _engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        tool_call("create_folder", json.dumps({"path": str(outside)})),
+        answer("I created it"),
+    ])
+    assert core.handle("make it") == "I created it"
+    result = core.results[0]
+    assert result.tool_name == "create_folder"
+    assert result.success is False
+    assert result.content.startswith("refused:")
+    shown = f"  {result.tool_name}: {'ok' if result.success else result.content}"
+    assert shown == f"  create_folder: {result.content}"
+
+
+def test_results_reset_then_fast_path_keeps_one(live_bridge):
+    """No tool call clears the last request. A fast-path request keeps that one result."""
+    root = live_bridge[1]
+    core, _engine, _client, _root, _storage, _base = make_core(live_bridge, [
+        tool_call("list_dir", json.dumps({"path": str(root)})),
+        answer("Listed."),
+        answer("Nothing."),
+    ])
+    assert core.handle("list it") == "Listed."
+    assert len(core.results) == 1
+    assert core.handle("thanks") == "Nothing."
+    assert core.results == []
+    reply = core.handle("what time is it")
+    assert reply == core.results[0].content
+    assert [(item.tool_name, item.success) for item in core.results] == [("get_time", True)]
+
+
 @pytest.mark.parametrize("decision", ["approve", "deny"])
 def test_pending_approve_and_deny(live_bridge, decision):
     root, storage, base = live_bridge[1], live_bridge[2], live_bridge[3]
@@ -578,3 +611,25 @@ def test_cli_says_when_the_bridge_is_down(monkeypatch, capsys):
         cli.main(["what time is it"])
     assert raised.value.code == 1
     assert capsys.readouterr().out == "bridge is not running\n"
+
+
+def test_cli_prints_ok_and_expired(monkeypatch, capsys):
+    import core.__main__ as cli
+
+    class Stub:
+        def __init__(self):
+            self.results = [
+                ToolResult("get_time", "12:00", True),
+                ToolResult("create_folder", "expired", False),
+            ]
+
+        def handle(self, _text):
+            return "I created it"
+
+    monkeypatch.setattr(cli, "build", lambda **_kwargs: Stub())
+    cli.main(["make a folder"])
+    assert capsys.readouterr().out == (
+        "I created it\n"
+        "  get_time: ok\n"
+        "  create_folder: expired\n"
+    )
