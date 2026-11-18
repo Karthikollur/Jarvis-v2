@@ -195,7 +195,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
       `BridgeTool` by type, else refuse. Tests include the refused case.
       Plan: `docs/plans/P3.5.md`. (Bridge restart, decided 2026-11-15: the core does not
       detect it; the bridge starts tainted, so only a fresh request clears it.)
-- [ ] P3.5b Multi-step sort (P3.5 manual check): `list_dir` stub returns a listing, eval
+- [x] P3.5b Multi-step sort (P3.5 manual check): `list_dir` stub returns a listing, eval
       case t26 scores the follow-up calls (`also`), prompt rules 5 and 6 allow a
       list -> create -> move chain; fast-path count and `--model` fixed for `--real`.
       Plan: `docs/plans/P3.5b.md`.

@@ -124,12 +124,16 @@ Newest session entry goes at the top of the Session log.
   (t26 ok, refusals 10/10, clarify 5/5, all 43/43 both times). Variants 1 and 2
   rejected (Session log); variant 4 (rule 5 without the quoted a05 sentence) rejected,
   a05 fails without it (Open questions). Section B reviewed and ACCEPTED by Claude Code
-  2026-11-16 as variant 3, overfit on a05 noted. P3.5b stays unticked until Karthik's
-  manual check. Next: the manual check in `docs/plans/P3.5b.md` plus the held-out clarify
-  check from the B review entry.
+  2026-11-16 as variant 3, overfit on a05 noted. Manual check PASSED 2026-11-18 (approvals
+  made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
+  Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
+  `docs/plans/P3.6.md` and approves it before any code.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
+- P3 "Done when": PASSED 2026-11-18, accepted by Karthik (task `4e5b3c13…`, 6 of 8
+  calls, one task id, undo restored `downloads`). The four approvals were made by a script
+  polling `/pending` with the ui token, not read by a person. P3 stays open for P3.6.
 - Phase gate P0: PASSED 2026-11-11. Karthik reported `OK` with Wi-Fi off. Separately, Claude
   Code ran `core/hello_tool.py` with every non-loopback socket connect and DNS lookup blocked
   inside the Python process: `OK`, zero outbound attempts. Limit of that second check: it
@@ -236,12 +240,24 @@ Newest session entry goes at the top of the Session log.
   same escape and runs. Evals:
   `uv run python evals/run.py` -> 40/40 (re-run 2026-11-13 after P2.9 D; a03 now scored as a clarification; needs Ollama, takes about 1 minute). Live smoke test:
   `uv run python core/hello_tool.py` must print `OK` (needs Ollama running)
-- Uncommitted work: none. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
+- Uncommitted work: none. Untracked `jarvis_p35b_report.txt` in the repo root is Karthik's
+  raw P3.5b report (2026-11-18), recorded in the Session log; not a cut-off task. `.claude/settings.local.json` (local agent permissions) is gitignored and left untouched.
 - Blockers: none
 - Run OpenJarvis with (PowerShell, from repo root; both env vars required):
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Claude Code, 2026-11-18, from the P3.5b manual check)
+  (1) The model's final reply can claim work that failed. Run 1 (task `f87865b3…`): the
+  first `create_folder` expired, the second was refused (`time budget exceeded`), and the
+  reply said "I created two folders". Proposal: the core prints each tool's real status
+  itself, so the screen (and later the voice reply) does not rest on the model's sentence.
+  (2) Four hand approvals inside the 120 s task budget did not fit through a terminal
+  (18 s and 46 s per approval; the third expired). Input for the P6 approval dialog, or for
+  the time budget value.
+  (3) An approval script with the ui token turns every confirm into an allow. Fine once in
+  the sandbox; not for real use. P6 keeps the ui token out of scriptable reach.
 
 - (Claude Code, 2026-11-16, from the plans written ahead; none decided, none blocks P3)
   (1) Smart App Control blocks unsigned `.exe` files, and a Tauri build is one. P6 may
@@ -957,6 +973,45 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.5b manual check: PASSED; P3 "Done when" met)
+
+Start of session: tree clean on `cce05a8`; `uv run python -m pytest` -> 619 passed,
+4 skipped. No code changed this session.
+
+Manual check of `docs/plans/P3.5b.md`, sandbox reseeded (`old.zip` moved to the root).
+Three runs of the P3 "Done when" command, all checked by Claude Code against
+`%LOCALAPPDATA%\Jarvis\audit.jsonl`:
+
+- Run 1 (task `f87865b3…`, by hand): `open_in_app vscode C:\JarvisSandbox`, `list_dir`,
+  `create_folder Downloads\PDFs` queued and expired (nobody approved), `create_folder
+  Downloads\Text` refused `time budget exceeded (120 s)`. Nothing changed on disk. Final
+  reply falsely said "I created two folders" (Open questions).
+- Run 2 (task `b60ebdfb…`, by hand): same chain; both folders approved (18 s, 46 s), the
+  `move_files` of three pdfs expired at the budget, the `c.txt` move refused. The two empty
+  folders were removed before run 3.
+- Run 3 (task `4e5b3c13…`, fresh bridge start 08:58:25 UTC): Karthik ran it through a Grok
+  bot; approvals by a script polling `/pending` every 0.5 s (0.14 to 0.33 s after each
+  `queued`). Calls: `open_in_app`, `list_dir`, `create_folder` PDFs, `create_folder` Text,
+  `move_files` [a.pdf, b.pdf, report.pdf] -> PDFs (`moved 3, complete`), `move_files`
+  [c.txt] -> Text (`moved 1, complete`). 6 of 8 calls, every `recheck: ok`, one task id.
+  Reply: "VS Code is open on your sandbox project. Downloads are sorted into PDFs and Text
+  folders." (true). Then six `undo_result: done` (four moves, then Text, then PDFs);
+  `downloads` holds the four files again. Folder names chosen by the model: `PDFs`, `Text`.
+- Held-out clarify (task `3b8f40e3…`): "Start a script for me." asked which of
+  `dev_server`, `run_tests`, `backup_notes`; no tool request in the audit log.
+- `evals/run.py --real` on t25 and on t01 + t25: both ok, fast path 1 of 2 (t01
+  `get_time`).
+
+Checked after the run: no approval script still running; bridge and VS Code left open.
+Karthik accepted the run 3 result as the manual check, with the scripted approvals noted.
+P3.5b ticked in PLAN.md. The P3 "Done when" is met; P3 stays open for P3.6.
+`jarvis_p35b_report.txt` (Karthik's raw report, repo root) is left untracked; its content
+is above.
+
+Files changed: `docs/PLAN.md` (P3.5b tick), this file.
+Next step: Karthik reads `docs/plans/P3.6.md`, answers D1 to D3, approves or changes it.
+Also open: the five review findings of 2026-11-16 (P3.7 plan or open questions).
 
 ### 2026-11-16 — Agent: Claude Code (review of P0 to P3; roles in AGENTS.md)
 
