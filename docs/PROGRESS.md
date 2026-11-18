@@ -141,9 +141,12 @@ Newest session entry goes at the top of the Session log.
   Section B DONE (commit `P3.7: guard checks the executor`): `_guard` also checks
   `self._agent._executor._tools` by identity (`is`). 627 passed, 4 skipped. 3 mutants
   killed (baseline 3). PLAN.md not ticked. Section B reviewed by Claude Code 2026-11-18:
-  ACCEPTED (suite and mutants re-run, Session log). Next: section B2 by Cursor.
-  Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
-  there). P3.6 D1 to D3 are still open.
+  ACCEPTED (suite and mutants re-run, Session log). Section B2 DONE (commit
+  `P3.7: hide recall_memory until P4`): `HIDDEN` is `recall_memory`, `bridge_tools` skips
+  it, and `_guard` compares the list and the executor with `set(TOOLS) - HIDDEN`.
+  631 passed, 4 skipped. 4 mutants killed (baseline 4). PLAN.md not ticked. Next:
+  Claude Code reviews B2 before C. Karthik's manual check of A can run any time before
+  the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1006,8 +1009,43 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   12.9 s. t26 ok both times. t24 ok both times (it may still miss; it did not).
   a05 ok both times: no tool call, the reply asks which named script. No case that
   passed in section A failed.
+- 2026-11-18 — not a run. P3.7 B2: `evals/run.py --real` t10 now fails until P4, because
+  the core no longer offers `recall_memory`. Stub evals still offer `list(SPECS)`, so t10
+  still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (P3.7 B2)
+
+Section B2, on Karthik's go. The bridge still has no `recall_memory` handler
+(`HANDLERS` and `mutating()`).
+
+Plan change, approved before the edit: test 3 is parametrised `both` and
+`executor_only`. `both` alone does not kill "guard allows hidden names in the
+executor", because the list check fires first. `executor_only` leaves the list
+untouched and only sets `run["recall_memory"]`. The B2 mutant table row is now
+`3 executor_only`.
+
+Red run before the code change: 3 failed, 1 passed. Test 1 could not import
+`HIDDEN`. Test 2 still saw `recall_memory` offered. `both` reached the empty
+engine (`IndexError`; the old guard allows that setup). `executor_only` already
+raised `GuardError` from B's identity check.
+- `core/tools.py`: `HIDDEN = frozenset({"recall_memory"})`, and `bridge_tools` skips
+  those names. `core/agent.py` `_guard` compares the list and the executor with
+  `set(TOOLS) - HIDDEN`.
+- `test_bridge_tools_match_the_table` expected every `TOOLS` name. It now expects
+  `TOOLS` order with `HIDDEN` skipped. The parameter and timeout checks are unchanged.
+  `safety/policy.py`, `core/specs.py`, and the stub evals are unchanged.
+- Files: `core/tools.py`, `core/agent.py`, `tests/test_core.py`, `docs/plans/P3.7.md`,
+  this file. PLAN.md not ticked. Nothing in `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 631 passed, 4 skipped. The first
+  full run was 630 passed, 1 failed, on `test_bridge_tools_match_the_table`, before that
+  assertion was updated. Mutants in `%TEMP%\p37b2_mutants.py` (not committed): baseline
+  4 passed, all 4 killed. `core/agent.py` restored (sha256
+  `e2935c381f89c1f7d21ba86e2b88a4263d5788722fb24d22122b562bff6f1cd4`). `core/tools.py`
+  restored (sha256 `0d658861fb9bad896235cd121101cdfecc799bfa9a346bee0f19b721701d3615`).
+- Eval results: `--real` t10 is expected to fail until P4. `--real` was not run.
+- Stopped at: this commit. Next concrete step: Claude Code reviews B2 before C.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 B review: accepted)
 

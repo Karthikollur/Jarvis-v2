@@ -13,7 +13,7 @@ from openjarvis.engine.ollama import OllamaEngine
 
 from core.bridge_client import BridgeClient
 from core.router import route
-from core.tools import BridgeTool, bridge_tools
+from core.tools import BridgeTool, HIDDEN, bridge_tools
 from safety.policy import MAX_CALLS, TOOLS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -59,9 +59,9 @@ class Core:
         held = list(self._agent._tools)  # the agent's own list (upstream pinned at e6b7137)
         run = self._agent._executor._tools  # what OpenJarvis offers and dispatches: a dict built once from that list
         if (
-            {t.spec.name for t in held} != set(TOOLS)
+            {t.spec.name for t in held} != set(TOOLS) - HIDDEN
             or any(type(t) is not BridgeTool for t in held)
-            or set(run) != set(TOOLS)
+            or set(run) != set(TOOLS) - HIDDEN
             or any(run[t.spec.name] is not t for t in held)
         ):
             raise GuardError("agent tool set is not the bridge tool table")
