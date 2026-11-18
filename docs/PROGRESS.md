@@ -136,9 +136,10 @@ Newest session entry goes at the top of the Session log.
   Explorer probe on KK_19: comma splits (finding 1 stays Important); semicolon does not,
   and `;` stays in the rule. Section A DONE (commit `P3.7: open_in_app refuses commas`):
   `open_in_app` refuses a resolved path containing `,` or `;` before anything is queued.
-  624 passed, 4 skipped. 5 mutants killed (baseline 5). PLAN.md not ticked. Next: Karthik's
-  manual check (recreate is not needed; `t,\Users` is still there), then Claude Code
-  reviews A before section B. P3.6 D1 to D3 are still open.
+  624 passed, 4 skipped. 5 mutants killed (baseline 5). PLAN.md not ticked. Section A
+  reviewed by Claude Code 2026-11-18: ACCEPTED (suite and mutants re-run, Session log).
+  Next: section B by Cursor; Karthik's manual check of A can run any time before the P3.7
+  tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1003,6 +1004,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 A review: accepted)
+
+Reviewed `54049ea` against `docs/plans/P3.7.md` section A. No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 624 passed, 4 skipped (matches).
+  `%TEMP%\p37a_mutants.py` read first, then run: baseline 5 passed, all 5 killed, sha256 of
+  `safety/policy.py` after the run `461fb09a...e21f9` (matches the commit), tree clean.
+- Rule matches the plan: inside the `_resolve` try, on the resolved path, `opens` rules
+  only, prefixed `path:`. Traced the string Explorer gets: `bridge/app.py:293` passes
+  `{**args, **paths}`, and approve passes `pending.paths` after `recheck` (`:467-478`), so
+  the handler launches exactly the string the rule checked. A junction swapped in after the
+  request is refused by recheck, and also by the handler's `lstat` reparse check.
+- Test 5 deviation (junction instead of rename): accepted. The reason is right: a renamed
+  queued path is missing, `realpath` of it has no comma, and the handler would fail on the
+  missing path anyway. Plan text already notes it.
+- Wording: `bridge/tools.py` comment, `apps.toml` line and Decision correction match the plan.
+- Minor (no fix): the mutant script rewrites `safety/policy.py` on disk and restores it under
+  a sha check, while the plan's Rules say "in memory". Safe here because the restore is
+  verified. For B, B2 and C: follow the rule, or Karthik relaxes it to "on disk, sha-checked".
+- Note (environment, not the repo): from Git Bash, `uv run python -m pytest` fails at
+  conftest with `No module named 'safety'`; from PowerShell it runs. Use PowerShell.
+
+PLAN.md not ticked: P3.7 is ticked after the last section and after A's manual check.
+Files changed: this file. Next step: Cursor posts the pre-edit summary for section B
+(`P3.7: guard checks the executor`); Karthik runs A's manual check when the bridge is up.
 
 ### 2026-11-18 — Agent: Cursor (Explorer probe, then P3.7 A)
 
