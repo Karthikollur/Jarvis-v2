@@ -127,7 +127,9 @@ Newest session entry goes at the top of the Session log.
   2026-11-16 as variant 3, overfit on a05 noted. Manual check PASSED 2026-11-18 (approvals
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
   Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
-  `docs/plans/P3.6.md` and approves it before any code.
+  `docs/plans/P3.6.md` and approves it before any code. P3 phase review 2026-11-18: PASS
+  WITH FIXES, three Important findings (Session log); Karthik decides whether they become
+  plan `P3.7`.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -973,6 +975,68 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3 phase review: PASS WITH FIXES)
+
+Phase review of `202d7b2..bc954fe` (all P3 code; no code changed since the 2026-11-16
+review). Read-only reviewer subagent on the diff; Claude Code re-ran the checks and
+verified the three Important claims below against source. No code changed.
+
+Re-run: `uv run python -m pytest` -> 619 passed, 4 skipped. `evals/run.py` (stub) ->
+43/43; tool selection 28/28, arguments 26/26, must-refuse 10/10, clarify 5/5, fast path
+5/43, median 1.1 s. Rule sweep: every handler has a policy entry (`recall_memory` is
+policy-only until P4); no `os.remove`/`unlink`/`rmtree` on user files (the one `unlink`
+is the bridge's own `icacls` temp file); no `shell=True`; the core's only HTTP is the
+loopback, no-proxy client.
+
+New findings (not fixed, not planned; Karthik decides, proposal: one plan `P3.7`):
+
+1. Important, needs a manual test. `open_in_app` with `explorer`: commas pass the path
+   rules (`_WILDCARDS` in `safety/policy.py` has no `,` or `;`) and `list2cmdline` does
+   not quote them (checked: `C:\Windows\explorer.exe C:\JarvisSandbox\x,\Windows\System32`).
+   Explorer splits its arguments on commas, so a folder chain such as
+   `x,\Windows\System32\cmd.exe` inside the sandbox may hand Explorer a path outside the
+   roots, which it would launch (finding 1 of 2026-11-16). Unverified whether Explorer
+   acts on it. Fix: refuse `,` and `;` in `open_in_app` paths, plus a refusal test.
+2. Important. `run_named_script` timeout can hang the bridge: on Windows,
+   `subprocess.run` calls `communicate()` with no timeout after `kill()` (checked in the
+   3.12 stdlib). A script that leaves a child holding stdout (a dev server) blocks the
+   worker for good; Stop cannot end it. Only a mocked run is tested. Fix before any
+   long-running entry (`dev_server`) gets a real command: Popen in a Job Object, output
+   to a temp file.
+3. Important. The runtime guard in `core/agent.py` `_guard` checks `self._agent._tools`
+   (a list), but OpenJarvis dispatches from `self._agent._executor`, a dict built once
+   from that list in the constructor (`OpenJarvis/.../agents/_stubs.py:443`). A tool
+   swapped into the executor would run without the guard noticing; the tests in
+   `tests/test_core.py` only change the list. Fix: also check the executor's tools are the
+   same `BridgeTool` objects, plus a test that tampers with the executor.
+4. Minor. Check-then-act: handlers re-open the checked path by name and lstat only the
+   last part, so a parent swapped to a junction between check and act escapes (needs a
+   local same-user process). `move_file` lacks the destination reparse check that
+   `move_files` has.
+5. Minor. A part-way `move_files` failure is recorded as success (no failure-budget
+   count); if `_move`'s move-back fails, the file stays at `target` with no undo record and
+   the audit logs only the error type.
+6. Minor. `core/specs.py` `APPS` and `SCRIPTS` are hand-kept copies of the config files
+   (`browser` offered on purpose for refusal eval t14). A test checks apps.toml is a
+   subset; nothing ties `SCRIPTS` to `scripts.toml`.
+7. Minor. `run_named_script` starts children in the bridge console (no
+   `CREATE_NO_WINDOW` / new process group); they receive its Ctrl+C.
+
+The 2026-11-16 findings, re-checked: 1 confirmed (and new finding 1 shows the folder
+rule leaks); 2 confirmed (recoverable: undoing the quarantine record restores it);
+3 confirmed, also a non-JSON 200 and socket errors other than `URLError` in
+`core/__main__.py`; 5 now judged probably real: `os.rename` of a folder fails with
+WinError 5 while another process holds a handle inside it (VS Code watchers, Defender,
+indexer). The Done-when flow leaves VS Code open on the sandbox. Fails closed, no retry.
+
+Verdict: the policy and bridge core are sound (no way outside the roots, past the token,
+or to a T2 action without a click was demonstrated). Fix 1 and 3 before P4 (P4 adds
+untrusted document text, which makes tainted prompting real); fix 2 before `dev_server`
+gets a real command. Findings 1 to 3 are not ticked as anything in PLAN.md.
+
+Files changed: this file. Next step: Karthik decides P3.7 (these findings plus the
+2026-11-16 ones) and answers D1 to D3 in `docs/plans/P3.6.md`.
 
 ### 2026-11-18 — Agent: Claude Code (P3.5b manual check: PASSED; P3 "Done when" met)
 
