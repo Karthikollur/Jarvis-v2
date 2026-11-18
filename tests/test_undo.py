@@ -5,9 +5,14 @@ import os
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
+from bridge.app import create_app, load_token
 from safety.policy import resolve_inside
 from safety.undo import UndoLog, UndoRefused, UnknownRecord
+
+BASE = "http://127.0.0.1:8765"
+LOOPBACK = ("127.0.0.1", 50000)
 
 
 @pytest.fixture
@@ -101,20 +106,63 @@ def test_move_record_undo_moves_back(env):
     assert not destination.exists()
 
 
-def test_create_record_undo_quarantines_then_restores(env):
+def test_create_record_undo_refuses_a_non_empty_folder(env):
     log, root, quarantine, resolve = env
     folder = root / "new"
     folder.mkdir()
     record = log.created(folder, "create_folder")
     (folder / "added later.txt").write_text("later")
-    done = log.undo(record.id, resolve)
-    assert not folder.exists()
-    again = [r for r in log.list() if r.kind == "quarantined"]
-    assert len(again) == 1 and again[0].path == str(folder)
-    assert (quarantine / again[0].id / "item" / "added later.txt").read_text() == "later"
-    assert done.undone is not None
-    log.undo(again[0].id, resolve)  # the new record restores the folder
+    refused(log, record.id, resolve, root, quarantine, match="not empty")
+    assert folder.is_dir()
     assert (folder / "added later.txt").read_text() == "later"
+    assert log.get(record.id).undone is None
+    assert [item for item in log.list() if item.kind == "quarantined"] == []
+
+
+def test_undo_the_move_then_the_folder(env):
+    log, root, quarantine, resolve = env
+    folder = root / "new"
+    folder.mkdir()
+    created = log.created(folder, "create_folder")
+    source, destination = root / "a.txt", folder / "a.txt"
+    destination.write_text("moved")
+    moved = log.moved(source, destination, "move_file")
+    log.undo(moved.id, resolve)
+    assert source.read_text() == "moved"
+    assert not destination.exists()
+    done = log.undo(created.id, resolve)
+    assert not folder.exists()
+    assert log.get(moved.id).undone is not None
+    assert done.undone is not None
+
+
+def test_non_empty_folder_undo_through_the_bridge_is_409(dirs):
+    root = Path(os.path.realpath(dirs[0]))
+    storage = root.parent / "storage"
+    storage.mkdir()
+    app = create_app(storage, roots=[root], protected=[])
+    headers = {"x-jarvis-token": load_token(storage)}
+    ui = {"x-jarvis-token": load_token(storage, "ui.token")}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        task = client.post("/task", json={"fresh_context": True})
+        assert task.status_code == 200
+        made = client.post(
+            "/tool",
+            json={"task_id": task.json()["task_id"], "tool": "create_folder", "args": {"path": str(root / "new")}},
+        )
+        assert made.status_code == 200
+        folder = root / "new"
+        (folder / "added later.txt").write_text("later")
+        record_id = made.json()["result"]["undo_id"]
+        undone = client.post("/undo", json={"record_id": record_id}, headers=ui)
+        assert undone.status_code == 409
+        assert undone.json()["detail"] == "the folder is not empty: undo what is in it first"
+        assert folder.is_dir()
+        assert (folder / "added later.txt").read_text() == "later"
+        records = client.get("/undo", headers=ui).json()["records"]
+        assert [(record["id"], record["kind"], record["undone"]) for record in records] == [
+            (record_id, "created", None)
+        ]
 
 
 def test_create_undo_works_when_quarantine_is_protected_inside_root(dirs):

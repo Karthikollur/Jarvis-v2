@@ -166,6 +166,8 @@ class UndoLog:
             if record.kind == "created":
                 if not paths["path"].is_dir():
                     raise UndoRefused("the folder to undo is missing")
+                if any(paths["path"].iterdir()):
+                    raise UndoRefused("the folder is not empty: undo what is in it first")
                 self.quarantine(paths["path"], f"undo:{record.id}")
             else:
                 if record.kind == "quarantined":

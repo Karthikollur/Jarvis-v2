@@ -149,9 +149,12 @@ Newest session entry goes at the top of the Session log.
   `P3.7: script runs in a job`): `run_named_script` runs in a Job Object with
   `KILL_ON_JOB_CLOSE`, and `TerminateJobObject` still runs after every exit. 634 passed,
   4 skipped. 10 mutants killed (baseline 12); one row not run, equivalent. PLAN.md not
-  ticked. Section C reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Next:
-  section D by Cursor (`P3.7: undo keeps a non-empty folder`). Karthik's manual check of A can run any
-  time before the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
+  ticked. Section C reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Section D
+  DONE (commit `P3.7: undo keeps a non-empty folder`): a created folder that still holds
+  anything is refused before quarantine, and the record stays not undone. 636 passed,
+  4 skipped. No mutant table. PLAN.md not ticked. Next: Claude Code reviews D before G.
+  Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
+  there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1019,6 +1022,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (P3.7 D)
+
+Section D, on Karthik's go. `undo` of a `created` folder quarantined it even when the
+folder held a file.
+
+Plan change, approved before the edit: the plan did not name
+`test_create_record_undo_quarantines_then_restores`. It is rewritten in place as
+`test_create_record_undo_refuses_a_non_empty_folder`. The quarantine-then-restore half
+is gone; `test_quarantine_folder_and_undo` already covers a folder with content. One
+line in section D names the rewritten test.
+
+Red run before the two lines, four tests: 2 failed, 2 passed.
+`test_create_record_undo_refuses_a_non_empty_folder` did not raise `UndoRefused`.
+`test_non_empty_folder_undo_through_the_bridge_is_409` returned 200. The recovery
+path and the empty-folder undo passed.
+- `safety/undo.py`: after the `is_dir` check in the `created` branch, a non-empty
+  folder raises `UndoRefused` ("the folder is not empty: undo what is in it first")
+  before `quarantine`.
+- `tests/test_undo.py`: the rewritten refusal, `test_undo_the_move_then_the_folder`,
+  and the bridge 409.
+- Files: `safety/undo.py`, `tests/test_undo.py`, `docs/plans/P3.7.md`, this file.
+  PLAN.md not ticked. Nothing in `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 636 passed, 4 skipped.
+  No mutant table.
+- Stopped at: this commit. Next concrete step: Claude Code reviews D before G.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 C review: accepted)
 
