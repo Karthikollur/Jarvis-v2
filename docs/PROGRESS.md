@@ -138,8 +138,11 @@ Newest session entry goes at the top of the Session log.
   `open_in_app` refuses a resolved path containing `,` or `;` before anything is queued.
   624 passed, 4 skipped. 5 mutants killed (baseline 5). PLAN.md not ticked. Section A
   reviewed by Claude Code 2026-11-18: ACCEPTED (suite and mutants re-run, Session log).
-  Next: section B by Cursor; Karthik's manual check of A can run any time before the P3.7
-  tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
+  Section B DONE (commit `P3.7: guard checks the executor`): `_guard` also checks
+  `self._agent._executor._tools` by identity (`is`). 627 passed, 4 skipped. 3 mutants
+  killed (baseline 3). PLAN.md not ticked. Next: Claude Code reviews B before B2.
+  Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
+  there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1004,6 +1007,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   passed in section A failed.
 
 ## Session log
+
+### 2026-11-18 — Agent: Cursor (P3.7 B)
+
+Section B, on Karthik's go. Preconditions re-checked this session: `_guard` read
+`self._agent._tools` only, and the OpenJarvis clone at `e6b7137` stores
+`self._agent._executor._tools` as `dict[str, BaseTool]`.
+
+Red run before the `_guard` change: `test_guard_refuses_a_changed_executor` 3 failed
+(`IndexError` from the empty engine; the old guard did not raise). `Foreign` is local
+to the new test. The list test `test_guard_refuses_a_changed_tool_set` was not edited.
+`replaced` keeps the key and swaps the value. `removed` deletes one key. `added` sets
+`run["shell"]` to the existing `BridgeTool` at `_tools[0]`.
+- `core/agent.py` `_guard` checks the executor dict as well as the list. The executor
+  must hold the same objects (`is`) under the `TOOLS` names.
+- Files: `core/agent.py`, `tests/test_core.py`, `docs/plans/P3.7.md`, this file.
+  PLAN.md not ticked. B2 not touched. Nothing in `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 627 passed, 4 skipped. Mutants in
+  `%TEMP%\p37b_mutants.py` (not committed): baseline 3 passed, all 3 killed,
+  `core/agent.py` restored (sha256
+  `585f34bc0b0fd82720cfa31982bbeb459267cc7bc916495e96306ca5eca0e120`).
+- Stopped at: this commit. Next concrete step: Claude Code reviews B before B2.
 
 ### 2026-11-18 — Agent: Claude Code (P3.7 A review: accepted)
 

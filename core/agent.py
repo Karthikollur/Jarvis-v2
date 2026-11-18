@@ -57,7 +57,13 @@ class Core:
 
     def _guard(self):
         held = list(self._agent._tools)  # the agent's own list (upstream pinned at e6b7137)
-        if {t.spec.name for t in held} != set(TOOLS) or any(type(t) is not BridgeTool for t in held):
+        run = self._agent._executor._tools  # what OpenJarvis offers and dispatches: a dict built once from that list
+        if (
+            {t.spec.name for t in held} != set(TOOLS)
+            or any(type(t) is not BridgeTool for t in held)
+            or set(run) != set(TOOLS)
+            or any(run[t.spec.name] is not t for t in held)
+        ):
             raise GuardError("agent tool set is not the bridge tool table")
 
     def _record(self, name, args) -> bool:  # OrchestratorAgent.before_tool_call hook

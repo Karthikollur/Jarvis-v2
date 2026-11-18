@@ -331,6 +331,35 @@ def test_guard_refuses_a_changed_tool_set(live_bridge, change):
     assert [line for line in audit(storage) if line["event"] == "task"] == []
 
 
+@pytest.mark.parametrize("change", ["replaced", "removed", "added"])
+def test_guard_refuses_a_changed_executor(live_bridge, change):
+    core, engine, _client, _root, storage, _base = make_core(live_bridge, [])
+    run = core._agent._executor._tools
+    if change == "replaced":
+        original = core._agent._tools[0]
+
+        class Foreign(BaseTool):
+            tool_id = original.tool_id
+
+            @property
+            def spec(self):
+                return original.spec
+
+            def execute(self, **params):
+                raise AssertionError("foreign tool ran")
+
+        name = core._agent._tools[0].spec.name
+        run[name] = Foreign()
+    elif change == "removed":
+        del run[core._agent._tools[0].spec.name]
+    else:
+        run["shell"] = core._agent._tools[0]
+    with pytest.raises(GuardError):
+        core.handle("sort it")
+    assert engine.calls == []
+    assert [line for line in audit(storage) if line["event"] == "task"] == []
+
+
 def test_fast_path_get_time_and_open_notepad(live_bridge, monkeypatch):
     """open notepad must not launch a real process."""
     core, engine, _client, _root, storage, _base = make_core(live_bridge, [])
