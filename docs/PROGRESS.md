@@ -144,8 +144,9 @@ Newest session entry goes at the top of the Session log.
   ACCEPTED (suite and mutants re-run, Session log). Section B2 DONE (commit
   `P3.7: hide recall_memory until P4`): `HIDDEN` is `recall_memory`, `bridge_tools` skips
   it, and `_guard` compares the list and the executor with `set(TOOLS) - HIDDEN`.
-  631 passed, 4 skipped. 4 mutants killed (baseline 4). PLAN.md not ticked. Next:
-  Claude Code reviews B2 before C. Karthik's manual check of A can run any time before
+  631 passed, 4 skipped. 4 mutants killed (baseline 4). PLAN.md not ticked. Section B2
+  reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Next: section C by Cursor
+  (`P3.7: script runs in a job`). Karthik's manual check of A can run any time before
   the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
@@ -1014,6 +1015,33 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 B2 review: accepted)
+
+Reviewed `b9eb7f6` against `docs/plans/P3.7.md` section B2 (with Karthik's test 3 change).
+No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 631 passed, 4 skipped (matches).
+  `%TEMP%\p37b2_mutants.py` read first, then run: baseline 4 passed, all 4 killed; sha256
+  of `core/agent.py` `e2935c38...f1cd4` and `core/tools.py` `0d658861...d3615` after the
+  run (match the commit), tree clean.
+- Code is the plan's: `HIDDEN` in `core/tools.py`, `bridge_tools` filters it, both guard
+  set checks use `set(TOOLS) - HIDDEN`. Policy, specs and stub evals unchanged.
+- No side door: `bridge_tools` is the only place that builds a `BridgeTool` in `core/`,
+  and the router never names `recall_memory`.
+- The mutant "guard allows hidden names in the executor" is coded as
+  `set(run) - HIDDEN != set(TOOLS) - HIDDEN`. That is the right shape: it ignores a
+  hidden key in the executor, and only `executor_only` reaches it.
+- `test_bridge_tools_match_the_table` edited (TOOLS order, HIDDEN skipped): a needed
+  consequence of the change, accepted.
+- Note: `executor_only` was green in the red run (the old identity check caught it while
+  the real `recall_memory` was still in the list). Fine: its job is the mutant after B2;
+  the red run is carried by tests 1, 2 and `both`.
+- Nit (no fix): test 1 re-imports `HIDDEN` inside the function; it is already imported
+  at module top.
+
+PLAN.md not ticked. Files changed: this file. Next step: Cursor posts the pre-edit summary
+for section C (`P3.7: script runs in a job`).
 
 ### 2026-11-18 — Agent: Cursor (P3.7 B2)
 
