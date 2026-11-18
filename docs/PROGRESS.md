@@ -149,7 +149,8 @@ Newest session entry goes at the top of the Session log.
   `P3.7: script runs in a job`): `run_named_script` runs in a Job Object with
   `KILL_ON_JOB_CLOSE`, and `TerminateJobObject` still runs after every exit. 634 passed,
   4 skipped. 10 mutants killed (baseline 12); one row not run, equivalent. PLAN.md not
-  ticked. Next: Claude Code reviews C before D. Karthik's manual check of A can run any
+  ticked. Section C reviewed by Claude Code 2026-11-18: ACCEPTED (Session log). Next:
+  section D by Cursor (`P3.7: undo keeps a non-empty folder`). Karthik's manual check of A can run any
   time before the P3.7 tick (`t,\Users` is still there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
@@ -1018,6 +1019,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-18 — Agent: Claude Code (P3.7 C review: accepted)
+
+Reviewed `22b3b69` against `docs/plans/P3.7.md` section C (with Karthik's equivalent-mutant
+ruling). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 634 passed, 4 skipped (matches).
+- Mutants: `%TEMP%\p37c_mutants.py` read first. It held only the last 7, so all 10
+  killable mutants were re-run through a wrapper that adds the first 3 back from the
+  script's own strings: baseline 12 passed, all 10 killed. sha256 after the run:
+  `bridge/tools.py` `10841616...44caf`, `core/specs.py` `464fed83...1c263` (match the
+  commit), tree clean.
+- Handler is the plan's code verbatim. `_kernel32` has `use_last_error=True`, so the
+  `WinError(get_last_error())` paths report the real error. `CloseHandle` argtypes exist.
+- Fails closed: if `TerminateJobObject` fails on a timeout, `wait(timeout=5)` raises, the
+  call is a 500, and `CloseHandle` still kills the tree.
+- Tests: real processes, every wait bounded. Test 5 kills only its own helper by handle
+  (`helper.kill()`); test 3 and 4 kill only the printed grandchild pid in `finally`.
+- Plan fix (reviewer, factual): the row "no `TerminateJobObject`" said "3, 4". Only 3 kills
+  it; on a normal exit `CloseHandle` kills the tree, the same reason as the equivalent row.
+  Row now reads "3 (not 4 ...)". No test or code change.
+- Nit (no fix): if test 5 fails, its grandchild is not killed in `finally`; it exits by
+  itself after 30 s.
+- Known limit, unchanged: `out.read()` reads the whole temp file before the 4096 tail
+  (plan "Not in P3.7": no output cap beyond the tail). Scripts are fixed allowlisted
+  commands.
+
+PLAN.md not ticked. Files changed: this file, `docs/plans/P3.7.md` (one table row).
+Next step: Cursor posts the pre-edit summary for section D.
 
 ### 2026-11-18 — Agent: Cursor (P3.7 C)
 
