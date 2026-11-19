@@ -156,7 +156,8 @@ Newest session entry goes at the top of the Session log.
   2026-11-18: ACCEPTED (Session log). Section G DONE (commit `P3.7: core prints tool
   status`): `Core.handle` keeps the last request's tool results, and the CLI prints
   one status line under the unchanged reply. 639 passed, 4 skipped. No mutant table.
-  PLAN.md not ticked. E is Karthik's and does not block review of G.
+  PLAN.md not ticked. E is Karthik's and does not block review of G. Section G reviewed by
+  Claude Code 2026-11-19: ACCEPTED (Session log; one open plan-gap question for Karthik).
   Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
   there). P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
@@ -1026,6 +1027,38 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-19 — Agent: Claude Code (P3.7 G review: accepted)
+
+Reviewed `7dc85cc` against `docs/plans/P3.7.md` section G. No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 639 passed, 4 skipped (matches),
+  tree clean. No mutant table for G (plan).
+- Code is what the plan says. `self.results = []` comes after `_guard()`; the fast path
+  sets `[result]` and keeps both reply strings; the agent path sets `run.tool_results` and
+  returns `run.content`, so the reply is unchanged (D6). The CLI prints the reply, then
+  `  {tool_name}: ok` or `  {tool_name}: {content}`.
+- Upstream also puts the failures it makes itself into `tool_results` (the governance
+  denial and the loop guard, `OpenJarvis/src/openjarvis/agents/orchestrator.py:481,504`).
+  So a call the bridge never saw still shows as a failed line, never as `ok`. Good.
+- Minor, plan gap (question for Karthik, not blocking): no test pins the reset line.
+  Checked: with `self.results = []` deleted, the three G tests still pass (3 passed). Both
+  normal paths assign `results` anyway; the reset only matters for the spoken `stop` route
+  and when `new_task` or a tool call raises. The CLI is unaffected (one `Core` per process).
+  It matters once a long-lived `Core` exists (P5 voice, P6 UI): "Stopped." would show the
+  previous request's lines. Proposed plan change: one test, a tool request then `stop` ->
+  `core.results == []`. Restore after the check: `core/agent.py` blob `609fdfb` equals HEAD,
+  working-copy sha256 `d05c418a...a607` as before (LF bytes rewritten from HEAD, because
+  `git checkout` with `core.autocrlf=true` wrote CRLF), tree clean.
+- Minor, no action: in `test_refused_create_folder_is_not_ok` the `shown` line rebuilds the
+  CLI format inside the test, so it checks itself. The real format is pinned by
+  `test_cli_prints_ok_and_expired`. `Core.__init__` does not set `results`; only the CLI
+  reads it, after `handle`.
+- The stale "Verify before executing" line Cursor mentions is not named in its report.
+  Left for the P3.7 close; no plan edit.
+
+PLAN.md not ticked. Files changed: this file. Remaining P3.7: Karthik's section E (reviewed
+before he commits it), Karthik's manual check of A, then the reviewer ticks P3.7.
 
 ### 2026-11-18 — Agent: Cursor (P3.7 G)
 
