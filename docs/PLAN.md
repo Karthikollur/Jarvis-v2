@@ -200,7 +200,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
       list -> create -> move chain; fast-path count and `--model` fixed for `--real`.
       Plan: `docs/plans/P3.5b.md`.
 - [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
-      (history stays in the audit log). Plan (draft, not approved): `docs/plans/P3.6.md`.
+      (history stays in the audit log). Plan (approved 2026-11-20): `docs/plans/P3.6.md`.
 - [ ] P3.7 P3 review fixes: Explorer comma rule for `open_in_app`, the core guard also checks
       the OpenJarvis executor, `recall_memory` hidden from the model until P4,
       `run_named_script` runs in a Job Object; undo keeps a non-empty folder, client errors

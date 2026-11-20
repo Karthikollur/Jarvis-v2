@@ -126,9 +126,10 @@ Newest session entry goes at the top of the Session log.
   a05 fails without it (Open questions). Section B reviewed and ACCEPTED by Claude Code
   2026-11-16 as variant 3, overfit on a05 noted. Manual check PASSED 2026-11-18 (approvals
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
-  Next: P3.6 (task lifecycle). Its plan is DRAFT, re-checked against the code 2026-11-20
-  and updated (Session log): Karthik answers D1 to D3 in `docs/plans/P3.6.md` and
-  approves it before any code. Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
+  Next: P3.6 (task lifecycle). Plan APPROVED by Karthik 2026-11-20, D1 to D3 as
+  recommended (`docs/plans/P3.6.md`): Cursor implements A, B, C, one reviewed commit
+  each. Section A may start (pre-edit summary, then Karthik's go). Section C waits for
+  P3.7 E (same file). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -487,6 +488,11 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-20 — P3.6 approved, D1 to D3 as recommended: `POST /end` and the core ends its
+  task (sections B, C); no audit line for an eviction; a stopped task's pending action
+  leaves the queue as `cancelled` with a new `cancelled` event. A finished request should
+  not leave a usable task behind; eviction permits and prevents nothing — Karthik.
 
 - 2026-11-20 — The test that a spoken `stop` clears `Core.results` is deferred to P5.1
   (`docs/plans/P5.md` section B, test 8), not added to P3.7 G. The CLI builds one `Core`
@@ -1033,6 +1039,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 plan approved)
+
+Cursor stopped on the DRAFT header, as it should (tree clean at `9d39f5c`, no E work in
+the tree). Karthik answered D1 to D3, all as recommended. `docs/plans/P3.6.md` header is
+now APPROVED with the answers; PLAN.md's P3.6 line says approved (not ticked). No code
+changed.
+
+Files changed: `docs/plans/P3.6.md`, `docs/PLAN.md`, this file. Next step: Cursor posts
+the pre-edit summary for section A (`P3.6: evict tasks`) and waits for Karthik's go.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 draft re-checked and updated)
 
