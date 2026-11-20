@@ -141,7 +141,8 @@ Newest session entry goes at the top of the Session log.
   DONE (commit `P3.6: core ends task`): `BridgeClient.end` posts `/end`. After `new_task`,
   `Core.handle` runs in `try`/`finally` and `_end` swallows `OSError` only. 676 passed,
   4 skipped. 5 mutants killed (baseline 9). Stub evals 43/43. PLAN.md not ticked.
-  Next: Claude Code reviews C, then Karthik's 4-step manual check. P3 phase review 2026-11-18: PASS
+  Section C reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Next: Karthik's
+  4-step manual check (`docs/plans/P3.6.md`), then the reviewer ticks P3.6. P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1061,6 +1062,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 C review: accepted)
+
+Reviewed `6528c0d` against `docs/plans/P3.6.md` section C (tests 1 to 9) and the go's two
+additions (red-run reasons for 1 to 3; test 1 ties the `end` line to `core._task_id` and
+reads the audit before the direct `/tool`). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 676 passed, 4 skipped (matches).
+- Mutants re-run (read `%TEMP%\p36c_mutants.py` first: patches `core/agent.py` by exact
+  anchors, one target test per mutant, restores the bytes in `finally`, checks sha256):
+  baseline 9 passed; all 5 killed. sha256 before and after `480c2821...642cd`, tree clean.
+  `finally` -> `except Exception: raise` + `else` is the same control flow as a bare
+  `else` and parses; test 3 kills it (`[] == ['t1']`). Stale id: `[None, 't1']`.
+  `try` before `new_task`: `end(None)` ran.
+- Code is the plan: `new_task` outside the `try`; both paths inside it; `_end` catches
+  `OSError` only and ignores the status (rule 13). `BridgeClient.end` is one line. Stop
+  path, `self.results` lines and the fresh-context reset unchanged.
+- Tests 1 and 2 use the real bridge: `/tool` on the ended task -> 403 `task stopped`, and
+  the last `end` line follows the last `result` with the same `task_id`.
+- No finding. Note: test 4 does not itself assert that `end` was called; tests 3, 5 and 6
+  do, so nothing is uncovered.
+
+PLAN.md not ticked: Karthik's 4-step manual check comes first. Files changed: this file.
+Next step: Karthik runs the manual check in `docs/plans/P3.6.md`; then the reviewer ticks
+P3.6, which closes P3.
 
 ### 2026-11-20 — Agent: Cursor (P3.6 C)
 
