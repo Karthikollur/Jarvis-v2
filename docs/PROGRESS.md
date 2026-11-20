@@ -126,8 +126,9 @@ Newest session entry goes at the top of the Session log.
   a05 fails without it (Open questions). Section B reviewed and ACCEPTED by Claude Code
   2026-11-16 as variant 3, overfit on a05 noted. Manual check PASSED 2026-11-18 (approvals
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
-  Next: P3.6 (task lifecycle). Its plan is DRAFT: Karthik answers D1 to D3 in
-  `docs/plans/P3.6.md` and approves it before any code. P3 phase review 2026-11-18: PASS
+  Next: P3.6 (task lifecycle). Its plan is DRAFT, re-checked against the code 2026-11-20
+  and updated (Session log): Karthik answers D1 to D3 in `docs/plans/P3.6.md` and
+  approves it before any code. Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1032,6 +1033,36 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 draft re-checked and updated)
+
+Re-checked `docs/plans/P3.6.md` (written 2026-11-16 on `d884783`) against `612ff64`, on
+Karthik's request, and updated it with his OK. Still DRAFT; no code changed.
+
+- Held: all eight "Verify before executing" lines. `bridge/app.py` has no commit since
+  `d884783`; `outcomes` is assigned at `:330, 356, 425, 465, 471, 475, 477, 487`; `expire()`
+  and `/approve` index `tasks[...]` (`:326, 466`); `/task` does not call `expire()`. The
+  test helpers the plan names exist. Test 7's "9th `/tool` -> 403" matches `_check`.
+- Fixed in the plan (tests and mutants that would not work as written):
+  1. Mutant `evict()` before `expire()`: killed by neither test 5 nor 6. Test 6 now also
+     expects `/tool` on the old task -> 404 after that one `/task`.
+  2. Mutant `queue.for_task(id) is None` removed: test 5 cannot kill it (a failed
+     `expired` write returns before `evict()`; a passing one has dropped every old
+     action). Now "equivalent, not run"; the clause stays as a guard if the order flips.
+  3. Tests 5 and 8 checked "still in `/pending`", which runs `expire()` itself (500 inside
+     `failing`, dropped after). The `/approve` take is now the proof.
+  4. B mutant "stop-after-log": renamed to "a failed `end` write returns before
+     `stopped = True`" (`log()` returns False, it does not raise).
+- Stale lines fixed: header test count; closing line (the P3 phase review already ran
+  2026-11-18); manual step 3 (`Jtool` cannot reach an old task id, now a direct `/tool`
+  call); the tab setup and `Jpending` point at `docs/plans/P3.5.md`.
+- Added: verify lines for P3.7 E before section C (both edit `core/bridge_client.py`) and
+  G's `self.results` lines inside C's `try/finally`; Facts: P3.7 C bounds the longest
+  handler at 65 s, so no task is evicted mid-handler; P2 nit (e) still open, closed by D3.
+- D1 to D3 unchanged; recommendations stand.
+
+Files changed: `docs/plans/P3.6.md`, this file. Next step: Karthik answers D1 to D3 and
+approves or changes the plan. P3.7 E is still Karthik's.
 
 ### 2026-11-20 — Agent: Claude Code (P3.7 A manual check: passed)
 
