@@ -133,8 +133,8 @@ Newest session entry goes at the top of the Session log.
   action leaves as `cancelled`; `/approve` answers 410 `Pending action expired` if the
   task was evicted after take, and stores no outcome. 649 passed, 4 skipped. 6 mutants
   killed (baseline 10); one row not run, equivalent. Stub evals 43/43. PLAN.md not
-  ticked. Section B waits for Claude Code's review of A. Section C waits for P3.7 E
-  (same file). P3 phase review 2026-11-18: PASS
+  ticked. Section A reviewed by Claude Code 2026-11-20: ACCEPTED (Session log; one plan
+  change proposed for B). Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1044,6 +1044,38 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 A review: accepted)
+
+Reviewed `60e33ef` against `docs/plans/P3.6.md` section A. No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 649 passed, 4 skipped (matches).
+- Mutants re-run (read `%TEMP%\p36a_mutants.py` first: it patches `bridge/app.py`, runs
+  one `-k` per mutant, restores the bytes in `finally`): baseline 10 passed; all 6
+  killed; the equivalent row not run. sha256 before and after
+  `b08798fc...094d`, tree clean. Stub evals not re-run (bridge-only change; Cursor: 43/43).
+- Code is the plan: `settle` is the only `outcomes[...]` write (the `execute` tuple is
+  split, as allowed); `expire()` checks out-of-time before stopped, which the existing
+  `test_expiry_found_by_tool_call` also pins; `/task` runs `expire()`, then `evict()`,
+  before the `halted` check; `/approve` looks the task up before any outcome and stores
+  none when it is gone. Both review additions (race comment, 404 note in the `evict()`
+  docstring) are in. No existing test changed.
+- Minor, plan change proposed (Karthik decides): `evict()` deletes with `del`. Two
+  `/task` calls at once can both pick the same old task; the second `del tasks[...]` (or
+  `del outcomes[...]`) raises `KeyError`, so that `/task` answers 500 and makes no task.
+  Fails closed, and needs two concurrent `/task` calls (two core processes). Fix:
+  `pop(key, None)` for the three deletes, in section B's commit (same file), with one
+  test that forces the overlap the way test 9 does: wrap `ConfirmQueue.for_task` so the
+  first call inside a sweep lets a second `/task` finish, then expect 200.
+- Minor, no action: an `/approve` for a task older than `KEEP` whose action was still
+  queued (no route ran `expire()` since), racing a `/task` sweep that copied `owners`
+  before the approve's `settle`, leaves one outcome that is never evicted. Rare and
+  bounded to one small entry.
+- Test 9 shares the running `TestClient.portal` with a second client (a Starlette
+  internal). If Starlette changes it, the test fails loudly, not silently.
+
+PLAN.md not ticked. Files changed: this file. Next step: Karthik decides the `pop`
+change; then Cursor posts the pre-edit summary for section B (`P3.6: end route`).
 
 ### 2026-11-20 — Agent: Cursor (P3.6 A)
 
