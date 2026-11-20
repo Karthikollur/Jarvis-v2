@@ -133,8 +133,9 @@ Newest session entry goes at the top of the Session log.
   action leaves as `cancelled`; `/approve` answers 410 `Pending action expired` if the
   task was evicted after take, and stores no outcome. 649 passed, 4 skipped. 6 mutants
   killed (baseline 10); one row not run, equivalent. Stub evals 43/43. PLAN.md not
-  ticked. Section A reviewed by Claude Code 2026-11-20: ACCEPTED (Session log; one plan
-  change proposed for B). Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
+  ticked. Section A reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Section B
+  also carries the `evict()` `pop` fix (plan change approved by Karthik 2026-11-20, test
+  10). Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1076,6 +1077,8 @@ Reviewed `60e33ef` against `docs/plans/P3.6.md` section A. No code changed.
 
 PLAN.md not ticked. Files changed: this file. Next step: Karthik decides the `pop`
 change; then Cursor posts the pre-edit summary for section B (`P3.6: end route`).
+Decided the same day: Karthik approved it; `docs/plans/P3.6.md` section B now has the
+`pop` bullet, test 10 and its mutant.
 
 ### 2026-11-20 — Agent: Cursor (P3.6 A)
 
