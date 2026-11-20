@@ -61,3 +61,6 @@ class BridgeClient:
 
     def stop(self) -> tuple[int, Any]:
         return self._post("/stop", {})
+
+    def end(self, task_id) -> tuple[int, Any]:
+        return self._post("/end", {"task_id": task_id})

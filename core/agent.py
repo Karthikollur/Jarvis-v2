@@ -46,18 +46,27 @@ class Core:
         if fresh:
             self._context = AgentContext()
         self._task_id = self._client.new_task(fresh)  # rule 15: one task per request
-        if routed:
-            name, args = routed
-            self._record(name, args)
-            result = self._tool(name).call(args)
-            self.results = [result]
-            return result.content if result.success else f"Could not {name}: {result.content}"
-        run = self._agent.run(text, self._context)
-        self.results = run.tool_results
-        answer = run.content
-        self._context.conversation.add(Message(role=Role.USER, content=text))
-        self._context.conversation.add(Message(role=Role.ASSISTANT, content=answer))
-        return answer
+        try:
+            if routed:
+                name, args = routed
+                self._record(name, args)
+                result = self._tool(name).call(args)
+                self.results = [result]
+                return result.content if result.success else f"Could not {name}: {result.content}"
+            run = self._agent.run(text, self._context)
+            self.results = run.tool_results
+            answer = run.content
+            self._context.conversation.add(Message(role=Role.USER, content=text))
+            self._context.conversation.add(Message(role=Role.ASSISTANT, content=answer))
+            return answer
+        finally:
+            self._end()
+
+    def _end(self) -> None:
+        try:
+            self._client.end(self._task_id)  # a non-200 is ignored: rule 13, no retry
+        except OSError:
+            return  # the bridge is gone; the task expires by itself
 
     def _guard(self):
         held = list(self._agent._tools)  # the agent's own list (upstream pinned at e6b7137)

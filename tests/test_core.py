@@ -708,3 +708,121 @@ def test_odd_answer_never_comes_back_as_data(scripted_bridge, status, body, refu
             client.new_task(False)
         return
     assert client._post("/task", {}) == (200, {})
+
+
+class CountingClient:
+    """Records new_task and end. Tests 3 to 9 never open a real bridge."""
+
+    def __init__(self, *, end_result=(200, {"status": "ended", "logged": True}), end_error=None, task_error=None):
+        self.opened = []
+        self.ended = []
+        self.end_result = end_result
+        self.end_error = end_error
+        self.task_error = task_error
+        self._n = 0
+
+    def new_task(self, fresh):
+        if self.task_error is not None:
+            raise self.task_error
+        self._n += 1
+        task_id = f"t{self._n}"
+        self.opened.append((task_id, fresh))
+        return task_id
+
+    def end(self, task_id):
+        self.ended.append(task_id)
+        if self.end_error is not None:
+            raise self.end_error
+        return self.end_result
+
+    def stop(self):
+        return 200, {}
+
+
+def _counting_core(client, engine):
+    return Core(client, engine, "fake", PROMPT, temperature=0, max_tokens=64)
+
+
+def _end_follows_result(lines, task_id):
+    result_at = [i for i, line in enumerate(lines) if line["event"] == "result"]
+    end_at = [i for i, line in enumerate(lines) if line["event"] == "end"]
+    assert result_at and end_at and end_at[-1] > result_at[-1]
+    assert lines[end_at[-1]]["task_id"] == task_id
+
+
+def test_handle_ends_the_agent_task(live_bridge):
+    core, _engine, client, _root, storage, _base = make_core(live_bridge, [
+        tool_call("get_time"),
+        answer("Done."),
+    ])
+    assert core.handle("sort it") == "Done."
+    lines = audit(storage)  # before the direct /tool, so that call is not part of the order
+    status, body = client.tool(core._task_id, "get_time", {})
+    assert status == 403 and body == {"detail": "task stopped"}
+    _end_follows_result(lines, core._task_id)
+
+
+def test_handle_ends_the_fast_path_task(live_bridge):
+    core, engine, client, _root, storage, _base = make_core(live_bridge, [])
+    core.handle("what time is it")
+    assert engine.calls == []
+    lines = audit(storage)  # before the direct /tool, so that call is not part of the order
+    status, body = client.tool(core._task_id, "get_time", {})
+    assert status == 403 and body == {"detail": "task stopped"}
+    _end_follows_result(lines, core._task_id)
+
+
+def test_raising_engine_still_ends_the_task():
+    class MidRequest(FakeEngine):
+        def generate(self, messages, *, model, temperature=0.7, max_tokens=1024, **kwargs):
+            raise RuntimeError("mid-request")
+
+    client = CountingClient()
+    core = _counting_core(client, MidRequest([]))
+    with pytest.raises(RuntimeError, match="mid-request"):
+        core.handle("sort it")
+    assert client.ended == [core._task_id]
+
+
+def test_end_urlerror_keeps_the_answer():
+    client = CountingClient(end_error=urllib.error.URLError("gone"))
+    core = _counting_core(client, FakeEngine([answer("Done.")]))
+    assert core.handle("hello") == "Done."
+
+
+def test_end_404_is_not_retried():
+    client = CountingClient(end_result=(404, {"detail": "Unknown task"}))
+    core = _counting_core(client, FakeEngine([answer("Done.")]))
+    assert core.handle("hello") == "Done."
+    assert client.ended == ["t1"]
+
+
+def test_each_request_ends_its_own_task():
+    client = CountingClient()
+    core = _counting_core(client, FakeEngine([answer("one"), answer("two")]))
+    assert core.handle("one") == "one"
+    assert core.handle("two", fresh=False) == "two"
+    assert client.opened == [("t1", True), ("t2", False)]
+    assert client.ended == ["t1", "t2"]
+
+
+def test_stop_opens_no_task_and_does_not_end():
+    client = CountingClient()
+    core = _counting_core(client, FakeEngine([]))
+    assert core.handle("stop") == "Stopped."
+    assert client.opened == [] and client.ended == []
+
+
+def test_end_valueerror_propagates():
+    client = CountingClient(end_error=ValueError("bad"))
+    core = _counting_core(client, FakeEngine([answer("Done.")]))
+    with pytest.raises(ValueError, match="bad"):
+        core.handle("hello")
+
+
+def test_new_task_error_does_not_end():
+    client = CountingClient(task_error=BridgeError("no task"))
+    core = _counting_core(client, FakeEngine([]))
+    with pytest.raises(BridgeError, match="no task"):
+        core.handle("hello")
+    assert client.ended == []

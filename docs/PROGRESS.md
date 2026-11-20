@@ -138,8 +138,10 @@ Newest session entry goes at the top of the Session log.
   action as `cancelled` on the `end` line, and does not latch; `evict()` removes with
   `pop(key, None)`. 658 passed, 4 skipped. 6 mutants killed (baseline 10). PLAN.md not
   ticked. Section B reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Section C
-  waited for P3.7 E (same file, `core/bridge_client.py`); E is committed, and C gets its
-  own prompt after this review. P3 phase review 2026-11-18: PASS
+  DONE (commit `P3.6: core ends task`): `BridgeClient.end` posts `/end`. After `new_task`,
+  `Core.handle` runs in `try`/`finally` and `_end` swallows `OSError` only. 676 passed,
+  4 skipped. 5 mutants killed (baseline 9). Stub evals 43/43. PLAN.md not ticked.
+  Next: Claude Code reviews C, then Karthik's 4-step manual check. P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1059,6 +1061,49 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Cursor (P3.6 C)
+
+Section C, on Karthik's go. A finished request left its task usable for the rest of its
+120 s. The core now tells the bridge the request is over.
+
+Red run, tests only, before the product change (`uv run python -m pytest` on the nine new
+tests, `-vv`): 6 failed, 3 passed. Tests 4, 7 and 9 stayed green, as agreed.
+
+- Test 1 (agent path) and test 2 (fast path): `/tool` answered 200, `assert (200 == 403)`.
+  The audit was read before that call.
+- Test 3: `pytest.raises(RuntimeError)` passed, then `assert [] == ['t1']` (`end` was not
+  called).
+- Tests 5, 6 and 8 failed because `end` is never called today (`ValueError` did not raise).
+
+- `core/bridge_client.py`: `end(task_id)` is `_post("/end", {"task_id": task_id})`. Nothing
+  else in the file changed.
+- `core/agent.py`: `new_task` stays outside `try`. Everything after it runs in `try`;
+  `finally` calls `_end()`. `_end` calls `end(self._task_id)` and swallows `OSError` only.
+  A non-200 is ignored. The stop path and the `self.results` lines are unchanged.
+- `tests/test_core.py`: tests 1 and 2 use `live_bridge`. Test 1 checks the `end` line's
+  `task_id` is `core._task_id` on the snapshot taken before the direct `/tool`. Tests 3
+  to 9 use `CountingClient`.
+- Files: those three, `docs/plans/P3.6.md`, this file. PLAN.md not ticked. Nothing in
+  `bridge/`, `safety/`, `config/`, `.claude/`, or `evals/run.py`. No new dependency.
+- Tests: `uv run python -m pytest` from PowerShell -> 676 passed, 4 skipped.
+- Stub evals: `uv run python evals/run.py` -> 43/43 (tool selection 28/28, arguments
+  26/26, refusals 10/10, clarify 5/5, fast path 5/43). Same score as before.
+- Mutants (`%TEMP%\p36c_mutants.py`, in memory, baseline first): baseline 9 passed.
+
+  | Mutant | Killed by | Result |
+  |---|---|---|
+  | `finally` to `else` | test 3 | killed (`assert [] == ['t1']`). A bare `else` is a `SyntaxError`, so the run re-raises and then uses `else` |
+  | `except OSError` removed | test 4 | killed (`URLError` propagated) |
+  | `end` with the previous id | test 6 | killed (`[None, 't1']`, wanted `['t1', 't2']`) |
+  | `except Exception` | test 8 | killed (`ValueError` swallowed) |
+  | `try` starts before `new_task` | test 9 | killed (`end(None)` ran) |
+
+  `core/agent.py` restored, sha256
+  `480c28217acc12b261821514249de9bc442801d908998f07fbf7a98596c642cd`
+  before and after.
+- Stopped at: this commit. Next: Claude Code reviews C. Then Karthik's 4-step manual
+  check in `docs/plans/P3.6.md`. The reviewer ticks P3.6 after that.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 verify list for C; tests 8 and 9)
 
