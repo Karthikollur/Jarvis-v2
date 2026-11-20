@@ -181,6 +181,7 @@ Newest session entry goes at the top of the Session log.
   section C is unblocked after that review.
   Section E reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). P3.7 ticked in
   PLAN.md. P3 closes when P3.6 C and its manual check are done.
+  P3.6 verify list rewritten for C on `6628533` (Karthik's OK); C tests 8 and 9 added.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1058,6 +1059,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 verify list for C; tests 8 and 9)
+
+Cursor stopped before section C: two B and C verify lines in `docs/plans/P3.6.md`
+described the code before section B (`evict()` "still deletes with `del`"; "No `/end`
+route yet"). Both false on `6628533`: `bridge/app.py:365-369` uses `pop(key, None)`,
+`:104` and `:549` add `POST /end`. Rewritten with Karthik's OK: the pre-B facts moved to
+the historical paragraph; new lines for `/end` and for P3.7 E's 502 on a body that is not
+a JSON object. Section C gains test 8 (`end` raises `ValueError` -> propagates; kills
+`except Exception`) and test 9 (`new_task` raises `BridgeError` -> `end` never called;
+kills a `try` that starts before `new_task`), with both mutants. No code changed.
+
+Files changed: `docs/plans/P3.6.md`, this file. Next step: Cursor re-runs the verify list
+and posts the pre-edit summary for section C.
 
 ### 2026-11-20 — Agent: Claude Code (P3.7 E review: accepted; P3.7 ticked)
 
