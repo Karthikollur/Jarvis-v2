@@ -157,7 +157,7 @@ Newest session entry goes at the top of the Session log.
   status`): `Core.handle` keeps the last request's tool results, and the CLI prints
   one status line under the unchanged reply. 639 passed, 4 skipped. No mutant table.
   PLAN.md not ticked. E is Karthik's and does not block review of G. Section G reviewed by
-  Claude Code 2026-11-19: ACCEPTED (Session log; one open plan-gap question for Karthik).
+  Claude Code 2026-11-19: ACCEPTED (Session log; its reset-test gap deferred to P5.1, Decisions 2026-11-20).
   Section A manual check 2026-11-20: PASSED (Session log); both probe folders removed.
   Left before the P3.7 tick: Karthik's section E. P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
@@ -486,6 +486,11 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-20 — The test that a spoken `stop` clears `Core.results` is deferred to P5.1
+  (`docs/plans/P5.md` section B, test 8), not added to P3.7 G. The CLI builds one `Core`
+  per run, so stale results cannot show today; P5.1 is the first long-lived `Core` —
+  Karthik.
 
 - 2026-11-18 — `accepts` for explorer is a security boundary, together with the policy comma
   rule. Explorer launches a file it is handed, and it splits a command-line argument on
