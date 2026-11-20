@@ -158,8 +158,8 @@ Newest session entry goes at the top of the Session log.
   one status line under the unchanged reply. 639 passed, 4 skipped. No mutant table.
   PLAN.md not ticked. E is Karthik's and does not block review of G. Section G reviewed by
   Claude Code 2026-11-19: ACCEPTED (Session log; one open plan-gap question for Karthik).
-  Karthik's manual check of A can run any time before the P3.7 tick (`t,\Users` is still
-  there). P3.6 D1 to D3 are still open.
+  Section A manual check 2026-11-20: PASSED (Session log); both probe folders removed.
+  Left before the P3.7 tick: Karthik's section E. P3.6 D1 to D3 are still open.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1027,6 +1027,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.7 A manual check: passed)
+
+Recorded the section A manual check (`docs/plans/P3.7.md`). Run 2026-11-20 13:16 IST at
+`838604e`, bridge started fresh, by an agent session for Karthik; Karthik pasted the report.
+
+- `Jtool open_in_app explorer C:\JarvisSandbox\t,\Users` -> 403
+  `{"detail":"path: comma or semicolon"}`. The same for `...\s;\Users` (optional extra).
+- Explorer windows (counted with `Shell.Application`): 0 before, 0 after a 5 s wait.
+  `/pending` count 0.
+- Cleanup: `Get-ChildItem` showed only the two empty `Users` folders; both probe folders
+  removed with `-LiteralPath`.
+- Re-checked by Claude Code: `audit.jsonl` lines 256 and 258 hold both requests,
+  `decision deny`, reason `path: comma or semicolon`, `2026-11-20T07:47:19Z`, and no line
+  after them (nothing queued or run). `C:\JarvisSandbox\t,` and `s;` no longer exist. The
+  window count is as reported, not observed.
+- The same path opened the real `C:\Users` in the probe (2026-11-18); it is now refused
+  before Explorer runs.
+
+PLAN.md not ticked: section E is still open. Files changed: this file.
 
 ### 2026-11-19 — Agent: Claude Code (P3.7 G review: accepted)
 
