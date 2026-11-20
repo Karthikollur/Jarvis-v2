@@ -179,6 +179,8 @@ Newest session entry goes at the top of the Session log.
   `bridge error: ...` line and exits 1 for `OSError` and `BridgeError`. 667 passed,
   4 skipped. No mutant table. PLAN.md not ticked. Next: Claude Code reviews E. P3.6
   section C is unblocked after that review.
+  Section E reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). P3.7 ticked in
+  PLAN.md. P3 closes when P3.6 C and its manual check are done.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1056,6 +1058,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.7 E review: accepted; P3.7 ticked)
+
+Reviewed `8087ccc` against `docs/plans/P3.7.md` section E and the go's three additions
+(D1 line, cases `ok-ff-200`, `list-500`, `empty-200`, exact `detail`). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 667 passed, 4 skipped (matches).
+- Code is the plan: one `answer` helper on both `_post` paths; `except ValueError` covers
+  `UnicodeDecodeError` (checked: `json.loads(b"okÿ")` raises it, not `JSONDecodeError`);
+  non-dict -> 502 with the original status; empty body still `{}`. `__main__` keeps
+  `URLError` first, then `(OSError, BridgeError)` -> one line, exit 1.
+- Mutants (reviewer's own, E has no plan table; script
+  `p37e_mutants.py` in the session scratchpad under `%TEMP%`, patches bytes, runs
+  `-k "odd_answer or cli_"`, restores in `finally`): baseline 11 passed; 8 of 8 killed.
+
+  | Mutant | Killed by |
+  |---|---|
+  | `ValueError` -> `JSONDecodeError` | `ok-ff-200` |
+  | dict check removed | `list-200`, `list-500` |
+  | `raw or b"{}"` -> `raw` | `empty-200` |
+  | success path skips the helper | `non-json-200` |
+  | `HTTPError` path skips the helper | `plain-text-500` |
+  | status dropped from `detail` | exact `detail` assert |
+  | `BridgeError` not caught | CLI `BridgeError` |
+  | `OSError` caught before `URLError` | `test_cli_says_when_the_bridge_is_down` |
+
+  sha256 after restore: `core/bridge_client.py` `f8b252a2...35fe0`, `core/__main__.py`
+  `29a61fb1...49d1d`, both equal to before; tree clean.
+- Finding (minor, docs): section E's heading still reads "Karthik writes it" and its first
+  line "The code is Karthik's". D1 is correct. Left as is: a plan wording change goes to
+  Karthik first.
+
+PLAN.md: P3.7 ticked (all sections accepted; A's manual check passed 2026-11-20).
+Files changed: `docs/PLAN.md`, this file. Next step: P3.6 section C (`P3.6: core ends
+task`): Cursor re-runs the P3.6 verify list (now on top of E) and posts its pre-edit
+summary.
 
 ### 2026-11-20 — Agent: Cursor (P3.7 E)
 
