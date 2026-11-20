@@ -1,6 +1,7 @@
 """P3.5: the bridge client (section A) and the core agent (section B)."""
 
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 import socket
@@ -633,3 +634,77 @@ def test_cli_prints_ok_and_expired(monkeypatch, capsys):
         "  get_time: ok\n"
         "  create_folder: expired\n"
     )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [TimeoutError("timed out"), ConnectionResetError("reset"), BridgeError("502: bad")],
+    ids=["TimeoutError", "ConnectionResetError", "BridgeError"],
+)
+def test_cli_reports_a_bridge_error(monkeypatch, capsys, error):
+    import core.__main__ as cli
+
+    def blow(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(cli, "build", blow)
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["what time is it"])
+    assert raised.value.code == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1 and lines[0].startswith("bridge error: ")
+
+
+@pytest.fixture
+def scripted_bridge():
+    """One loopback answer, chosen by the test. Shut down with the fixture."""
+    script = {"status": 200, "body": b""}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            if length:
+                self.rfile.read(length)
+            raw = script["body"]
+            self.send_response(script["status"])
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, _format, *_args):
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    client = BridgeClient(f"http://127.0.0.1:{port}", token="0" * 64)
+    try:
+        yield script, client
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "refused"),
+    [
+        (500, b"plain text", True),
+        (200, b"not json", True),
+        (200, b"[1]", True),
+        (200, b"ok\xff", True),
+        (500, b"[1]", True),
+        (200, b"", False),
+    ],
+    ids=["plain-text-500", "non-json-200", "list-200", "ok-ff-200", "list-500", "empty-200"],
+)
+def test_odd_answer_never_comes_back_as_data(scripted_bridge, status, body, refused):
+    script, client = scripted_bridge
+    script["status"], script["body"] = status, body
+    if refused:
+        assert client._post("/task", {}) == (502, {"detail": f"bad answer from bridge ({status})"})
+        with pytest.raises(BridgeError):
+            client.new_task(False)
+        return
+    assert client._post("/task", {}) == (200, {})

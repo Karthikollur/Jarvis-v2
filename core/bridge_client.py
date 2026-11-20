@@ -29,14 +29,23 @@ class BridgeClient:
     _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def _post(self, path: str, body: dict) -> tuple[int, Any]:
+        def answer(status: int, raw: bytes) -> tuple[int, Any]:
+            try:
+                parsed = json.loads(raw or b"{}")
+            except ValueError:
+                parsed = None
+            if not isinstance(parsed, dict):
+                return 502, {"detail": f"bad answer from bridge ({status})"}
+            return status, parsed
+
         request = urllib.request.Request(
             self._base + path, data=json.dumps(body).encode(), headers=self._headers, method="POST"
         )
         try:
             with self._opener.open(request, timeout=MAX_SECONDS) as response:
-                return response.status, json.loads(response.read() or b"{}")
+                return answer(response.status, response.read())
         except urllib.error.HTTPError as error:
-            return error.code, json.loads(error.read() or b"{}")
+            return answer(error.code, error.read())
 
     def new_task(self, fresh: bool) -> str:
         status, body = self._post("/task", {"fresh_context": True} if fresh else {})

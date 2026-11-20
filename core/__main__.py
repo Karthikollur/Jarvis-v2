@@ -6,6 +6,7 @@ import sys
 import urllib.error
 
 from core.agent import build
+from core.bridge_client import BridgeError
 
 
 def _say(pending_id) -> None:
@@ -22,6 +23,9 @@ def main(argv=None) -> None:
             print(f"  {result.tool_name}: {line}")
     except urllib.error.URLError:
         print("bridge is not running")
+        raise SystemExit(1)
+    except (OSError, BridgeError) as error:
+        print(f"bridge error: {error}")
         raise SystemExit(1)
 
 

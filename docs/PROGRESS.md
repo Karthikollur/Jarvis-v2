@@ -138,7 +138,8 @@ Newest session entry goes at the top of the Session log.
   action as `cancelled` on the `end` line, and does not latch; `evict()` removes with
   `pop(key, None)`. 658 passed, 4 skipped. 6 mutants killed (baseline 10). PLAN.md not
   ticked. Section B reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Section C
-  waits for P3.7 E (same file, `core/bridge_client.py`). P3 phase review 2026-11-18: PASS
+  waited for P3.7 E (same file, `core/bridge_client.py`); E is committed, and C gets its
+  own prompt after this review. P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -170,7 +171,14 @@ Newest session entry goes at the top of the Session log.
   PLAN.md not ticked. E is Karthik's and does not block review of G. Section G reviewed by
   Claude Code 2026-11-19: ACCEPTED (Session log; its reset-test gap deferred to P5.1, Decisions 2026-11-20).
   Section A manual check 2026-11-20: PASSED (Session log); both probe folders removed.
-  Left before the P3.7 tick: Karthik's section E. P3.6 section C waits for that commit.
+  Section E DONE (commit `P3.7: client survives odd answers`; Cursor, reassigned by
+  Karthik 2026-11-20): `_post` parses the success body and the `HTTPError` body through
+  one helper. A body that is not a JSON object comes back as 502
+  `bad answer from bridge (<status>)` with the original status. An empty body stays
+  `(200, {})`. The CLI keeps `bridge is not running` for `URLError`, then prints one
+  `bridge error: ...` line and exits 1 for `OSError` and `BridgeError`. 667 passed,
+  4 skipped. No mutant table. PLAN.md not ticked. Next: Claude Code reviews E. P3.6
+  section C is unblocked after that review.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1048,6 +1056,40 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Cursor (P3.7 E)
+
+Section E, on Karthik's go. Reassigned from Karthik (D1). A bridge body that was not a
+JSON object raised inside `json.loads` or came back as data, and a socket error other
+than `URLError` escaped the CLI.
+
+Red run, tests only, before the product change (`uv run python -m pytest` on the two new
+tests, `-vv`): 8 failed, 1 passed.
+
+- plain-text 500: `JSONDecodeError`
+- non-JSON 200: `JSONDecodeError`
+- `[1]` with 200: `(200, [1])`, wanted 502
+- `b"ok\xff"` with 200: `UnicodeDecodeError`
+- `[1]` with 500: `(500, [1])`, wanted 502
+- empty body with 200: passed, `(200, {})`
+- CLI `TimeoutError`, `ConnectionResetError`, `BridgeError`: each escaped the `URLError`
+  handler
+
+- `core/bridge_client.py`: both `_post` paths call `answer`. `ValueError` from
+  `json.loads` (so `JSONDecodeError` and a non-UTF-8 body), or a value that is not a
+  dict, returns `502, {"detail": "bad answer from bridge (<status>)"}` with the original
+  status. Empty bytes still parse as `{}`. `new_task` is unchanged.
+- `core/__main__.py`: `URLError` stays first and still prints `bridge is not running`.
+  Then `(OSError, BridgeError)` prints one `bridge error: ...` line and exits 1.
+- `tests/test_core.py`: six server cases (the empty 200 is not refused) and three CLI
+  cases. `test_cli_says_when_the_bridge_is_down` unchanged.
+- Files: `core/bridge_client.py`, `core/__main__.py`, `tests/test_core.py`,
+  `docs/plans/P3.7.md` (status Implemented; D1 names Cursor), this file.
+  PLAN.md not ticked. Nothing in `safety/`, `bridge/`, `config/`, or `.claude/`.
+  No new dependency. No mutant table (the plan's mutant rule covers A, B, B2, and C).
+- Tests: `uv run python -m pytest` from PowerShell -> 667 passed, 4 skipped.
+- Stopped at: this commit. Next: Claude Code reviews E. P3.6 section C
+  (`P3.6: core ends task`) is unblocked and gets its own prompt.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 B review: accepted)
 
