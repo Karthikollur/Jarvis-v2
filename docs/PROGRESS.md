@@ -128,8 +128,13 @@ Newest session entry goes at the top of the Session log.
   made by a polling script, not by hand; Session log). P3.5b ticked in PLAN.md.
   Next: P3.6 (task lifecycle). Plan APPROVED by Karthik 2026-11-20, D1 to D3 as
   recommended (`docs/plans/P3.6.md`): Cursor implements A, B, C, one reviewed commit
-  each. Section A may start (pre-edit summary, then Karthik's go). Section C waits for
-  P3.7 E (same file). P3 phase review 2026-11-18: PASS
+  each. Section A DONE (commit `P3.6: evict tasks`): `/task` expires, then evicts tasks
+  older than `KEEP` (`2 * MAX_SECONDS`) and their outcomes; a stopped task's queued
+  action leaves as `cancelled`; `/approve` answers 410 `Pending action expired` if the
+  task was evicted after take, and stores no outcome. 649 passed, 4 skipped. 6 mutants
+  killed (baseline 10); one row not run, equivalent. Stub evals 43/43. PLAN.md not
+  ticked. Section B waits for Claude Code's review of A. Section C waits for P3.7 E
+  (same file). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1039,6 +1044,52 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Cursor (P3.6 A)
+
+Section A, on Karthik's go. Nothing left `tasks` or `outcomes`, and a stopped task kept
+its pending action until the time budget ran out.
+
+Red run before the code, ten tests: 9 failed, 1 passed.
+`test_old_task_is_not_evicted_without_a_new_task` passed, because that is already true.
+The other nine failed on the missing sweep: no 404 for an old task, a denied outcome
+still answered 200, a failed `expired` write still returned 200 from `/task`, a stopped
+task's action stayed in `/pending`, and approve after a forced sweep was still the
+time-budget 410.
+
+- `bridge/app.py`: `KEEP = 2 * MAX_SECONDS`. `owners` beside `outcomes`. `settle` is the
+  only `outcomes[...] =` write. `expire()` still drops an out-of-time action first, then
+  a stopped one as `cancelled` (failed write returns before the take). `evict()` forgets
+  tasks older than `KEEP` with nothing queued, and their outcomes. Its docstring says an
+  evicted outcome now answers 404 instead of 410. `/task` calls `expire()` then `evict()`
+  and nowhere else calls `evict()`. `/approve` looks the task up with `tasks.get` straight
+  after `take`, with a one-line comment on that race; `None` logs `recheck: "task gone"`,
+  answers 410, and stores no outcome. The `execute` result is passed through `settle`.
+- `tests/test_bridge.py`: the ten tests. Test 9 drives the race with a second thread that
+  posts `/task` on a `TestClient` sharing the already-running portal, then joins before
+  `take` returns. It did not hang. No existing test failed, so none was edited.
+- Files: `bridge/app.py`, `tests/test_bridge.py`, `docs/plans/P3.6.md`, this file.
+  PLAN.md not ticked. Nothing in `safety/`, `config/`, or `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 649 passed, 4 skipped.
+- Mutants (`%TEMP%\p36a_mutants.py`, in memory, baseline first): baseline 10 passed.
+
+  | Mutant | Killed by | Result |
+  |---|---|---|
+  | `>` to `>=` in `evict` | test 1 | killed |
+  | `KEEP = MAX_SECONDS` | test 3 | killed |
+  | `evict()` before `expire()` | test 6 | killed (`/tool` 403, not 404) |
+  | outcomes not removed | test 3 | killed |
+  | `stopped` branch removed | test 7 | killed |
+  | `.get` back to `[]` | test 9 | killed (`KeyError`) |
+  | `queue.for_task(id) is None` removed | equivalent | not run |
+
+  `bridge/app.py` restored, sha256
+  `b08798fc911c37fcf12cf3e1f7659e2d31fad182849dd640f19e602b1622094d`.
+- Stub evals, one run: tool selection 28/28, arguments 26/26, must-refuse 10/10,
+  clarify 5/5, all 43/43, fast path 5/43, median 1.7 s, max 27.3 s. Same score as the
+  last recorded stub run.
+- Stopped at: this commit. Next concrete step: Claude Code reviews A before section B.
+  Section C still waits for `P3.7: client survives odd answers`.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 plan approved)
 

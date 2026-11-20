@@ -18,7 +18,7 @@ from bridge.app import create_app, load_token
 from bridge import app as bridge_app
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue
-from safety.policy import MAX_CALLS, TOOLS, Policy
+from safety.policy import MAX_CALLS, MAX_SECONDS, TOOLS, Policy
 from safety.undo import UndoLog
 
 BASE = "http://127.0.0.1:8765"
@@ -643,6 +643,192 @@ def test_waiting_past_the_task_window_expires(sandbox, clock):
     assert approve(client, root, pending_id).status_code == 410
     assert victim.exists()
     assert outcome(client, pending_id).json() == {"status": "expired"}
+
+
+# Age at which /task forgets a task. Taken from the policy constant, not from bridge.app,
+# so the tests still mean 240 s if that module's KEEP changes.
+KEEP = 2 * MAX_SECONDS
+
+
+def test_task_at_keep_stays_then_evicts(sandbox, clock):
+    client, root, outside = sandbox
+    old = new_task(client)
+    clock.now = KEEP
+    assert client.post("/task").status_code == 200
+    stayed = call(client, old, "get_time")
+    assert stayed.status_code == 403
+    assert "time budget" in stayed.json()["detail"]
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    gone = call(client, old, "get_time")
+    assert (gone.status_code, gone.json()["detail"]) == (404, "Unknown task")
+    line = [entry for entry in audit(root) if entry["event"] == "request" and entry["task_id"] == old][-1]
+    assert (line["decision"], line["reason"]) == ("deny", "unknown task")
+
+
+def test_old_task_is_not_evicted_without_a_new_task(sandbox, clock):
+    client, root, outside = sandbox
+    old = new_task(client)
+    clock.now = KEEP + 1
+    stayed = call(client, old, "get_time")
+    assert stayed.status_code == 403
+    assert "time budget" in stayed.json()["detail"]
+
+
+def test_denied_outcome_kept_until_keep_then_gone(sandbox, clock):
+    client, root, outside = sandbox
+    _victim, pending_id = queue_delete(client, root)
+    assert deny(client, root, pending_id).status_code == 200
+    clock.now = KEEP
+    assert client.post("/task").status_code == 200
+    assert outcome(client, pending_id).json() == {"status": "denied"}
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    assert outcome(client, pending_id).status_code == 404
+
+
+def test_younger_outcome_survives_the_sweep(sandbox, clock):
+    client, root, outside = sandbox
+    _old_file, old_id = queue_delete(client, root, "old.txt")
+    assert deny(client, root, old_id).status_code == 200
+    clock.now = 100
+    _young_file, young_id = queue_delete(client, root, "young.txt")
+    assert deny(client, root, young_id).status_code == 200
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    assert outcome(client, old_id).status_code == 404
+    assert outcome(client, young_id).json() == {"status": "denied"}
+
+
+def test_failed_expiry_write_does_not_evict(sandbox, clock):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    clock.now = KEEP + 1
+    with failing("expired"):
+        refused = client.post("/task")
+    assert refused.status_code == 500
+    assert "task_id" not in refused.json()
+    # 410 from recheck, not from an already-taken action: the take found it still queued.
+    approved = approve(client, root, pending_id)
+    assert (approved.status_code, approved.json()["detail"]) == (410, f"time budget exceeded ({MAX_SECONDS} s)")
+    assert victim.exists()
+
+
+def test_expired_task_is_evicted_by_the_same_new_task(sandbox, clock):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    old = [entry["task_id"] for entry in audit(root) if entry["event"] == "task"][-1]
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    assert any(entry["event"] == "expired" for entry in audit(root))
+    gone = call(client, old, "get_time")
+    assert (gone.status_code, gone.json()["detail"]) == (404, "Unknown task")
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    assert approve(client, root, pending_id).status_code == 404
+    assert victim.exists()
+
+
+def _queue_tainted_folder(client, root):
+    """A tainted T1 create_folder, still waiting. Returns (task id, pending id)."""
+    taint(client, root)
+    task = new_task(client)
+    queued = call(client, task, "create_folder", path=str(root / "box"))
+    assert queued.status_code == 202
+    assert not (root / "box").exists()
+    return task, queued.json()["pending_id"]
+
+
+def _spend_the_call_budget(client, task):
+    """The queued call was the first. The next ones are 409, and the 9th stops the task."""
+    for _ in range(MAX_CALLS - 1):
+        assert call(client, task, "get_time").status_code == 409
+    stopped = call(client, task, "get_time")
+    assert stopped.status_code == 403
+    assert "call budget" in stopped.json()["detail"]
+
+
+def test_stopped_task_pending_action_is_cancelled(sandbox):
+    client, root, outside = sandbox
+    task, pending_id = _queue_tainted_folder(client, root)
+    _spend_the_call_budget(client, task)
+    assert client.get("/pending", headers=ui_headers(root)).json() == {"pending": []}
+    assert outcome(client, pending_id).json() == {"status": "cancelled"}
+    line = audit(root)[-1]
+    assert (line["event"], line["pending_id"], line["task_id"], line["tool"]) == (
+        "cancelled", pending_id, task, "create_folder",
+    )
+    refused = approve(client, root, pending_id)
+    assert (refused.status_code, refused.json()["detail"]) == (410, "Pending action cancelled")
+    assert not (root / "box").exists()
+
+
+def test_failed_cancelled_write_keeps_the_action_queued(sandbox):
+    client, root, outside = sandbox
+    task, pending_id = _queue_tainted_folder(client, root)
+    _spend_the_call_budget(client, task)
+    with failing("cancelled"):
+        assert client.get("/pending", headers=ui_headers(root)).status_code == 500
+    refused = approve(client, root, pending_id)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert not (root / "box").exists()
+
+
+def test_approve_after_its_task_is_gone(sandbox, clock):
+    client, root, outside = sandbox
+    victim, pending_id = queue_delete(client, root)
+    original = ConfirmQueue.take
+    seen = {}
+
+    def take(self, pending_id_arg):
+        pending = original(self, pending_id_arg)
+        if pending is None or pending.id != pending_id:
+            return pending
+        clock.now = KEEP + 1
+
+        def sweep():
+            try:
+                other = TestClient(
+                    client.app, base_url=BASE, client=LOOPBACK, headers=dict(client.headers)
+                )
+                other.portal = client.portal  # the app is already started; do not start it again
+                seen["status"] = other.post("/task").status_code
+            except BaseException as error:  # reported on the caller thread
+                seen["error"] = error
+
+        thread = threading.Thread(target=sweep)
+        thread.start()
+        thread.join(10)
+        seen["alive"] = thread.is_alive()
+        return pending
+
+    with patch.object(ConfirmQueue, "take", take):
+        refused = approve(client, root, pending_id)
+    assert seen.get("alive") is False
+    assert "error" not in seen, seen.get("error")
+    assert seen["status"] == 200
+    assert (refused.status_code, refused.json()["detail"]) == (410, "Pending action expired")
+    approved = [entry for entry in audit(root) if entry["event"] == "approve"]
+    assert len(approved) == 1 and approved[0]["recheck"] == "task gone"
+    assert outcome(client, pending_id).status_code == 404
+    assert victim.exists()
+
+
+def test_taint_reaches_live_tasks_after_an_eviction(sandbox, clock):
+    client, root, outside = sandbox
+    stale = fresh_task(client)
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    assert call(client, stale, "get_time").status_code == 404
+    earlier = fresh_task(client)
+    later = new_task(client)
+    taint(client, root)
+    for name, task in [("e", earlier), ("l", later)]:
+        queued = call(client, task, "create_folder", path=str(root / name))
+        assert queued.status_code == 202, name
+        assert not (root / name).exists()
+    pending = client.get("/pending", headers=ui_headers(root)).json()["pending"]
+    assert [item["reason"] for item in pending] == ["tainted T1", "tainted T1"]
+    assert call(client, fresh_task(client), "create_folder", path=str(root / "c")).status_code == 200
 
 
 def test_timed_out_action_expires_without_approve(sandbox, clock):

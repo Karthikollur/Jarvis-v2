@@ -26,8 +26,12 @@ from bridge import hotkey as hotkeys
 from bridge import tools
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue, QueueRefused
-from safety.policy import Policy, Task, load_names, load_roots, resolve_inside
+from safety.policy import MAX_SECONDS, Policy, Task, load_names, load_roots, resolve_inside
 from safety.undo import UndoLog, UndoRefused, UnknownRecord
+
+# A 202 comes within MAX_SECONDS of the task start, and the core then polls /outcome
+# for at most MAX_SECONDS. No honest reader asks after that, so a task is kept for 2x.
+KEEP = 2 * MAX_SECONDS
 
 
 def _run(*args: str) -> str:
@@ -221,8 +225,9 @@ def create_app(
         scripts_cmds = tools.load_scripts(CONFIG / "scripts.toml")
         handlers = {**tools.HANDLERS, **tools.mutating(undo_log, app_entries, scripts_cmds)}
     handlers = dict(handlers)
-    tasks: dict[str, Task] = {}  # ponytail: never evicted; cap or expire when core is wired in
-    outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; ponytail: never evicted
+    tasks: dict[str, Task] = {}  # evict() forgets a task once it is older than KEEP
+    outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; evict() forgets it with the task
+    owners: dict[str, str] = {}  # pending_id -> task_id, so evict() can drop the outcome too
     # Untrusted text stays in the model's context after the task that read it, so a new
     # task starts tainted until the core declares `fresh_context` (P2.8). Every live task
     # is tainted with it (P2.9 R1). A start knows nothing about the model's context, so it
@@ -319,16 +324,44 @@ def create_app(
             return unavailable(), outcome
         return response, outcome
 
+    def settle(pending, outcome: dict[str, Any]) -> None:
+        """Remember an outcome and which task it belongs to. evict() drops both together."""
+        outcomes[pending.id] = outcome
+        owners[pending.id] = pending.task_id
+
     def expire() -> bool:
-        """Every pending action whose task ran out of time leaves the queue as `expired`.
+        """Every pending action whose task ran out of time, or was stopped, leaves the queue.
+        Out of time is `expired`. Stopped, and still in time, is `cancelled`.
         False if that could not be logged (the action stays queued; it can no longer run)."""
         for pending in queue.list():
             if policy.out_of_time(tasks[pending.task_id]):
                 if not log("expired", pending_id=pending.id, task_id=pending.task_id, tool=pending.tool):
                     return False
                 if queue.take(pending.id):
-                    outcomes[pending.id] = {"status": "expired"}
+                    settle(pending, {"status": "expired"})
+            elif tasks[pending.task_id].stopped:
+                if not log("cancelled", pending_id=pending.id, task_id=pending.task_id, tool=pending.tool):
+                    return False
+                if queue.take(pending.id):
+                    settle(pending, {"status": "cancelled"})
         return True
+
+    def evict() -> None:
+        """Forget tasks older than KEEP that have nothing queued, and their outcomes.
+
+        An evicted outcome now answers 404 instead of 410.
+        """
+        old = {
+            task_id
+            for task_id, task in list(tasks.items())
+            if clock() - task.started > KEEP and queue.for_task(task_id) is None
+        }
+        for task_id in list(old):
+            del tasks[task_id]
+        for pending_id, owner in list(owners.items()):
+            if owner in old:
+                del outcomes[pending_id]
+                del owners[pending_id]
 
     def unknown_pending(pending_id: str) -> JSONResponse:
         status = outcomes.get(pending_id, {}).get("status")
@@ -353,7 +386,7 @@ def create_app(
                 stopped += 1
         dropped = queue.clear()
         for pending in dropped:
-            outcomes[pending.id] = {"status": "cancelled"}
+            settle(pending, {"status": "cancelled"})
         cancelled = [p.id for p in dropped]
         logged = log("stop", source=source, tasks=stopped, cancelled=cancelled, latched=latched)
         return {"stopped": stopped, "cancelled": len(dropped), "logged": logged}
@@ -361,6 +394,9 @@ def create_app(
     @app.post("/task")
     def new_task(request: TaskRequest | None = None):
         nonlocal context_tainted
+        if not expire():
+            return unavailable()  # no task made
+        evict()
         if halted:
             if not log("task", refused="stopped"):
                 return unavailable()
@@ -422,7 +458,7 @@ def create_app(
                 return JSONResponse({"detail": str(refused)}, status_code=403)
             if task.stopped:  # Stop landed between the policy check and the queue
                 queue.take(pending.id)
-                outcomes[pending.id] = {"status": "cancelled"}
+                settle(pending, {"status": "cancelled"})
                 ids = {"task_id": request.task_id, "pending_id": pending.id}
                 if not log("queued", **ids, refused="task stopped"):
                     return unavailable()
@@ -462,21 +498,27 @@ def create_app(
         pending = queue.take(request.pending_id)
         if pending is None:
             return unknown_pending(request.pending_id)
-        outcomes[pending.id] = {"status": "pending"}  # running: /outcome must not answer 404
-        task = tasks[pending.task_id]
-        refused = policy.recheck(task, pending.tool, pending.args, pending.paths)
+        # Race: evict() can drop the task after take() and before this lookup.
+        task = tasks.get(pending.task_id)
         ids = {"pending_id": pending.id, "task_id": pending.task_id, "tool": pending.tool}
+        if task is None:
+            if not log("approve", **ids, recheck="task gone"):
+                return unavailable()
+            return JSONResponse({"detail": "Pending action expired"}, status_code=410)
+        settle(pending, {"status": "pending"})  # running: /outcome must not answer 404
+        refused = policy.recheck(task, pending.tool, pending.args, pending.paths)
         if not log("approve", **ids, recheck=refused or "ok"):
             # Already taken out of the queue: it can never run.
-            outcomes[pending.id] = {"status": "denied"}
+            settle(pending, {"status": "denied"})
             return unavailable()
         if refused is not None:
             expired = policy.out_of_time(task)
-            outcomes[pending.id] = {"status": "expired" if expired else "denied"}
+            settle(pending, {"status": "expired" if expired else "denied"})
             return JSONResponse({"detail": refused}, status_code=410 if expired else 403)
-        response, outcomes[pending.id] = execute(
+        response, outcome = execute(
             pending.task_id, task, pending.tool, pending.args, pending.paths, pending.id
         )
+        settle(pending, outcome)
         return response
 
     @app.post("/deny")
@@ -484,7 +526,7 @@ def create_app(
         pending = queue.take(request.pending_id)
         if pending is None:
             return unknown_pending(request.pending_id)
-        outcomes[pending.id] = {"status": "denied"}
+        settle(pending, {"status": "denied"})
         if not log("deny", pending_id=pending.id, task_id=pending.task_id, tool=pending.tool):
             return unavailable()
         return {"status": "denied"}
