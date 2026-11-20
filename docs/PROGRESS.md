@@ -137,7 +137,8 @@ Newest session entry goes at the top of the Session log.
   DONE (commit `P3.6: end route`): `POST /end` stops that one task, drops its queued
   action as `cancelled` on the `end` line, and does not latch; `evict()` removes with
   `pop(key, None)`. 658 passed, 4 skipped. 6 mutants killed (baseline 10). PLAN.md not
-  ticked. Section C waits for P3.7 E (same file, `core/bridge_client.py`). P3 phase review 2026-11-18: PASS
+  ticked. Section B reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Section C
+  waits for P3.7 E (same file, `core/bridge_client.py`). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1047,6 +1048,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Claude Code (P3.6 B review: accepted)
+
+Reviewed `b90ab92` against `docs/plans/P3.6.md` section B (with the `pop` plan change and
+the two review additions to the go). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 658 passed, 4 skipped (matches).
+- Mutants re-run (read `%TEMP%\p36b_mutants.py` first: patches `bridge/app.py`, one
+  selector per mutant, restores the bytes in `finally`): baseline 10 passed; all 6
+  killed. The "not taken" mutant still writes the pending id on the `end` line, so only
+  the "no separate `cancelled` event" assertion kills it, as intended. sha256 before and
+  after `7d01c455...b120`, tree clean.
+- Code is the plan: unknown task logs `end` with `task_id` and `refused`, 404; a known
+  task is stopped first, its queued action taken and settled `cancelled`, then logged;
+  a failed write still answers 200 `logged: false` with the task stopped (rule 18).
+  `halted` and `context_tainted` untouched. `evict()` uses `pop(key, None)` for all three
+  dicts. The token, loopback and wrong-role sweeps cover `/end` from `ROUTE_ROLES`.
+- Tests: test 4 checks the `end` line's `cancelled` and that no `expire()` `cancelled`
+  line exists (review addition 1); test 5 checks `task_id` on the unknown line
+  (addition 2); test 10 was red on `del` (`KeyError`) before the fix.
+- No finding. Note: `/end` on a task already out of time labels its action `cancelled`,
+  not `expired`; the `end` line names it, and nothing can run either way.
+
+PLAN.md not ticked. Files changed: this file. Next step: section C (`P3.6: core ends
+task`) after Karthik commits P3.7 E (`P3.7: client survives odd answers`).
 
 ### 2026-11-20 — Agent: Cursor (P3.6 B)
 
