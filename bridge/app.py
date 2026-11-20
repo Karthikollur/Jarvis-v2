@@ -101,6 +101,7 @@ ROUTE_ROLES: dict[str, set[str]] = {
     "/pending": {"ui"},
     "/approve": {"ui"},
     "/deny": {"ui"},
+    "/end": {"core"},
     "/stop": {"core", "ui"},  # stopping is the safe direction; core relays a spoken "stop"
     "/undo": {"ui"},  # only Karthik undoes; no model-facing undo tool
     "/resume": {"ui"},  # only Karthik lifts the latch a hotkey or UI Stop sets
@@ -170,6 +171,10 @@ class TaskRequest(BaseModel):
 
 class PendingRequest(BaseModel):
     pending_id: str
+
+
+class EndRequest(BaseModel):
+    task_id: str
 
 
 class UndoRequest(BaseModel):
@@ -357,11 +362,11 @@ def create_app(
             if clock() - task.started > KEEP and queue.for_task(task_id) is None
         }
         for task_id in list(old):
-            del tasks[task_id]
+            tasks.pop(task_id, None)  # a second sweep may already have dropped it
         for pending_id, owner in list(owners.items()):
             if owner in old:
-                del outcomes[pending_id]
-                del owners[pending_id]
+                outcomes.pop(pending_id, None)
+                owners.pop(pending_id, None)
 
     def unknown_pending(pending_id: str) -> JSONResponse:
         status = outcomes.get(pending_id, {}).get("status")
@@ -540,6 +545,27 @@ def create_app(
         if any(p.id == request.pending_id for p in queue.list()):
             return {"status": "pending"}
         return JSONResponse({"detail": "Unknown pending action"}, status_code=404)
+
+    @app.post("/end")
+    def end_task(request: EndRequest):
+        """End one task and drop its queued action. Acts first, logs after.
+        A handler that is already running is left to finish."""
+        task = tasks.get(request.task_id)
+        if task is None:
+            if not log("end", task_id=request.task_id, refused="unknown task"):
+                return unavailable()
+            return JSONResponse({"detail": "Unknown task"}, status_code=404)
+        task.stopped = True
+        pending = queue.for_task(request.task_id)
+        taken = queue.take(pending.id) if pending is not None else None
+        if taken is not None:
+            settle(taken, {"status": "cancelled"})
+        logged = log(
+            "end",
+            task_id=request.task_id,
+            cancelled=taken.id if taken is not None else None,
+        )
+        return {"status": "ended", "logged": logged}
 
     @app.post("/stop")
     def stop_route(request: Request):

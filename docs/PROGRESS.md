@@ -134,8 +134,10 @@ Newest session entry goes at the top of the Session log.
   task was evicted after take, and stores no outcome. 649 passed, 4 skipped. 6 mutants
   killed (baseline 10); one row not run, equivalent. Stub evals 43/43. PLAN.md not
   ticked. Section A reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Section B
-  also carries the `evict()` `pop` fix (plan change approved by Karthik 2026-11-20, test
-  10). Section C waits for P3.7 E (same file). P3 phase review 2026-11-18: PASS
+  DONE (commit `P3.6: end route`): `POST /end` stops that one task, drops its queued
+  action as `cancelled` on the `end` line, and does not latch; `evict()` removes with
+  `pop(key, None)`. 658 passed, 4 skipped. 6 mutants killed (baseline 10). PLAN.md not
+  ticked. Section C waits for P3.7 E (same file, `core/bridge_client.py`). P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -167,7 +169,7 @@ Newest session entry goes at the top of the Session log.
   PLAN.md not ticked. E is Karthik's and does not block review of G. Section G reviewed by
   Claude Code 2026-11-19: ACCEPTED (Session log; its reset-test gap deferred to P5.1, Decisions 2026-11-20).
   Section A manual check 2026-11-20: PASSED (Session log); both probe folders removed.
-  Left before the P3.7 tick: Karthik's section E. P3.6 D1 to D3 are still open.
+  Left before the P3.7 tick: Karthik's section E. P3.6 section C waits for that commit.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
   P0 and P1 are complete, every task ticked in PLAN.md.
@@ -1045,6 +1047,43 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-20 — Agent: Cursor (P3.6 B)
+
+Section B, on Karthik's go. A finished request's task stayed usable for the rest of its
+120 s, and two overlapping sweeps could `KeyError` on the same old task.
+
+Test 10 was written first, against `del` in `evict()`. Red run: `KeyError` from
+`del tasks[task_id]` on the first `/task` (the sandbox client re-raises; a live server
+would answer 500). Then `evict()` switched to `pop(key, None)` for `tasks`, `outcomes`
+and `owners`.
+
+- `bridge/app.py`: `ROUTE_ROLES["/end"] = {"core"}`, `EndRequest`, `POST /end`. An unknown
+  id logs `end` with `task_id` and `refused: "unknown task"` (a failed write is 500). A
+  known id is stopped, its queued action is taken and settled `cancelled`, then `end` is
+  logged with `cancelled` set to that id or null. The answer is `{"status": "ended",
+  "logged": <bool>}` even when the write fails. No latch. A running handler is left running.
+- `tests/test_bridge.py`: `POST /end` in the route table, tests 2 to 10. Test 4 checks the
+  `end` line's `cancelled` id and that no separate `cancelled` event was written. The
+  token, loopback, and wrong-role sweeps picked `/end` up from the live table.
+- Files: `bridge/app.py`, `tests/test_bridge.py`, `docs/plans/P3.6.md`, this file.
+  PLAN.md not ticked. Nothing in `safety/`, `config/`, or `.claude/`.
+- Tests: `uv run python -m pytest` from PowerShell -> 658 passed, 4 skipped.
+- Mutants (`%TEMP%\p36b_mutants.py`, in memory, baseline first): baseline 10 passed.
+
+  | Mutant | Killed by | Result |
+  |---|---|---|
+  | `stopped = True` removed | test 2 | killed (`/tool` 200, wanted 403) |
+  | queued action not taken | test 4 | killed (a `cancelled` event line) |
+  | every task stopped | test 4 | killed (a `cancelled` event line for the other task) |
+  | role `{"core", "ui"}` | test 3 | killed (200, wanted 403) |
+  | failed `end` write returns before `stopped = True` | test 7 | killed (`/tool` 200, wanted 403) |
+  | `tasks.pop` back to `del` | test 10 | killed (`KeyError` on the first `/task`) |
+
+  `bridge/app.py` restored, sha256
+  `7d01c455928fad446b271e0804d0ba6ec9ba4f66bb1b86153cb5a12a5895b120`.
+- Stopped at: this commit. Next concrete step: Claude Code reviews B before section C.
+  Section C still waits for `P3.7: client survives odd answers`.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 verify list updated for B and C)
 

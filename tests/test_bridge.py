@@ -216,6 +216,7 @@ def test_route_table_is_exact(storage):
         ("GET", "/pending"),
         ("POST", "/approve"),
         ("POST", "/deny"),
+        ("POST", "/end"),
         ("POST", "/outcome"),
         ("POST", "/stop"),
         ("POST", "/resume"),
@@ -829,6 +830,136 @@ def test_taint_reaches_live_tasks_after_an_eviction(sandbox, clock):
     pending = client.get("/pending", headers=ui_headers(root)).json()["pending"]
     assert [item["reason"] for item in pending] == ["tainted T1", "tainted T1"]
     assert call(client, fresh_task(client), "create_folder", path=str(root / "c")).status_code == 200
+
+
+def test_overlapping_sweeps_both_make_a_task(sandbox, clock):
+    """Two /task sweeps can pick the same old task. The second delete must not raise."""
+    client, root, outside = sandbox
+    old = new_task(client)
+    clock.now = KEEP + 1
+    original = ConfirmQueue.for_task
+    seen = {}
+
+    def for_task(self, task_id):
+        pending = original(self, task_id)
+        if seen.get("ran"):
+            return pending
+        seen["ran"] = True
+
+        def sweep():
+            try:
+                other = TestClient(
+                    client.app, base_url=BASE, client=LOOPBACK, headers=dict(client.headers)
+                )
+                other.portal = client.portal  # the app is already started; do not start it again
+                seen["status"] = other.post("/task").status_code
+            except BaseException as error:  # reported on the caller thread
+                seen["error"] = error
+
+        thread = threading.Thread(target=sweep)
+        thread.start()
+        thread.join(10)
+        seen["alive"] = thread.is_alive()
+        return pending
+
+    with patch.object(ConfirmQueue, "for_task", for_task):
+        first = client.post("/task")
+    assert seen.get("alive") is False
+    assert "error" not in seen, seen.get("error")
+    assert seen["status"] == 200
+    assert first.status_code == 200
+    gone = call(client, old, "get_time")
+    assert (gone.status_code, gone.json()["detail"]) == (404, "Unknown task")
+
+
+def test_ended_task_refuses_a_tool(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    ended = client.post("/end", json={"task_id": task})
+    assert ended.json() == {"status": "ended", "logged": True}
+    before = len(audit(root))
+    refused = call(client, task, "get_time")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert not [entry for entry in audit(root)[before:] if entry["event"] == "result"]
+
+
+def test_end_with_the_ui_token_is_forbidden(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    refused = client.post("/end", json={"task_id": task}, headers=ui_headers(root))
+    assert refused.status_code == 403
+    line = audit(root)[-1]
+    assert (line["event"], line["role"], line["path"]) == ("forbidden", "ui", "/end")
+
+
+def test_end_drops_only_that_tasks_queued_action(sandbox):
+    client, root, outside = sandbox
+    own = root / "own.txt"
+    own.write_text("keep")
+    task = new_task(client)
+    queued = call(client, task, "delete_file", path=str(own))
+    assert queued.status_code == 202
+    pending_id = queued.json()["pending_id"]
+    other_file, other_id = queue_delete(client, root, "other.txt")
+    assert client.post("/end", json={"task_id": task}).status_code == 200
+    ends = [entry for entry in audit(root) if entry["event"] == "end"]
+    assert len(ends) == 1 and ends[0]["cancelled"] == pending_id
+    assert outcome(client, pending_id).json() == {"status": "cancelled"}
+    refused = approve(client, root, pending_id)
+    assert (refused.status_code, refused.json()["detail"]) == (410, "Pending action cancelled")
+    assert own.exists()
+    # expire() would have written its own `cancelled` line if /end had left the action queued.
+    assert not any(entry["event"] == "cancelled" for entry in audit(root))
+    assert approve(client, root, other_id).status_code == 200
+    assert not other_file.exists()
+
+
+def test_end_unknown_task(sandbox):
+    client, root, outside = sandbox
+    refused = client.post("/end", json={"task_id": "missing"})
+    assert (refused.status_code, refused.json()["detail"]) == (404, "Unknown task")
+    line = audit(root)[-1]
+    assert (line["event"], line["task_id"], line["refused"]) == ("end", "missing", "unknown task")
+
+
+def test_end_twice_stops_one_task(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    other = new_task(client)
+    first = client.post("/end", json={"task_id": task})
+    second = client.post("/end", json={"task_id": task})
+    assert first.status_code == second.status_code == 200
+    assert first.json()["status"] == second.json()["status"] == "ended"
+    refused = call(client, task, "get_time")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+    assert call(client, other, "get_time").json() == {"result": "now"}
+
+
+def test_failed_end_write_still_stops_the_task(sandbox):
+    client, root, outside = sandbox
+    task = new_task(client)
+    with failing("end"):
+        ended = client.post("/end", json={"task_id": task})
+    assert ended.status_code == 200
+    assert ended.json() == {"status": "ended", "logged": False}
+    refused = call(client, task, "get_time")
+    assert (refused.status_code, refused.json()["detail"]) == (403, "task stopped")
+
+
+def test_end_does_not_latch(sandbox):
+    client, root, outside = sandbox
+    assert client.post("/end", json={"task_id": new_task(client)}).status_code == 200
+    assert client.post("/task").status_code == 200
+
+
+def test_ended_task_is_evicted_by_age(sandbox, clock):
+    client, root, outside = sandbox
+    task = new_task(client)
+    assert client.post("/end", json={"task_id": task}).status_code == 200
+    clock.now = KEEP + 1
+    assert client.post("/task").status_code == 200
+    gone = call(client, task, "get_time")
+    assert (gone.status_code, gone.json()["detail"]) == (404, "Unknown task")
 
 
 def test_timed_out_action_expires_without_approve(sandbox, clock):
