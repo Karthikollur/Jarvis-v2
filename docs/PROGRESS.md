@@ -1046,6 +1046,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
 
 ## Session log
 
+### 2026-11-20 — Agent: Claude Code (P3.6 verify list updated for B and C)
+
+Cursor stopped before section B: four "Verify before executing" lines in
+`docs/plans/P3.6.md` described the code before section A (the `ponytail: never evicted`
+comments, the eight `outcomes[...]` writes, `/approve` indexing `tasks[...]`, `/task` not
+calling `expire()`). All four claims checked true on `3ff0472`. The re-check of
+2026-11-20 had not written lines for the state after A. Rewritten with Karthik's OK: the
+pre-A lines kept as one historical paragraph; new lines for B and C (`settle()` is the
+only `outcomes` write; `/approve` uses `.get`; `/task` runs `expire()` then `evict()`,
+which still uses `del`; no `/end` yet; `for_task` and `take` return the action or `None`,
+`safety/confirm.py:62-68`). Unchanged lines still hold (Cursor). No code changed.
+
+Files changed: `docs/plans/P3.6.md`, this file. Next step: Cursor re-runs the verify list
+and posts the pre-edit summary for section B.
+
 ### 2026-11-20 — Agent: Claude Code (P3.6 A review: accepted)
 
 Reviewed `60e33ef` against `docs/plans/P3.6.md` section A. No code changed.
