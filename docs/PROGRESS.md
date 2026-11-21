@@ -187,10 +187,12 @@ Newest session entry goes at the top of the Session log.
   P3.6 verify list rewritten for C on `6628533` (Karthik's OK); C tests 8 and 9 added.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
-  `docs/plans/P4.md` updated 2026-11-21 by Claude Code (still DRAFT, not approved): hybrid
-  search (D9, chosen by Karthik), FTS5 tables and authorizer rules 24 to 26, vector-vs-hybrid
-  measurement and exact-term questions in section G, two new section G levers, review
-  checks for every P4 commit. Ideas from awesome-llm-apps; no code, no new dependency.
+  `docs/plans/P4.md` updated 2026-11-21 by Claude Code: hybrid search (D9), FTS5 tables
+  and authorizer rules 24 to 26, vector-vs-hybrid measurement and exact-term questions in
+  section G, two new section G levers, review checks for every P4 commit. Ideas from
+  awesome-llm-apps; no code. P4 plan APPROVED by Karthik 2026-11-21, D1 to D9 as
+  recommended (PLAN.md says approved, nothing ticked). P4 does not start until P3 closes:
+  the plan's first verify line needs P3.6 ticked.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - P3 "Done when": PASSED 2026-11-18, accepted by Karthik (task `4e5b3c13…`, 6 of 8
   calls, one task id, undo restored `downloads`). The four approvals were made by a script
@@ -515,6 +517,14 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-21 — P4 plan approved, D1 to D9 as recommended: `nomic-embed-text` (measured in
+  section B first; Karthik runs the pull); docs roots in `config/memory.toml`, never an
+  allowed root; ingest starts with the vault's `Learning/` folder only; `remember_fact` at
+  T1; review CLI opens the database directly; `task_history` created with no writer; facts
+  only when the user asks; hybrid search. New dependencies (D4): `pypdf`, because PLAN.md
+  P4.2 ingests PDF and it is pure Python; `numpy` declared directly, because the vector
+  search uses it and it is already in the venv through OpenJarvis — Karthik.
 
 - 2026-11-21 — P4 (still DRAFT): hybrid search is built into section D (FTS5 keyword
   ranking merged with the vector ranking by RRF, the not-found floor on the cosine), not
@@ -1073,6 +1083,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-21 — Agent: Claude Code (P4 plan approved)
+
+Karthik approved the P4 plan ("approve the P4 plan"), D1 to D9 taken as recommended, as
+for P3.6. `docs/plans/P4.md` header is now APPROVED with the answers; PLAN.md's P4 line
+says approved (no task ticked); Decisions records the two new dependencies and why. No
+code changed; tests not run (docs only).
+
+Files changed: `docs/plans/P4.md`, `docs/PLAN.md`, this file. Next step unchanged:
+Karthik's 4-step P3.6 manual check, then the reviewer ticks P3.6 and P3 closes. Then P4
+section A: the implementer re-runs the plan's verify list (including the FTS5 line on the
+venv's SQLite 3.49.1), posts the pre-edit summary for `P4.1: memory schema`, and waits
+for Karthik's go. Section B needs Karthik first: `ollama pull nomic-embed-text` and the
+measurement.
 
 ### 2026-11-21 — Agent: Claude Code (P4 draft updated from the awesome-llm-apps review)
 
