@@ -147,7 +147,8 @@ Newest session entry goes at the top of the Session log.
   task`): the CLI runs `handle` on a daemon thread and waits in `join(0.2)` steps;
   `KeyboardInterrupt` calls `Core.cancel()`, prints `cancelled`, and exits 1. 679 passed,
   4 skipped. 5 mutants killed (baseline 3); the `daemon=False` row was not run. PLAN.md
-  not ticked. Next: Claude Code reviews D, then Karthik re-runs manual steps 1 and 2.
+  not ticked. Section D reviewed by Claude Code 2026-11-21: ACCEPTED (Session log).
+  Next: Karthik re-runs manual steps 1 and 2, then the reviewer ticks P3.6 (closes P3).
   P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
@@ -1089,6 +1090,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-21 — Agent: Claude Code (P3.6 D review: accepted)
+
+Reviewed `0d735ed` against `docs/plans/P3.6.md` section D and the go's one addition (the
+`daemon=False` row recorded as not run). No code changed.
+
+- Re-run from PowerShell: `uv run python -m pytest` -> 679 passed, 4 skipped (matches).
+- Mutants re-run (read `%TEMP%\p36d_mutants.py` first: patches `core/__main__.py` and
+  `core/agent.py` by exact anchors, one target test per mutant, run one at a time,
+  restores the bytes in `finally`, checks both sha256): baseline 3 passed; all 5 killed
+  (untimed `join()` 124.8 s, `cancel()` removed 10.5 s, `main` handler removed 4.7 s,
+  `_task_id` check 2.9 s, exception not re-raised 3.0 s). sha256 before and after:
+  `core/__main__.py` `7379d7b8...b09a7`, `core/agent.py` `af1e6fbb...21dc`; tree clean.
+  Before the go, Claude Code checked that an untimed `thread.join()` is not interruptible
+  on 3.12.10 (KeyboardInterrupt at 4.0 s for a 4 s worker), so the first mutant was
+  killable; the 124.8 s run confirms it.
+- Code is the plan: `cancel()` checks `_task_id` and calls `_end()` (the check stays out
+  of `_end`); `_handle` hands the result or any `BaseException` back through the box;
+  `join(0.2)` loop with the `ponytail:` comment; `except KeyboardInterrupt` sits before
+  the existing handlers, which are unchanged.
+- Test 1 reads the first `end` line for the task (the cancel's), checks all seven values
+  in one tuple, and waits for the second `end` (from `handle`'s `finally`) before the
+  fixture tears down.
+- No finding. Note: a Ctrl+C that lands after `_handle` returned (while results print)
+  prints `cancelled` without a cancel; the task is already ended by `handle`'s `finally`,
+  so nothing is left to cancel.
+
+PLAN.md not ticked. Files changed: this file. Next step: Karthik re-runs manual steps 1
+and 2 (`docs/plans/P3.6.md`); then the reviewer ticks P3.6, which closes P3.
 
 ### 2026-11-21 — Agent: Cursor (P3.6 D)
 
