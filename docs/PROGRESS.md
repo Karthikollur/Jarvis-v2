@@ -141,8 +141,10 @@ Newest session entry goes at the top of the Session log.
   DONE (commit `P3.6: core ends task`): `BridgeClient.end` posts `/end`. After `new_task`,
   `Core.handle` runs in `try`/`finally` and `_end` swallows `OSError` only. 676 passed,
   4 skipped. 5 mutants killed (baseline 9). Stub evals 43/43. PLAN.md not ticked.
-  Section C reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Next: Karthik's
-  4-step manual check (`docs/plans/P3.6.md`), then the reviewer ticks P3.6. P3 phase review 2026-11-18: PASS
+  Section C reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Manual check
+  2026-11-20 on `f6f0526`: steps 1, 3, 4 PASSED, step 2 FAILED (Ctrl+C did not cancel the
+  pending action until the 120 s expiry). Section D (`P3.6: Ctrl+C ends the task`) added
+  and APPROVED by Karthik; not implemented. P3.6 not ticked. P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -183,7 +185,7 @@ Newest session entry goes at the top of the Session log.
   4 skipped. No mutant table. PLAN.md not ticked. Next: Claude Code reviews E. P3.6
   section C is unblocked after that review.
   Section E reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). P3.7 ticked in
-  PLAN.md. P3 closes when P3.6 C and its manual check are done.
+  PLAN.md. P3 closes when P3.6 D lands and manual steps 1 and 2 pass again.
   P3.6 verify list rewritten for C on `6628533` (Karthik's OK); C tests 8 and 9 added.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
@@ -1083,6 +1085,43 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-21 — Agent: Claude Code (P3.6 manual check: step 2 failed; section D planned)
+
+Karthik's manual check on `f6f0526` (run 2026-11-20) (bridge restarted on that commit):
+
+- Step 1 PASS: task `acf4b787...`: `task`, `request` (allow), `result`, `end`, in order,
+  same `task_id`.
+- Step 3 PASS: at 19:08:29 IST (step 1 ended 19:03:17), a new request, then `/tool` with
+  `acf4b787...` -> 404 `Unknown task`.
+- Step 4 PASS: stub evals 43/43 (tool selection 28/28, args 26/26, must-refuse 10/10,
+  clarify 5/5, fast path 5/43, median 1.5 s, max 9.3 s).
+- Step 2 FAIL: Ctrl+C at `pending 987a0d84...`. Task `26cdbca0...`: `task` 13:48:44.74Z,
+  `request` queued 13:48:54.95Z, `expired` 13:50:44.880Z, `end` 13:50:44.888Z with
+  `cancelled: null`. Nothing deleted, queue empty, `c.txt` intact. (An earlier remote
+  attempt sent a console Ctrl+C that never reached the process; same expiry outcome.)
+
+Cause (Claude Code): not the bridge. OpenJarvis runs the tool on a worker thread and the
+main thread waits in `future.result(timeout=...)` (`OpenJarvis/src/openjarvis/tools/_stubs.py:449`).
+On Windows, CPython 3.12 does not interrupt one long lock wait with Ctrl+C; the
+`KeyboardInterrupt` surfaces only when the worker's `/outcome` poll ends at the expiry,
+then C's `finally` sends `/end` 8 ms later. Reproduced on 3.12.10 (4 s worker, SIGINT at
+0.5 s): `future.result(timeout=60)` interrupted at 4.0 s, a `join(0.2)` loop at 0.6 s;
+`_thread.interrupt_main()` behaves the same. Karthik's hypothesis (`/end` queued behind
+the `/tool` long-poll) does not hold: `/tool` had already answered 202, and the bridge
+logged `end` 8 ms after the core sent it.
+
+Fix planned with Karthik's OK: `docs/plans/P3.6.md` section D. The CLI runs `handle` on a
+daemon thread and waits in `join(0.2)` steps; on `KeyboardInterrupt` it calls the new
+`Core.cancel()` (ends the current task if one exists), prints `cancelled`, exits 1.
+Regression test: a live-bridge request held pending, `_thread.interrupt_main()` from
+`on_pending`, then exit 1 in under 5 s, `end` with the pending id, `/pending` empty, file
+intact. Manual step 2 revised; after D, re-run steps 1 and 2.
+
+P3.6 not ticked. No code changed. Files changed: `docs/plans/P3.6.md`, this file. Next
+step: Cursor runs section D's verify list and posts its pre-edit summary. This replaces
+"Next step unchanged: Karthik's 4-step P3.6 manual check" in the two P4 entries below:
+P3.6 D, then manual steps 1 and 2 again, come before P4 section A.
 
 ### 2026-11-21 — Agent: Claude Code (P4 plan approved)
 
