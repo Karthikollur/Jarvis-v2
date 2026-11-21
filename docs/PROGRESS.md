@@ -143,8 +143,12 @@ Newest session entry goes at the top of the Session log.
   4 skipped. 5 mutants killed (baseline 9). Stub evals 43/43. PLAN.md not ticked.
   Section C reviewed by Claude Code 2026-11-20: ACCEPTED (Session log). Manual check
   2026-11-20 on `f6f0526`: steps 1, 3, 4 PASSED, step 2 FAILED (Ctrl+C did not cancel the
-  pending action until the 120 s expiry). Section D (`P3.6: Ctrl+C ends the task`) added
-  and APPROVED by Karthik; not implemented. P3.6 not ticked. P3 phase review 2026-11-18: PASS
+  pending action until the 120 s expiry). Section D DONE (commit `P3.6: Ctrl+C ends the
+  task`): the CLI runs `handle` on a daemon thread and waits in `join(0.2)` steps;
+  `KeyboardInterrupt` calls `Core.cancel()`, prints `cancelled`, and exits 1. 679 passed,
+  4 skipped. 5 mutants killed (baseline 3); the `daemon=False` row was not run. PLAN.md
+  not ticked. Next: Claude Code reviews D, then Karthik re-runs manual steps 1 and 2.
+  P3 phase review 2026-11-18: PASS
   WITH FIXES, three Important findings (Session log). P3.7 plan APPROVED by Karthik
   2026-11-18 with changes (`docs/plans/P3.7.md`): A Explorer comma
   rule, B guard checks the executor, B2 `recall_memory` hidden until P4, C script runs in a
@@ -1085,6 +1089,48 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-21 — Agent: Cursor (P3.6 D)
+
+Section D, on Karthik's go. Ctrl+C during a pending delete waited out the 120 s expiry
+because the main thread was blocked in `future.result`.
+
+Red run, test 1 alone, before the product change (`uv run python -m pytest
+tests/test_core.py::test_ctrl_c_cancels_the_pending_action`): failed in 132.55 s.
+`KeyboardInterrupt` instead of exit 1 (`code` None, `interrupted` True), `cancelled`
+null, last output line empty, not under 5 s. The file was still there. `/pending` was
+already empty because the action had expired.
+
+- `core/agent.py`: `cancel()` next to `_end`. It calls `_end()` only when `_task_id`
+  is not `None`. `_end` is unchanged.
+- `core/__main__.py`: `_handle` runs `handle` on a daemon thread and waits in
+  `join(0.2)` steps. On `KeyboardInterrupt` it calls `cancel()` and re-raises. `main`
+  prints `_handle(...)` and catches `KeyboardInterrupt` first: `cancelled`, exit 1.
+  The `URLError` and `(OSError, BridgeError)` handlers are unchanged.
+- `tests/test_core.py`: the live-bridge Ctrl+C test, `cancel()` before a request, and
+  a stub `handle` that raises `URLError`. Existing CLI tests were not edited.
+- Files: those three, `docs/plans/P3.6.md`, this file. PLAN.md not ticked. Nothing in
+  `OpenJarvis/`, `bridge/`, `safety/`, `config/`, `.claude/`, or `evals/`. No new
+  dependency.
+- Tests: `uv run python -m pytest` from PowerShell -> 679 passed, 4 skipped.
+- Mutants (`%TEMP%\p36d_mutants.py`, in memory, baseline first, one at a time):
+  baseline 3 passed.
+
+  | Mutant | Killed by | Result |
+  |---|---|---|
+  | one `thread.join()` with no timeout | 1 | killed (123 s; `cancelled` null. The interrupt landed when `join()` returned at the expiry) |
+  | `core.cancel()` removed | 1 | killed (9.9 s; `cancelled` null, `/pending` not empty) |
+  | `except KeyboardInterrupt` removed from `main` | 1 | killed (4.8 s; no exit 1) |
+  | `_task_id` check removed from `cancel` | 2 | killed (`end(None)`) |
+  | the thread's exception not re-raised | 3 | killed (no `SystemExit`) |
+  | `daemon=True` -> `daemon=False` | not run | only delays process exit after the cancel; manual step 2 covers it |
+
+  Restored, sha256 before and after: `core/__main__.py`
+  `7379d7b8b526481a75bf49d17279d71f21cabcb8f8cb74fc26a12b888ebb09a7`,
+  `core/agent.py`
+  `af1e6fbbf8476e739ba3990ae959b0217a6e1417011270d46201c64149bd21dc`.
+- Stopped at: this commit. Next: Claude Code reviews D. Then Karthik re-runs manual
+  steps 1 and 2. The reviewer ticks P3.6 after that, which closes P3.
 
 ### 2026-11-21 — Agent: Claude Code (P3.6 manual check: step 2 failed; section D planned)
 

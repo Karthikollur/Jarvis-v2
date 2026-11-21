@@ -68,6 +68,11 @@ class Core:
         except OSError:
             return  # the bridge is gone; the task expires by itself
 
+    def cancel(self) -> None:
+        """Ctrl+C in the CLI: end the running request's task now, from the main thread."""
+        if self._task_id is not None:  # here, not in _end: C's test 9 needs _end(None) visible
+            self._end()
+
     def _guard(self):
         held = list(self._agent._tools)  # the agent's own list (upstream pinned at e6b7137)
         run = self._agent._executor._tools  # what OpenJarvis offers and dispatches: a dict built once from that list

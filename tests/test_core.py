@@ -826,3 +826,81 @@ def test_new_task_error_does_not_end():
     with pytest.raises(BridgeError, match="no task"):
         core.handle("hello")
     assert client.ended == []
+
+
+def test_ctrl_c_cancels_the_pending_action(live_bridge, monkeypatch, capsys):
+    """Refused case: Ctrl+C must cancel the queued delete before the 120 s expiry."""
+    import _thread
+    import core.__main__ as cli
+
+    root, storage, base = live_bridge[1], live_bridge[2], live_bridge[3]
+    target = root / "c.txt"
+    target.write_text("keep", encoding="utf-8")
+    seen = []
+
+    def on_pending(pending_id):
+        seen.append(pending_id)
+        threading.Timer(0.2, _thread.interrupt_main).start()
+
+    core, _engine, _client, _root, _storage, _base = make_core(
+        live_bridge,
+        [tool_call("delete_file", json.dumps({"path": str(target)})), answer("Done.")],
+        on_pending=on_pending,
+    )
+    monkeypatch.setattr(cli, "build", lambda **_kwargs: core)
+    code = None
+    interrupted = False
+    started = time.monotonic()
+    try:
+        cli.main(["delete it"])
+    except SystemExit as raised:
+        code = raised.code
+    except KeyboardInterrupt:
+        interrupted = True
+    elapsed = time.monotonic() - started
+    try:
+        ends = [
+            line for line in audit(storage)
+            if line["event"] == "end" and line.get("task_id") == core._task_id
+        ]
+        cancelled = ends[0]["cancelled"] if ends else None
+        output = capsys.readouterr().out.splitlines()
+        last = output[-1] if output else ""
+        assert (code, interrupted, last, cancelled, pending(base, storage)["pending"], target.is_file(), elapsed < 5) == (
+            1, False, "cancelled", seen[0], [], True, True,
+        )
+    finally:
+        # handle's own finally posts a second /end. Wait so that thread is done
+        # with the bridge before the fixture tears the server down.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            ends = [
+                line for line in audit(storage)
+                if line["event"] == "end" and line.get("task_id") == core._task_id
+            ]
+            if len(ends) >= 2:
+                break
+            time.sleep(0.05)
+
+
+def test_cancel_before_a_request_sends_nothing():
+    client = CountingClient()
+    core = _counting_core(client, FakeEngine([]))
+    core.cancel()
+    assert client.ended == []
+
+
+def test_thread_urlerror_says_the_bridge_is_down(monkeypatch, capsys):
+    import core.__main__ as cli
+
+    class Stub:
+        results = []
+
+        def handle(self, _text):
+            raise urllib.error.URLError("refused")
+
+    monkeypatch.setattr(cli, "build", lambda **_kwargs: Stub())
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["what time is it"])
+    assert raised.value.code == 1
+    assert capsys.readouterr().out == "bridge is not running\n"
