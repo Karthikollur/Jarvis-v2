@@ -187,6 +187,10 @@ Newest session entry goes at the top of the Session log.
   P3.6 verify list rewritten for C on `6628533` (Karthik's OK); C tests 8 and 9 added.
   Plans for P3.6 and P4 to P8 were written ahead on 2026-11-16 (`docs/plans/P3.6.md`,
   `P4.md` to `P8.md`): all DRAFT, none approved, no code. They do not change what is next.
+  `docs/plans/P4.md` updated 2026-11-21 by Claude Code (still DRAFT, not approved): hybrid
+  search (D9, chosen by Karthik), FTS5 tables and authorizer rules 24 to 26, vector-vs-hybrid
+  measurement and exact-term questions in section G, two new section G levers, review
+  checks for every P4 commit. Ideas from awesome-llm-apps; no code, no new dependency.
   P0 and P1 are complete, every task ticked in PLAN.md.
 - P3 "Done when": PASSED 2026-11-18, accepted by Karthik (task `4e5b3c13…`, 6 of 8
   calls, one task id, undo restored `downloads`). The four approvals were made by a script
@@ -511,6 +515,13 @@ Newest session entry goes at the top of the Session log.
 ## Decisions
 
 Format: `YYYY-MM-DD — decision — reason — who`
+
+- 2026-11-21 — P4 (still DRAFT): hybrid search is built into section D (FTS5 keyword
+  ranking merged with the vector ranking by RRF, the not-found floor on the cosine), not
+  kept as a section G lever (P4 D9). Section G measures it against vector-only. Embeddings
+  are weak on exact names, acronyms and dates, and FTS5 ships with `sqlite3`, so no new
+  dependency — Karthik ("do the recommended plan", after Claude Code's review of
+  awesome-llm-apps).
 
 - 2026-11-20 — P3.6 approved, D1 to D3 as recommended: `POST /end` and the core ends its
   task (sections B, C); no audit line for an eviction; a stopped task's pending action
@@ -1062,6 +1073,41 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-21 — Agent: Claude Code (P4 draft updated from the awesome-llm-apps review)
+
+Karthik asked whether Shubhamsaboo/awesome-llm-apps (Apache-2.0) could improve Jarvis's
+memory and RAG. Read-only review of `rag_tutorials/qwen_local_rag`,
+`local_hybrid_search_rag` (and raglite 0.2.1's `_search.py`, the code behind it),
+`corrective_rag` and `agent_skills/scope-creep-detector`, all in a scratch folder outside
+the repo. Verdicts: keyword+vector search merged by RRF, adopt in P4; chunk overlap,
+section G lever; LLM relevance grading, section G lever (quality only, never a safety
+control; the example keeps a chunk when grading fails); diff-vs-plan check, adopt in
+review. Not copied: prompt-pasted context, web or "general knowledge" fallbacks, vector
+DB servers, URL/upload ingest. Karthik: "do the recommended plan".
+
+Changed `docs/plans/P4.md` only (still DRAFT): header note; verify-list line for FTS5 on
+the venv's SQLite; design bullet; D9; rules 24 (quoted FTS5 query), 25 (no UPDATE on
+`chunks`/`facts`), 26 (read codes every role allows); review checks; section A FTS5
+tables, triggers, role writes, tests 3, 4, 7, 9 and mutants; section C test 2; section D
+search steps (vector, keyword, `rrf`, cosine floor), tests and mutants; section G
+exact-term questions, vector-vs-hybrid report, overlap and grading levers; manual check
+step 2; "Not in P4".
+
+Probe (Python, SQLite 3.53.1 on Linux, scratch folder, not the Windows venv): an
+external-content FTS5 table with insert/delete triggers works; a cascade delete from
+`documents` fires `chunks_ad`; quoting each `\w+` word stops `NOT`, `AND`, `"` and `*`
+from raising FTS5 errors; "what is my passport number" matches any chunk containing
+"my" (why the floor stays on the cosine). Found: every FTS5 search runs
+`PRAGMA data_version` and the functions `match` and `bm25`, so the draft's bridge
+authorizer (SELECT/READ plus one INSERT) would have refused every search, and also the
+draft's own `data_version` cache check. Rule 26 allows only the read form of that pragma;
+`PRAGMA data_version = 5`, `writable_schema` and FTS writes stay refused (probed).
+
+Tests not run: docs-only change, and this cloud container has no `OpenJarvis/` clone and
+no Windows venv. No code changed. Next step unchanged: Karthik's 4-step P3.6 manual check,
+then the reviewer ticks P3.6 (closes P3). Before P4 section A: re-run the verify list,
+including the FTS5 line on SQLite 3.49.1.
 
 ### 2026-11-20 — Agent: Claude Code (P3.6 C review: accepted)
 
