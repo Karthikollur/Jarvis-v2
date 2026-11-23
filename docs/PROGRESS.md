@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest fixes` plan change APPROVED** by Karthik ("Approve with
+  floor"). The approved change is in `docs/plans/P4.md` section C, "Plan change
+  2026-11-23 (from the review of `c7a86b1`)". It has three parts:
+  - one zero-chunk check for every file type;
+  - PDFs parsed from the bytes read on the checked handle;
+  - `pypdf>=7.1.1`, where `uv lock` may change only the `requires-dist` specifier.
+
+  Next: Cursor posts the pre-edit summary for `P4.2: ingest fixes` and waits for
+  Karthik's go, then makes one commit with the 35 mutants in the Session log. PLAN.md not
+  ticked.
 - **2026-11-23: `P4.2: ingest` reviewed: NOT ACCEPTED yet, two findings** (Claude Code
   review of `c7a86b1`). The file list and the lock are as approved. Suite re-run: 727
   passed, 4 skipped (matches). 34 of 34 mutants killed. Findings: a PDF whose text is only
@@ -1221,6 +1231,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes plan change approved)
+
+Karthik approved the plan change from the review of `c7a86b1` ("Approve with floor"),
+including point 3, the `pypdf>=7.1.1` floor. `docs/plans/P4.md` section C now marks the
+change APPROVED. Its file list now names `pyproject.toml` and `uv.lock`, and point 3 says
+to stop and report if `uv lock` moves anything besides the `requires-dist` specifier.
+Files changed: `docs/plans/P4.md`, this file. Next step: Cursor runs the start-of-session
+protocol, posts the pre-edit summary for `P4.2: ingest fixes`, and implements it in one
+commit after Karthik's go.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest review: two findings, plan change drafted)
 
