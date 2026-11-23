@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.2 ingest done** (`P4.2: ingest`). `memory/ingest.py` walks each docs
+  root, chunks, and replaces document rows. `python -m memory reset-documents` asks for
+  an exact `yes`. `pypdf` 7.1.1 is the only addition to `uv.lock`. PowerShell
+  `uv run python -m pytest`: 727 passed, 4 skipped. 34 mutants killed (Session log).
+  PLAN.md not ticked. The real vault was not ingested. Next: the reviewer re-runs the
+  suite and the mutants.
 - **2026-11-23: `P4.2: ingest` pre-edit answers APPROVED** by Karthik ("Approve all"):
   `reset-documents` lands in this commit, rows of now-skipped files are deleted, and the
   `pypdf` download has his go. Answers in `docs/plans/P4.md` section C, "Pre-edit
@@ -1208,6 +1214,72 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.2 ingest)
+
+Section C as amended by the approved pre-edit answers. `memory/ingest.py` walks each
+`DocsRoot` with `os.walk(onerror=...)` re-raising, prunes reparse points before
+`exclude` / `.obsidian` / `.git` / `.trash` / `resolve_inside`, and stores the walked
+path (no `normcase`). One delete pass runs only after a finished walk and the model
+check, then each new or changed file is embedded and written in its own transaction.
+A dry run reads, parses, and chunks, and does not call `connect()` or the embedder.
+`load` returns `(Embedder, list[DocsRoot])`. `Embedder.model` is public.
+`python -m memory reset-documents` deletes document rows and `meta.embedding_model`
+only after an exact `yes`; a missing database is left missing. Facts stay.
+`pypdf` 7.1.1 (RC4-40 needs no extra package). `uv lock` added only `pypdf`'s package
+block and the project's dependency lines. `tests/fixtures/hello.pdf` extracts
+`Hello PDF`. The real vault and `%LOCALAPPDATA%\Jarvis\memory.db` were not touched.
+
+PowerShell `uv run python -m pytest`: 727 passed, 4 skipped, 245.67s (was 711 passed,
+4 skipped). `tests/test_memory_ingest.py` and the new embed load test: 16 passed.
+PLAN.md not ticked.
+
+Mutants one at a time, restored after each. `memory/ingest.py` sha256
+`f7ba00e08d84b036aacd2e9c2c65976fdc5e024477e7255d4ee359eb6a1d932c` and
+`memory/embed.py` sha256 `e0899a818bd6c670bc98de943206df1ed1bfb52d98006119cae5e9ca95d3c74a`
+before and after.
+
+| Mutant | Test | Result |
+|---|---|---|
+| incremental skip removed | 1 | killed |
+| old row not deleted before the insert | 2 | killed |
+| delete pass removed | 2 | killed |
+| only gone files deleted | 2 | killed |
+| changed-to-skipped file keeps its row | 2 | killed |
+| prune removed | 3 | killed |
+| path equality removed | 3 | killed |
+| hard-link check removed | 4 | killed |
+| protected list not passed | 5 | killed |
+| `.obsidian` / `.git` / `.trash` skip removed | 6 | killed |
+| `exclude` ignored | 6 | killed |
+| extension filter removed | 6 | killed |
+| text cap removed | 6 | killed |
+| NUL check removed | 6 | killed |
+| chunk cap raised | 7 | killed |
+| heading split removed | 7 | killed |
+| heading path dropped | 7 | killed |
+| heading path not counted in the cap | 7 | killed |
+| heading inside a fence counted | 7 | killed |
+| `#tag` counted as a heading | 7 | killed |
+| newlines not normalised | 7 | killed |
+| empty file embedded | 7 | killed |
+| model check removed | 8 | killed |
+| dry-run writes | 9 | killed |
+| dry-run embeds | 9 | killed |
+| dry-run skips the content reads | 9 | killed |
+| encrypted check removed | 10 | killed |
+| PDF cap removed | 10 | killed |
+| zero-text PDF not skipped | 10 | killed |
+| typed-`yes` check removed | 12 | killed |
+| write transaction opened before the embed | 13 | killed |
+| a failed embed caught and the run goes on | 14 | killed |
+| `exclude` type check removed | 15 | killed |
+| `onerror` dropped | 16 | killed |
+
+Files changed: `memory/ingest.py`, `memory/__main__.py`, `memory/embed.py`,
+`tests/test_memory_ingest.py`, `tests/test_memory_embed.py`, `tests/fixtures/hello.pdf`,
+`pyproject.toml`, `uv.lock`, this file. `safety/`, `bridge/`, `config/`, and PLAN.md
+untouched. Next step: the reviewer re-runs the suite and these 34 mutants.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest pre-edit answers approved)
 

@@ -2,6 +2,7 @@
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import os
 import threading
 import urllib.request
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from memory.embed import Embedder, load
+from memory.embed import DocsRoot, Embedder, load
 
 _PREFIXES = ("search_document: ", "search_query: ")
 
@@ -151,6 +152,50 @@ def test_load_rejects_a_bad_config(tmp_path: Path) -> None:
         load(_write(tmp_path / "drive.toml", "C:\\"))
     with pytest.raises(ValueError):
         load(_write(tmp_path / "unknown.toml", r"C:\Mainframe\Second_Brain\Learning", extra=True))
+
+
+def test_load_returns_docs_roots_and_rejects_bad_exclude(tmp_path: Path) -> None:
+    """Test 15: DocsRoot plus the exclude shapes a bare string would misread."""
+    learning = r"C:\Mainframe\Second_Brain\Learning"
+    embedder, roots = load(_raw(
+        tmp_path / "good.toml",
+        '[[docs_root]]\n'
+        'path = "C:\\\\Mainframe\\\\Second_Brain\\\\Learning"\n'
+        'exclude = ["secret"]\n',
+    ))
+    assert embedder.model == "nomic-embed-text"
+    assert roots == [DocsRoot(Path(os.path.realpath(learning)), ("secret",))]
+    for name, docs in {
+        "dotdot.toml": 'exclude = [".."]\n',
+        "dot.toml": 'exclude = ["."]\n',
+        "emptyname.toml": 'exclude = [""]\n',
+        "slash.toml": 'exclude = ["a/b"]\n',
+        "backslash.toml": 'exclude = ["a\\\\b"]\n',
+        "archive.toml": 'exclude = "Archive"\n',
+        "number.toml": "exclude = [1]\n",
+    }.items():
+        with pytest.raises(ValueError):
+            load(_raw(
+                tmp_path / name,
+                "[[docs_root]]\n"
+                'path = "C:\\\\Mainframe\\\\Second_Brain\\\\Learning"\n'
+                + docs,
+            ))
+    with pytest.raises(ValueError):
+        load(_raw(tmp_path / "empty.toml", "docs_root = []\n"))
+
+
+def _raw(path: Path, docs: str) -> Path:
+    path.write_text(
+        "[embedding]\n"
+        'model = "nomic-embed-text"\n'
+        'document_prefix = "search_document: "\n'
+        'query_prefix = "search_query: "\n'
+        "\n"
+        + docs,
+        encoding="utf-8",
+    )
+    return path
 
 
 def _write(path: Path, root: str, *, extra: bool = False) -> Path:

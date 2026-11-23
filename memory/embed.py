@@ -8,6 +8,7 @@ import re
 import tomllib
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,10 @@ class Embedder:
         # No proxies: urlopen would honour HTTP_PROXY and could send a loopback call off the box.
         # Per instance, so this opener is built when the client is, under the proxy env then.
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     def documents(self, texts: list[str]) -> np.ndarray:
         return self._embed(self._document_prefix, texts)
@@ -81,21 +86,31 @@ class Embedder:
         return vectors
 
 
-def load(config_path: Path) -> tuple[Embedder, list[Path]]:
+@dataclass(frozen=True)
+class DocsRoot:
+    """One docs root and the folder names skipped anywhere below it."""
+
+    path: Path
+    exclude: tuple[str, ...]
+
+
+def load(config_path: Path) -> tuple[Embedder, list[DocsRoot]]:
     """Read config/memory.toml. A missing file raises FileNotFoundError."""
     data = tomllib.loads(Path(config_path).read_text(encoding="utf-8"))
     _exact(data, _TOP_KEYS, "memory.toml")
     embedding = _exact(data["embedding"], _EMBED_KEYS, "embedding")
-    roots = []
     entries = data["docs_root"]
     if not isinstance(entries, list):
         raise ValueError("docs_root must be a list of tables")
+    if len(entries) == 0:
+        raise ValueError("docs_root must not be empty")
+    roots = []
     for entry in entries:
         table = _exact(entry, _ROOT_KEYS, "docs_root")
         raw = table["path"]
         if not isinstance(raw, str) or _FOLDER.fullmatch(raw) is None:
             raise ValueError(f"docs root must be an absolute folder below a drive: {raw!r}")
-        roots.append(Path(os.path.realpath(raw)))
+        roots.append(DocsRoot(Path(os.path.realpath(raw)), _exclude(table["exclude"])))
     return (
         Embedder(
             OLLAMA,
@@ -105,6 +120,23 @@ def load(config_path: Path) -> tuple[Embedder, list[Path]]:
         ),
         roots,
     )
+
+
+def _exclude(value: object) -> tuple[str, ...]:
+    """Folder names only. A bare string would otherwise be read letter by letter."""
+    if not isinstance(value, list):
+        raise ValueError("exclude must be a list of folder names")
+    names = []
+    for item in value:
+        if (
+            not isinstance(item, str)
+            or item in {"", ".", ".."}
+            or "/" in item
+            or "\\" in item
+        ):
+            raise ValueError(f"exclude entry is not a folder name: {item!r}")
+        names.append(item)
+    return tuple(names)
 
 
 def _exact(table: object, keys: frozenset[str], label: str) -> dict:
