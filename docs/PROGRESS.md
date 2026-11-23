@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.1b reviewed by Claude Code: code ACCEPTED, one test gap.** Suite
+  703 passed, 4 skipped; mutants: `BEGIN IMMEDIATE` removed and WAL retry removed killed,
+  second `user_version` read removed killed only 1 of 5 by test 11. Test 12 drafted in
+  `docs/plans/P4.md` A2 "Review addendum" (DRAFT, needs Karthik's OK; Cursor implements,
+  commit `P4.1b: re-read test`). PLAN.md P4.1b stays unticked until test 12 lands. Section
+  B still waits on Karthik (`ollama pull nomic-embed-text` and the measurement).
 - **2026-11-23: P4.1b done** (`P4.1b: atomic schema`). The first create is one
   transaction: `BEGIN IMMEDIATE`, the DDL, then `user_version = 1`.
   `PRAGMA journal_mode = WAL` retries on `locked` (sleep 0.05 s, 100 tries).
@@ -1119,6 +1125,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.1b review: code accepted, test gap)
+
+Reviewed `5586f9a` (`P4.1b: atomic schema`) against `docs/plans/P4.md` section A2 and its
+approved plan change.
+
+- Correction: earlier in this session Claude Code quoted two commit hashes it had not read
+  from git (`5b4e3d8`, `c97cbd8`). The real ones are `374d9cf` (plan change, WAL retry)
+  and `ee421bd` (mutant list). Content was as described.
+- Review check 1: files `memory/store.py`, `tests/test_memory_store.py`,
+  `docs/PROGRESS.md`; all named by A2 or the work loop. Check 2: no change to
+  `pyproject.toml`, `uv.lock`, `config/` or `safety/`.
+- Code is the plan: WAL pragma retried only on `locked`, 0.05 s, 100 tries, then raise;
+  `foreign_keys` before the create; `BEGIN IMMEDIATE`, second `user_version` read, DDL
+  tuple, `user_version = 1` last, `COMMIT`; error path `conn.rollback()`; version check and
+  authorizer after. Tests 10 and 11 as planned.
+- Suite re-run from PowerShell: 703 passed, 4 skipped (matches).
+- Mutants re-run (scratch script, exact anchors, sha256 `821af9a32c96...` before and after,
+  matches Cursor's): `BEGIN IMMEDIATE` removed killed by test 10; WAL retry removed killed
+  by test 11; second read removed killed by test 11 in 1 of 5 runs (Cursor: 3 of 5).
+- Finding (test gap, not a product bug): the WAL retry's sleep usually lets the first
+  opener commit before the second reads, so test 11 rarely reaches the re-read. A
+  deterministic test 12 (raw connection holds the write lock at version 0 until the opener
+  waits) passes on the real code and killed that mutant 5 of 5 in a scratch run. Drafted
+  as A2 "Review addendum", commit `P4.1b: re-read test`.
+
+P4.1b not ticked (ticked after test 12 lands and is reviewed). Files changed:
+`docs/plans/P4.md`, this file. Next step: Karthik approves the addendum; Cursor adds test
+12 and runs that one mutant.
 
 ### 2026-11-23 — Agent: Cursor (P4.1b atomic schema)
 
