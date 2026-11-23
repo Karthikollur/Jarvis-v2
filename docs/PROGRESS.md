@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest fixes` pre-edit summary reviewed; answers DRAFT** in
+  `docs/plans/P4.md` section C, "Pre-edit answers for the fixes". Cursor's claims hold
+  (probes in the Session log; suite re-run 727 passed, 4 skipped, matches). Two changes:
+  `_pdf_text` takes no unused `path` parameter (the reopen mutant becomes the old lines put
+  back), and test 3 swaps the PDF right after the checked handle closes instead of spying
+  on `PdfReader` (on `958a99d` the swapped file gets ingested). The Session log is to name
+  the exact edit for the five mutants whose code moves. Waiting on Karthik's go. Nothing
+  built.
 - **2026-11-23: `P4.2: ingest fixes` plan change APPROVED** by Karthik ("Approve with
   floor"). The approved change is in `docs/plans/P4.md` section C, "Plan change
   2026-11-23 (from the review of `c7a86b1`)". It has three parts:
@@ -1231,6 +1239,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes: pre-edit summary reviewed)
+
+Cursor's pre-edit summary for `P4.2: ingest fixes` on `958a99d` (727 passed, 4 skipped,
+nothing edited), read against section C's approved plan change and the code at
+`958a99d`. The file list and the three parts match the plan. Start-of-session checks:
+tree clean at `958a99d`; PowerShell `uv run python -m pytest`: 727 passed, 4 skipped,
+207.81s (matches).
+
+Probes (scratch scripts and scratch temp folders; no repo file written, no vault, no
+real `memory.db`):
+- `tests/fixtures/hello.pdf` is 536 bytes and LF in this working copy (`i/lf w/lf`), and
+  holds `(Hello PDF)` once. Replaced by `(# Heading)` it is still 536 bytes.
+  `PdfReader(io.BytesIO(...))` extracts `'Hello PDF'` and `'# Heading'`;
+  `chunk_text('# Heading')` is `[]`.
+- `chunk_text("")` and `chunk_text("  \n")` are `[]`, so `_blank` adds nothing.
+- Sorted: `blank.pdf`, `heading.pdf`, `hello.pdf`, `huge.pdf`, `secret.pdf`, `z.md`.
+- `uv.lock` lines 2538 and 2554 are `{ name = "pypdf" },`. The `uvicorn` pair (2539,
+  2555 `specifier = ">=0.54.0"`) is the shape Cursor expects.
+- Nothing outside `memory/ingest.py` uses `_blank`, `_pdf_text`, `_open` or `PdfReader`.
+- No module-level `path` in `memory/ingest.py`, so Cursor's NameError reasoning holds.
+- Swap: `hello.pdf` in a scratch root, `memory.ingest._open` wrapped so that right after it
+  returns, `os.replace` puts a same-length copy reading `(Other PDF)` onto `hello.pdf`.
+  Ingested on `958a99d`: `['Other PDF']`. This shows review finding 2 happening, not just
+  argued: the file that was checked is not the file that gets parsed.
+
+Answers DRAFT in `docs/plans/P4.md` section C, "Pre-edit answers for the fixes":
+accepted as proposed except (1) `_pdf_text(data)` with no unused `path` parameter, the
+reopen mutant being the `c7a86b1` lines put back; (2) test 3 is the swap above, with no
+spy on `PdfReader`. It fails on `958a99d` and catches every reopen by name; the spy's
+"not `str` or `os.PathLike`", this plan's own wording, misses `open(path, "rb")` and
+`Path(path).read_bytes()`. (3) The Session log gives exact edits for the five mutants whose
+code moves.
+
+Files changed: `docs/plans/P4.md`, this file. Next step: Karthik approves the answers;
+then Cursor implements `P4.2: ingest fixes` in one commit.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes plan change approved)
 
