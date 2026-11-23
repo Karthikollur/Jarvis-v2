@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo rename retry` ACCEPTED, with one finding** (Claude Code review of
+  `7f3311f`). Code and tests match the plan; suite 730 passed, 4 skipped; 5/5 mutants
+  killed by their named tests; `safety/undo.py` sha256 unchanged. Finding: the 20-run loop
+  failed 4 of 20, all `test_linked_item_refused` (WinError 5 on the test's own raw
+  `os.rename` of a record folder, `tests/test_undo.py:404`), not the folder test.
+  Pre-existing: it also failed with the pre-fix `_rename`. Open for Karthik: what to do
+  about that test (Session log). No PLAN.md task. P4.3 can start.
 - **2026-11-23: `fix: undo rename retry` done.** `_rename` retries only winerror 5 and 32,
   10 tries 0.05 s apart, then refuses as before. Three tests in `tests/test_undo.py`.
   Suite through `cmd /c`: 730 passed, 4 skipped, 1 warning, 267.38s.
@@ -1289,6 +1296,39 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo rename retry review: accepted, one finding)
+
+Reviewed `7f3311f` against `docs/plans/undo-rename-retry.md` and the go in `c006dd9`.
+`_rename` is the plan's code line for line; the three tests are as planned, plus test 3's
+message match and test 2's file-only snapshot from the pre-edit summary. Re-runs (Claude
+Code's Bash, scratchpad harness, `PYTHONDONTWRITEBYTECODE=1`):
+
+- Suite: 730 passed, 4 skipped, 1 warning, 208s.
+- Mutants against `tests/test_undo.py`, restored from the saved fixed bytes after each:
+  retry removed (fails `test_busy_rename_is_retried`, `test_rename_busy_too_long_is_refused`),
+  busy check dropped (`test_other_rename_errors_are_not_retried`), bound raised
+  (`test_rename_busy_too_long_is_refused`), 5 dropped (`test_busy_rename_is_retried`),
+  32 dropped (`test_rename_busy_too_long_is_refused`). All exit 1, all killed. sha256
+  `0f472976…ccbd65` before and after, same as Cursor's; green run after restore.
+- `tests/test_undo.py` 20 runs: **4 failures**, then 3 more in 31 runs. All 7 are
+  `test_linked_item_refused`: `PermissionError: [WinError 5]` at `tests/test_undo.py:404`,
+  the test's own `os.rename(quarantine / record.id, quarantine / "moved-away")`, right
+  after `quarantine` wrote `item` and `record.json` into that folder. Same mechanism as the
+  original flake, but in test setup, so the product retry cannot cover it.
+  `test_quarantine_folder_and_undo` failed 0 times in these 81 post-fix runs.
+- Old vs new, 30 runs each, interleaved (pre-fix `_rename` swapped in by an in-memory
+  pytest plugin; `safety/undo.py` untouched): old had 1 `test_linked_item_refused` and 1
+  `test_create_undo_works_when_quarantine_is_protected_inside_root` failure (that one goes
+  through `_rename`); new had 0. So the linked-test flake predates the fix, and its rate
+  swings with machine load (7/51 right after a suite run, 0/30 later; Cursor saw 0/20).
+  The folder test did not fail with the old code in this window either, so these runs do
+  not measure the fix's effect on it; the unit tests and mutants prove the retry works.
+
+Verdict: accepted. The plan's "20 runs, 0 failures" check was not met, but the failures are
+one pre-existing test outside the fix's scope. Open for Karthik: fix
+`test_linked_item_refused`'s setup move (a test-only change), or log it as a known flake.
+Files changed: this file. Next step: Karthik's call on that test; P4.3 can start.
 
 ### 2026-11-23 — Agent: Cursor (undo rename retry)
 
