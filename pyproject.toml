@@ -5,6 +5,7 @@ description = "Local-first, voice-first desktop assistant for Windows"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.136.3",
+    "numpy>=2.3.5",
     "openjarvis",
     "uvicorn>=0.54.0",
 ]

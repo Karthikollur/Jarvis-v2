@@ -1,0 +1,9 @@
+[embedding]
+model = "nomic-embed-text"
+document_prefix = "search_document: "
+query_prefix = "search_query: "
+
+# Folders the ingest CLI reads. Never an allowed root. Only Karthik edits this file.
+[[docs_root]]
+path = 'C:\Mainframe\Second_Brain\Learning'
+exclude = []   # folder names skipped anywhere below the root

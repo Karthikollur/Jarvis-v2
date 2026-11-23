@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.2 done** (`P4.2: embeddings`). `memory/embed.py` posts `/api/embed`
+  with `options.num_gpu` 0 and `truncate: false`, in batches of 32, loopback only, no
+  proxy. `config/memory.toml` is the approved `Learning` root. `numpy>=2.3.5` is a direct
+  dependency (`uv lock` added it only on the jarvis package). PowerShell
+  `uv run python -m pytest`: 711 passed, 4 skipped. Embed file: 7 passed. 11 mutants
+  killed; `memory/embed.py` sha256 `660723e81255...` before and after. PLAN.md not ticked.
+  Next: the reviewer re-runs the suite and the mutants.
 - **2026-11-23: `P4.2: embeddings` pre-edit summary answered; Karthik's go given** ("Approve
   all"). Answers are in `docs/plans/P4.md` section B, "Pre-edit answers": `config/memory.toml`
   OK; `numpy` declared in this commit (`pyproject.toml`, `uv.lock` added to the file list);
@@ -1177,6 +1184,49 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.2 embeddings)
+
+`memory/embed.py`: `Embedder` and `load`. Every `/api/embed` body is `model`, `input`,
+`options.num_gpu` 0, `truncate` false, with the plan's ponytail comment. Document and
+query prefixes come from `config/memory.toml`. Batches of 32. Unit-normalised `float32`.
+Base `OLLAMA` is `http://127.0.0.1:11434` (same address as `host` in `core/config.toml`;
+`memory/` does not import `core`). Non-loopback base raises `ValueError`. The no-proxy
+opener is built in `__init__` (same `ProxyHandler({})` line as `core/bridge_client.py`)
+so a missing `ProxyHandler` sees `HTTP_PROXY` set before the client is constructed.
+`load` allows exactly `embedding.model`, `embedding.document_prefix`,
+`embedding.query_prefix`, `docs_root.path`, `docs_root.exclude`. Any other key raises
+`ValueError`. A missing file raises `FileNotFoundError`. A docs root must match
+`load_roots`' absolute-folder regex. `numpy>=2.3.5` added by hand to `pyproject.toml`;
+`uv lock` (no `--upgrade`) then `uv sync`. The `uv.lock` diff only adds numpy to the
+jarvis package dependencies and `requires-dist` (2.3.5 for Python < 3.13, 2.4.6 for
+3.13+, both already locked transitively). No package version moved.
+
+`tests/test_memory_embed.py`: 7 passed in 3.46s. The fake server is `http.server` on
+`127.0.0.1` and a free port. Test 4 is three cases (500, wrong count, 400), each on the
+second batch of 70 texts. Full suite from PowerShell, `uv run python -m pytest`:
+711 passed, 4 skipped, 275.15s (was 704 passed, 4 skipped). PLAN.md not ticked.
+
+Mutants, one at a time, `memory/embed.py` restored after each. sha256 before and after
+`660723e81255f4d00273bd80133c455042b96fe1025b159b16bd76bbd5ec5393`.
+
+| Mutant | Test | Result |
+|---|---|---|
+| prefixes swapped | `test_prefixes_and_unit_vectors` | killed, 1 failed |
+| vectors not normalised | `test_prefixes_and_unit_vectors` | killed, 1 failed |
+| `float32` cast removed | `test_prefixes_and_unit_vectors` | killed, 1 failed |
+| `options.num_gpu` dropped | `test_prefixes_and_unit_vectors` | killed, 1 failed |
+| `truncate` set true | `test_prefixes_and_unit_vectors` | killed, 1 failed |
+| batch size 16 | `test_batches_of_32_keep_order` | killed, 1 failed |
+| loopback check removed | `test_refuses_non_loopback_and_ignores_proxy` | killed, 1 failed |
+| proxy handler removed (`build_opener()`) | `test_refuses_non_loopback_and_ignores_proxy` | killed, 1 failed (2.77s) |
+| count check removed | `test_second_batch_failure_returns_nothing` | killed, 1 failed, 2 passed (the count case) |
+| HTTP 400 treated as success | `test_second_batch_failure_returns_nothing` | killed, 1 failed, 2 passed (the 400 case) |
+| drive-root regex allows `C:\` | `test_load_rejects_a_bad_config` | killed, 1 failed |
+
+Files: `config/memory.toml`, `memory/embed.py`, `tests/test_memory_embed.py`,
+`pyproject.toml`, `uv.lock`, this file. Next: the reviewer re-runs the suite and these
+mutants, then ticks P4.2. Section C stays behind that review.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 embeddings: pre-edit summary reviewed)
 
