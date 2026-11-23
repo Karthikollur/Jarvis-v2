@@ -5,7 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- Active phase: P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
+- **2026-11-23: P3 CLOSED.** P3.6 manual steps 1 and 2 re-run on `4fc949e` passed
+  (Session log); P3.6 ticked in PLAN.md. Every P3 task is ticked and the P3 "Done when"
+  passed 2026-11-18. Next: P4 section A (`P4.1: memory schema`): the implementer runs the
+  `docs/plans/P4.md` verify list (FTS5 on the venv's SQLite 3.49.1), posts the pre-edit
+  summary, and waits for Karthik's go. Section B needs Karthik first
+  (`ollama pull nomic-embed-text` and the measurement). Tests: 679 passed, 4 skipped.
+  The history below is kept as it was written.
+- Active phase (history): P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
   (plan `docs/plans/P3.1b.md`, three commits, ticked in PLAN.md): A `POST /outcome`
   answers through `encoded()`, so a lone surrogate in a result no longer gives 500;
   B `read_text_file` refuses a file with `st_nlink != 1` via `_single_name(fd)` in
@@ -1090,6 +1097,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P3.6 manual steps 1 and 2: PASSED; P3.6 ticked, P3 closed)
+
+Start-of-session protocol: tree had only the `.gitignore` line for `graphify-out/`
+(graphify output, regenerable; committed here). Suite from PowerShell: 679 passed,
+4 skipped. (From Git Bash the suite fails to import `safety`; run it from PowerShell.)
+
+Manual check on `4fc949e`, bridge restarted (`start` 04:50:09.918Z). Audit lines read by
+Claude Code from `%LOCALAPPDATA%\Jarvis\audit.jsonl`:
+
+- Step 1 PASS: CLI printed the time and `get_time: ok`. Task `ebcf9d96...`: `task`
+  04:51:53.106Z, `request get_time allow T0` .111Z, `result done` .112Z, `end`
+  `cancelled: null` .126Z.
+- Step 2 PASS: CLI printed `pending ae7230663b79492a843e1144f5fbae1c`. Task
+  `cb361677...`: `task` 04:56:25.681Z, `request delete_file confirm T2` 04:56:26.775Z,
+  `queued` .776Z, Ctrl+C at 04:56:28.83Z, `end` with `cancelled: ae723066...` at
+  04:56:29.156Z (0.33 s later). CLI printed `cancelled`, exit 1 after 0.63 s. `/pending`
+  empty; `c.txt` still there (`Test-Path` True, re-checked by Claude Code). Before D the
+  same step ended at the 120 s expiry with `cancelled: null`.
+- Limit: the Ctrl+C was a real console Ctrl+C event sent to that console by a helper
+  script, not a key press by Karthik. Karthik relayed the result and accepted it.
+- Steps 3 and 4 passed on `f6f0526`; D does not touch them (plan).
+
+P3.6 ticked in PLAN.md. With P3.7 ticked and the "Done when" passed 2026-11-18, P3 is
+closed. Files changed: `docs/PLAN.md`, this file, `.gitignore`. Next step: P4 section A
+(see Current state).
 
 ### 2026-11-21 — Agent: Claude Code (P3.6 D review: accepted)
 

@@ -199,7 +199,7 @@ Before starting: restore point created; P2 reviewed; P2.8 done and reviewed by K
       case t26 scores the follow-up calls (`also`), prompt rules 5 and 6 allow a
       list -> create -> move chain; fast-path count and `--model` fixed for `--real`.
       Plan: `docs/plans/P3.5b.md`.
-- [ ] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
+- [x] P3.6 Task lifecycle: end/expire tasks; evict finished tasks and outcomes from the bridge
       (history stays in the audit log). Plan (approved 2026-11-20): `docs/plans/P3.6.md`.
 - [x] P3.7 P3 review fixes: Explorer comma rule for `open_in_app`, the core guard also checks
       the OpenJarvis executor, `recall_memory` hidden from the model until P4,
