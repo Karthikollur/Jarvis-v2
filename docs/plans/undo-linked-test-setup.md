@@ -1,6 +1,7 @@
 # Undo linked-item test setup: plant the junction instead of renaming a record folder
 
-Status: DRAFT (Claude Code, 2026-11-23). Not approved. No code until Karthik approves.
+Status: APPROVED by Karthik 2026-11-23 ("Approve the plan"; chose planting the junction
+over routing line 404 through `_rename`).
 
 ## Context
 
