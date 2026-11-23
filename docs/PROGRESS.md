@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo rename retry` pre-edit summary reviewed; GO given** by Karthik
+  ("Send the go"). Cursor's summary stands as posted, plus two mutant-step additions:
+  1. Save the fixed `safety/undo.py` text before the first mutant and restore from it
+     (not `git checkout`: HEAD is the unfixed file). After the last restore,
+     `git diff safety/undo.py` shows only the planned `_rename` change and one
+     `tests/test_undo.py` run is green, before the commit.
+  2. Each mutant runs against `tests/test_undo.py` through `cmd /c`. Killed = exit 1 AND
+     the table's test is among the failures; failing test names go in the table. Exit 1
+     with only other tests failing is not a kill: stop and report.
+
+  Next: Cursor implements the one commit; then Claude Code reviews. PLAN.md not ticked.
 - **2026-11-23: undo rename retry plan APPROVED** by Karthik (plan mode; picked "Retry in
   `_rename`" over a test-only retry or a known flake). `docs/plans/undo-rename-retry.md`:
   one commit `fix: undo rename retry` (`safety/undo.py` `_rename` retries only winerror
@@ -1272,6 +1283,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo rename retry: pre-edit summary reviewed, go)
+
+Cursor's pre-edit summary for `fix: undo rename retry` (on `95fbccb`, 727 passed,
+4 skipped) matches `docs/plans/undo-rename-retry.md`. Checked on this interpreter:
+`OSError(0, "busy", None, 5)` and `(..., 32)` are `PermissionError` (errno 13);
+`FileExistsError(0, "exists", None, 183)` stays `FileExistsError` (errno 17 = `EEXIST`,
+not `EXDEV` 18; winerror 183, not 17), so none takes the cross-drive branch. Mutants traced
+by hand: `range(1)` falls through without moving or raising (tests 1 and 2 fail); busy
+check dropped gives test 3 ten calls; `range(20)` gives test 2 twenty calls; 5 dropped
+fails test 1 at once; 32 dropped refuses on call 1, so test 2's count kills it. Cursor's
+extras (test 3 matches the message; test 2 ignores the empty record folder in the
+snapshot) are fine. Karthik gave the go with the two mutant-step additions in Current
+state. Files changed: this file. Next step: Cursor's commit, then review.
 
 ### 2026-11-23 — Agent: Claude Code (undo rename retry: plan approved)
 
