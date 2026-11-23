@@ -2,12 +2,13 @@
 
 import sqlite3
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from memory.store import MAX_PENDING_FACTS, Full, connect, propose
+from memory.store import MAX_PENDING_FACTS, Full, _SCHEMA, connect, propose
 
 BLOB = b"\x00\x00\x80\x3f"
 TABLES = (
@@ -407,3 +408,40 @@ def test_two_openers_on_a_new_file(tmp_path: Path) -> None:
             "facts_ai",
             "facts_ad",
         } <= _schema_names(path)
+
+
+def test_re_read_skips_ddl_after_the_lock_holder_commits(tmp_path: Path) -> None:
+    path = _file(tmp_path)
+    raw = sqlite3.connect(path, isolation_level=None)
+    raw.execute("PRAGMA journal_mode = WAL")
+    raw.execute("BEGIN IMMEDIATE")
+    assert raw.execute("PRAGMA user_version").fetchone()[0] == 0
+    box: dict[str, object] = {}
+
+    def open_bridge() -> None:
+        try:
+            box["conn"] = connect(path, "bridge")
+        except Exception as exc:
+            box["error"] = exc
+
+    thread = threading.Thread(target=open_bridge)
+    thread.start()
+    time.sleep(0.5)
+    try:
+        for statement in _SCHEMA:
+            raw.execute(statement)
+        raw.execute("PRAGMA user_version = 1")
+        raw.execute("COMMIT")
+    finally:
+        raw.close()
+    thread.join(10)
+    try:
+        assert not thread.is_alive()
+        if "error" in box:
+            raise box["error"]
+        opened = box["conn"]
+        assert isinstance(opened, sqlite3.Connection)
+    finally:
+        opened = box.get("conn")
+        if isinstance(opened, sqlite3.Connection):
+            opened.close()

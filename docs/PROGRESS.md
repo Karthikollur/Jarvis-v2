@@ -5,12 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
-- **2026-11-23: P4.1b reviewed by Claude Code: code ACCEPTED, one test gap.** Suite
-  703 passed, 4 skipped; mutants: `BEGIN IMMEDIATE` removed and WAL retry removed killed,
-  second `user_version` read removed killed only 1 of 5 by test 11. Test 12 drafted in
-  `docs/plans/P4.md` A2 "Review addendum" (APPROVED by Karthik 2026-11-23; Cursor implements,
-  commit `P4.1b: re-read test`). PLAN.md P4.1b stays unticked until test 12 lands. Section
-  B still waits on Karthik (`ollama pull nomic-embed-text` and the measurement).
+- **2026-11-23: P4.1b test 12 done** (`P4.1b: re-read test`). A raw connection holds
+  `BEGIN IMMEDIATE` on a new file at `user_version` 0; `connect` waits in its own
+  `BEGIN IMMEDIATE`; the holder then commits the schema. PowerShell
+  `uv run python -m pytest`: 704 passed, 4 skipped. Memory file: 25 passed.
+  Second `user_version` read removed: killed by test 12, 5 of 5 (Session log).
+  PLAN.md not ticked. Next: the reviewer re-runs test 12 and that mutant. Section B
+  still waits on Karthik (`ollama pull nomic-embed-text` and the measurement).
 - **2026-11-23: P4.1b done** (`P4.1b: atomic schema`). The first create is one
   transaction: `BEGIN IMMEDIATE`, the DDL, then `user_version = 1`.
   `PRAGMA journal_mode = WAL` retries on `locked` (sleep 0.05 s, 100 tries).
@@ -1125,6 +1126,31 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.1b re-read test)
+
+Added test 12 from the approved A2 review addendum (`c8d016a`).
+`tests/test_memory_store.py` only. A raw connection (`isolation_level=None`) sets
+WAL and holds `BEGIN IMMEDIATE` on a new file at `user_version` 0. A thread calls
+`connect(path, "bridge")`. After 0.5 s the raw connection runs `_SCHEMA`, sets
+`user_version = 1`, commits and closes. The thread must finish within 10 s with
+a connection and no error. `memory/store.py` is unchanged.
+
+`tests/test_memory_store.py`: 25 passed in 1.92s. Full suite from PowerShell,
+`uv run python -m pytest`: 704 passed, 4 skipped, 252.25s (was 703 passed,
+4 skipped). PLAN.md not ticked.
+
+Mutant, applied to `memory/store.py` and restored after the five runs. sha256
+before and after
+`821af9a32c96e62bd82c50e4c51a84e2ffc69d4f2cbdcaa703f709c2aa6e1d9b`.
+
+| Mutant | Test | Result |
+|---|---|---|
+| second `user_version` read removed | `test_re_read_skips_ddl_after_the_lock_holder_commits` | killed, 5 of 5 (0.61s, 0.65s, 0.64s, 0.60s, 0.62s; `table meta already exists`) |
+
+Files: `tests/test_memory_store.py`, this file. Next: the reviewer re-runs test
+12 and this mutant, then ticks P4.1b. Section B waits on Karthik's
+`ollama pull nomic-embed-text` and the measurement.
 
 ### 2026-11-23 — Agent: Claude Code (P4.1b review: code accepted, test gap)
 
