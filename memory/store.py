@@ -7,6 +7,7 @@ The authorizer is the permission check. A code that is not granted here is denie
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,38 +17,40 @@ _ROLES = frozenset({"bridge", "ingest", "review"})
 
 # External-content FTS5. No UPDATE triggers: chunks and facts are inserted and
 # deleted, never updated, and the authorizer refuses UPDATE on both.
-_SCHEMA = """\
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA user_version = 1;
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE pending_facts (
-  id INTEGER PRIMARY KEY, text TEXT NOT NULL, proposed TEXT NOT NULL);
-CREATE TABLE facts (
-  id INTEGER PRIMARY KEY, text TEXT NOT NULL, embedding BLOB NOT NULL,
-  approved TEXT NOT NULL, pending_id INTEGER);
-CREATE TABLE documents (
-  id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, size INTEGER NOT NULL,
-  mtime_ns INTEGER NOT NULL, ingested TEXT NOT NULL);
-CREATE TABLE chunks (
-  id INTEGER PRIMARY KEY,
-  document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  seq INTEGER NOT NULL, text TEXT NOT NULL, embedding BLOB NOT NULL,
-  UNIQUE (document_id, seq));
-CREATE TABLE task_history (
-  id INTEGER PRIMARY KEY, task_id TEXT NOT NULL, said TEXT NOT NULL,
-  answer TEXT NOT NULL, started TEXT NOT NULL);
-CREATE VIRTUAL TABLE chunks_fts USING fts5(text, content='chunks', content_rowid='id');
-CREATE VIRTUAL TABLE facts_fts USING fts5(text, content='facts', content_rowid='id');
-CREATE TRIGGER chunks_ai AFTER INSERT ON chunks BEGIN
-  INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text); END;
-CREATE TRIGGER chunks_ad AFTER DELETE ON chunks BEGIN
-  INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text); END;
-CREATE TRIGGER facts_ai AFTER INSERT ON facts BEGIN
-  INSERT INTO facts_fts(rowid, text) VALUES (new.id, new.text); END;
-CREATE TRIGGER facts_ad AFTER DELETE ON facts BEGIN
-  INSERT INTO facts_fts(facts_fts, rowid, text) VALUES ('delete', old.id, old.text); END;
-"""
+# DDL only. user_version is set after these, as the last statement of the create.
+_SCHEMA = (
+    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "CREATE TABLE pending_facts ("
+    "id INTEGER PRIMARY KEY, text TEXT NOT NULL, proposed TEXT NOT NULL)",
+    "CREATE TABLE facts ("
+    "id INTEGER PRIMARY KEY, text TEXT NOT NULL, embedding BLOB NOT NULL, "
+    "approved TEXT NOT NULL, pending_id INTEGER)",
+    "CREATE TABLE documents ("
+    "id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, size INTEGER NOT NULL, "
+    "mtime_ns INTEGER NOT NULL, ingested TEXT NOT NULL)",
+    "CREATE TABLE chunks ("
+    "id INTEGER PRIMARY KEY, "
+    "document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, "
+    "seq INTEGER NOT NULL, text TEXT NOT NULL, embedding BLOB NOT NULL, "
+    "UNIQUE (document_id, seq))",
+    "CREATE TABLE task_history ("
+    "id INTEGER PRIMARY KEY, task_id TEXT NOT NULL, said TEXT NOT NULL, "
+    "answer TEXT NOT NULL, started TEXT NOT NULL)",
+    "CREATE VIRTUAL TABLE chunks_fts USING fts5("
+    "text, content='chunks', content_rowid='id')",
+    "CREATE VIRTUAL TABLE facts_fts USING fts5("
+    "text, content='facts', content_rowid='id')",
+    "CREATE TRIGGER chunks_ai AFTER INSERT ON chunks BEGIN "
+    "INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text); END",
+    "CREATE TRIGGER chunks_ad AFTER DELETE ON chunks BEGIN "
+    "INSERT INTO chunks_fts(chunks_fts, rowid, text) "
+    "VALUES ('delete', old.id, old.text); END",
+    "CREATE TRIGGER facts_ai AFTER INSERT ON facts BEGIN "
+    "INSERT INTO facts_fts(rowid, text) VALUES (new.id, new.text); END",
+    "CREATE TRIGGER facts_ad AFTER DELETE ON facts BEGIN "
+    "INSERT INTO facts_fts(facts_fts, rowid, text) "
+    "VALUES ('delete', old.id, old.text); END",
+)
 
 
 class Full(Exception):
@@ -62,15 +65,35 @@ def connect(path: Path, role: str) -> sqlite3.Connection:
     # only allows that sharing. The CLIs stay single-threaded.
     conn = sqlite3.connect(path, check_same_thread=role != "bridge")
     try:
+        # ponytail: SQLite refuses one of two first WAL switches at once (deadlock avoidance,
+        # no busy wait); bounded retry, 5 s.
+        for attempt in range(100):
+            try:
+                conn.execute("PRAGMA journal_mode = WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or attempt == 99:
+                    raise
+                time.sleep(0.05)
+        # Per connection. Without it, ON DELETE CASCADE does not run.
+        conn.execute("PRAGMA foreign_keys = ON")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            conn.executescript(_SCHEMA)
-        elif version != 1:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                # The other opener may have committed while this one waited.
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+                if version == 0:
+                    for statement in _SCHEMA:
+                        conn.execute(statement)
+                    conn.execute("PRAGMA user_version = 1")
+                    version = 1
+                conn.execute("COMMIT")
+            except Exception:
+                conn.rollback()
+                raise
+        if version != 1:
             raise ValueError(f"unknown user_version: {version}")
-        conn.execute("PRAGMA journal_mode = WAL")
-        # Per connection. The copy inside the schema script does not apply to the
-        # next open, and without it ON DELETE CASCADE does not run.
-        conn.execute("PRAGMA foreign_keys = ON")
         conn.set_authorizer(_authorizer(role))
     except Exception:
         conn.close()

@@ -336,3 +336,74 @@ def test_load_extension_refused(tmp_path: Path, role: str) -> None:
         _refused(conn, "SELECT load_extension('x')")
     finally:
         conn.close()
+
+
+def _schema_names(path: Path) -> set[str]:
+    raw = sqlite3.connect(path)
+    try:
+        return {row[0] for row in raw.execute("SELECT name FROM sqlite_master")}
+    finally:
+        raw.close()
+
+
+def test_failed_ddl_rolls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import memory.store as store
+
+    path = _file(tmp_path)
+    real = store._SCHEMA
+    monkeypatch.setattr(store, "_SCHEMA", real + ("NOT SQL",))
+    with pytest.raises(sqlite3.Error):
+        connect(path, "bridge")
+    raw = sqlite3.connect(path)
+    try:
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert raw.execute("SELECT name FROM sqlite_master").fetchall() == []
+    finally:
+        raw.close()
+    monkeypatch.setattr(store, "_SCHEMA", real)
+    opened = connect(path, "ingest")
+    try:
+        assert {
+            *TABLES,
+            "chunks_ai",
+            "chunks_ad",
+            "facts_ai",
+            "facts_ad",
+        } <= _schema_names(path)
+    finally:
+        opened.close()
+    assert _user_version(path) == 1
+
+
+def test_two_openers_on_a_new_file(tmp_path: Path) -> None:
+    for n in range(20):
+        path = tmp_path / f"{n}.db"
+        barrier = threading.Barrier(2)
+        errors: list[BaseException] = []
+
+        def open_role(role: str) -> None:
+            try:
+                barrier.wait()
+                conn = connect(path, role)
+                conn.close()
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=open_role, args=("bridge",)),
+            threading.Thread(target=open_role, args=("ingest",)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+        assert [thread.is_alive() for thread in threads] == [False, False]
+        if errors:
+            raise errors[0]
+        assert {
+            *TABLES,
+            "chunks_ai",
+            "chunks_ad",
+            "facts_ai",
+            "facts_ad",
+        } <= _schema_names(path)

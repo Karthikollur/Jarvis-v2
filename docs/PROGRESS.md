@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.1b done** (`P4.1b: atomic schema`). The first create is one
+  transaction: `BEGIN IMMEDIATE`, the DDL, then `user_version = 1`.
+  `PRAGMA journal_mode = WAL` retries on `locked` (sleep 0.05 s, 100 tries).
+  The create error path uses `conn.rollback()`. PowerShell
+  `uv run python -m pytest`: 703 passed, 4 skipped. Memory file: 24 passed.
+  Mutants: 2 killed, the second `user_version` read is flaky (Session log).
+  "`user_version = 1` moved before the DDL" not run, equivalent. PLAN.md not
+  ticked. Next: P4 section B, which waits on Karthik
+  (`ollama pull nomic-embed-text` and the measurement).
 - **2026-11-23: P4.1 done** (`0092131`, `P4.1: memory schema`). `memory/store.py` creates
   the section A schema and the role authorizer. `propose` does not commit; the caller
   owns the transaction. UPDATE on `documents` is refused for ingest. Tests after the
@@ -1110,6 +1119,75 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.1b atomic schema)
+
+Continued the uncommitted create from the stop below, after Karthik approved the
+A2 plan change (`374d9cf`, `310f322`). `_SCHEMA` is a tuple of DDL statements.
+`connect` retries only `PRAGMA journal_mode = WAL` when the error message
+contains `locked` (sleep 0.05 s, 100 tries, then raise; any other error raises
+at once), with the plan's ponytail comment. Then `foreign_keys = ON`. When
+`user_version` is 0: `BEGIN IMMEDIATE`, read `user_version` again, and only if
+it is still 0 run the DDL and set `user_version = 1`, then `COMMIT`. An error
+on that path calls `conn.rollback()`; the outer handler closes once and
+re-raises. `propose` is unchanged.
+
+`tests/test_memory_store.py`: 24 passed in 1.37s. Full suite from PowerShell,
+`uv run python -m pytest`: 703 passed, 4 skipped, 241.79s (was 701 passed,
+4 skipped). PLAN.md not ticked.
+
+Mutants, one at a time against `memory/store.py`, restored after each run.
+sha256 before and after
+`821af9a32c96e62bd82c50e4c51a84e2ffc69d4f2cbdcaa703f709c2aa6e1d9b`.
+Baseline: `test_failed_ddl_rolls_back` passed; `test_two_openers_on_a_new_file`
+passed.
+
+| Mutant | Test | Result |
+|---|---|---|
+| `BEGIN IMMEDIATE` removed | `test_failed_ddl_rolls_back` | killed, 0.10s (tables left in `sqlite_master`) |
+| second `user_version` read removed | `test_two_openers_on_a_new_file` | not killed on the recorded run (passed, 0.99s). Five more runs of the same mutant: failed 3, passed 2 |
+| WAL retry removed | `test_two_openers_on_a_new_file` | killed, 0.21s (`database is locked` on the pragma) |
+| `user_version = 1` moved before the DDL | — | not run, equivalent (rolls back with the transaction; measured on 3.49.1) |
+
+The second read is still in `connect`. The WAL retry sleeps 0.05 s, and schema
+creation usually finishes in that window, so the waiting opener often sees
+`user_version` 1 on its first read and never uses the second one. Test 11 does
+not kill that mutant on every run.
+
+Files: `memory/store.py`, `tests/test_memory_store.py`, this file. Next: P4
+section B, after Karthik runs `ollama pull nomic-embed-text` and the section B
+measurement.
+
+### 2026-11-23 — Agent: Cursor (P4.1b stopped: journal_mode locks a new file)
+
+Karthik said go for `P4.1b: atomic schema` as in the pre-edit summary. `_SCHEMA`
+is a tuple of DDL statements. `connect` sets `journal_mode = WAL` and
+`foreign_keys = ON`, then when `user_version` is 0 takes `BEGIN IMMEDIATE`,
+reads `user_version` again, runs the DDL and sets `user_version = 1` last, then
+`COMMIT`. An error on that path runs `ROLLBACK`; the outer handler closes the
+connection once and re-raises.
+
+`uv run python -m pytest tests/test_memory_store.py`: 23 passed, 1 failed, 0.54s.
+`test_failed_ddl_rolls_back` passed (bad last statement, `user_version` 0, empty
+`sqlite_master`, then a real `connect` gets the schema). The two-opener test
+failed on the first round. Full suite not run. Mutants not run. No code commit.
+PLAN.md not ticked.
+
+```
+tests\test_memory_store.py:402: in test_two_openers_on_a_new_file
+    raise errors[0]
+tests\test_memory_store.py:387: in open_role
+    conn = connect(path, role)
+memory\store.py:67: in connect
+    conn.execute("PRAGMA journal_mode = WAL")
+E   sqlite3.OperationalError: database is locked
+```
+
+The two connections already exist when both execute that pragma, so this is the
+A2 stop: the `journal_mode` pragma on a brand-new file. No retry added.
+
+At that point the files were still uncommitted. Karthik approved the A2 plan
+change (`374d9cf`, `310f322`). The bounded WAL retry is the entry above.
 
 ### 2026-11-23 — Agent: Claude Code (P4.1 review: accepted with one finding)
 
