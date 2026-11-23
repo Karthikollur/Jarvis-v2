@@ -5,6 +5,10 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4 section B plan change APPROVED** by Karthik ("Approve it"). Next: Cursor
+  posts the pre-edit summary for `P4.2: embeddings` (section B plus its plan change:
+  `num_gpu 0`, `truncate: false`, tests 1 and 4 extended) and waits for Karthik's go. The
+  new `config/memory.toml` needs Karthik's OK in that summary.
 - **2026-11-23: P4 section B re-measured: PASSED.** Karthik set
   `OLLAMA_MAX_LOADED_MODELS=2` (option (a)). With CPU embeds both models stay loaded, the
   chat model does not reload (0.02 s), VRAM unchanged; 1 chunk 0.18 s, 32 chunks 5.4 s;
@@ -1167,6 +1171,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4 section B plan change approved)
+
+Karthik approved the section B plan change ("Approve it"); `docs/plans/P4.md` marks it
+APPROVED. Files changed: `docs/plans/P4.md`, this file. Next step: Cursor runs any
+remaining "Verify before executing" lines that bear on section B, posts the pre-edit
+summary for `P4.2: embeddings`, and waits for Karthik's go.
 
 ### 2026-11-23 — Agent: Claude Code (P4 section B re-measure: passed; plan change drafted)
 
