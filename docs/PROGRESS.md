@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest` reviewed: NOT ACCEPTED yet, two findings** (Claude Code
+  review of `c7a86b1`). The file list and the lock are as approved. Suite re-run: 727
+  passed, 4 skipped (matches). 34 of 34 mutants killed. Findings: a PDF whose text is only
+  a heading reaches `documents([])` and stops every run (the zero-chunk check skips PDFs),
+  and a PDF is parsed by reopening its path, not from the checked handle. Plan change
+  DRAFT in `docs/plans/P4.md` section C (`P4.2: ingest fixes`). Waiting on Karthik:
+  approve it, and decide the optional `pypdf>=7.1.1` floor. PLAN.md not ticked.
 - **2026-11-23: P4.2 ingest done** (`P4.2: ingest`). `memory/ingest.py` walks each docs
   root, chunks, and replaces document rows. `python -m memory reset-documents` asks for
   an exact `yes`. `pypdf` 7.1.1 is the only addition to `uv.lock`. PowerShell
@@ -1214,6 +1221,65 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest review: two findings, plan change drafted)
+
+Reviewed `c7a86b1` (`P4.2: ingest`) against `docs/plans/P4.md` section C and its approved
+pre-edit answers.
+
+- Review check 1: `memory/ingest.py`, `memory/__main__.py`, `memory/embed.py`,
+  `tests/test_memory_ingest.py`, `tests/test_memory_embed.py`, `tests/fixtures/hello.pdf`,
+  `pyproject.toml`, `uv.lock`, `docs/PROGRESS.md`. These are exactly the approved files.
+  Nothing unnamed.
+- Review check 2: `pyproject.toml` gains `"pypdf"` (planned, point 7; no version floor,
+  see plan change point 3). `uv.lock` adds the `pypdf` 7.1.1 package block (one
+  pure-Python wheel, no dependencies, uploaded 2026-11-18) and the two project dependency
+  lines. No other package was added and no version moved. `config/` and `safety/` are
+  untouched.
+- Re-run from PowerShell: the full suite gives 727 passed, 4 skipped, 224.15s (matches).
+  The sha256 of `memory/ingest.py` and `memory/embed.py` match the entry below.
+- Mutants re-run with a scratch script. Each anchor was found exactly once, bytes were
+  restored after each mutant, and the sha256 was the same before and after. The 15
+  target tests pass on the real code first. Result: 34 of 34 killed, with the names in
+  Cursor's table. Each failed its named test and none errored at import. Two mutants were
+  written to look like a plausible slip: typed `yes` loosened to `.strip().casefold()`,
+  and `BEGIN IMMEDIATE` held around the embed.
+- Code read against the twelve approved points and the six summary changes: all hold
+  except point 6 for PDFs, and point 10's "result equals the real run's" for the same
+  file (finding 1).
+
+Findings (fix drafted as a plan change in `docs/plans/P4.md` section C, DRAFT):
+
+1. `_file` checks for zero chunks only when `not pdf`. A PDF whose extracted text is only
+   heading lines gives `[]` and goes on to `documents([])`. Probe (scratch temp folders,
+   no vault, no real `memory.db`): `a.md`, a PDF whose text is `# Notes`, and `c.md`,
+   ingested twice. Both runs stop with `AxisError` at the PDF. `a.md` is committed and
+   `c.md` is never ingested. The dry run counts the PDF as `new`. `chunk_text("# Notes")`
+   and `chunk_text("#")` are both `[]`. The `not pdf` keeps the "zero-text PDF not
+   skipped" mutant killable, but one zero-chunk check covers blank PDFs too.
+2. `_open` runs the final-path and hard-link checks on a handle, then closes it. Then
+   `PdfReader(path)` opens the PDF again by name. Rule 21's checks hold for the first
+   handle, not for the one that is read. A swap needs something already running as
+   Karthik, which could copy the file anyway, so the risk is low. The fix is smaller
+   than the special case it replaces: parse the bytes read on the checked handle, as the
+   text path does.
+
+Notes, no change asked:
+- An `os.open` or `os.lstat` error on one file (access denied, or a file removed between
+  the listing and the `lstat`) stops the run with a traceback before any write. That is
+  the safe side and matches the incomplete-walk rule. `unreadable` is used only for a PDF
+  that fails to parse. If manual step 1 stops on `PermissionError`, this is the cause.
+- `read_files = True` and `_file(read=...)` exist for the "dry-run skips the content
+  reads" mutant. The `if not read` branch cannot be reached.
+- `tests/fixtures/hello.pdf` is stored as text (`git ls-files --eol`: `i/lf`). With
+  `core.autocrlf=true`, a fresh checkout writes it with CRLF. Probe: `pypdf` still
+  extracts `Hello PDF` and prints `incorrect startxref pointer`. The test passes either
+  way.
+
+`P4.2: ingest` NOT ACCEPTED yet. PLAN.md P4.2 not ticked. The real vault is ingested at
+the phase gate (manual check step 1), not in P4.2. Files changed: `docs/plans/P4.md`,
+this file. Next step: Karthik approves the plan change and decides point 3. Then Cursor
+posts the pre-edit summary for `P4.2: ingest fixes` and implements it after Karthik's go.
 
 ### 2026-11-23 — Agent: Cursor (P4.2 ingest)
 
