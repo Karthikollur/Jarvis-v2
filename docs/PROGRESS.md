@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.3: memory search` done.** Cosine is `matrix @ query_vector`.
+  A document source is relative to the first configured root that contains the path,
+  else the file name. An FTS row with no loaded vector raises on the cosine lookup.
+  Suite through `cmd /c`: 747 passed, 4 skipped, 1 warning, 266.41s. 9 mutants killed
+  (Session log). `memory/search.py` sha256 `e21e1680…198132` before and after.
+  PLAN.md not ticked. Next: the reviewer re-runs the suite and these 9 mutants.
+
 - **2026-11-23: P4.3 D1 pre-edit summary reviewed; GO given** by Karthik ("Send the go").
   Cursor's summary (on `73dd069`, 730 passed, 4 skipped; verify list holds) stands, with
   three changes to its stated assumptions:
@@ -1342,6 +1349,43 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.3 memory search)
+
+D1 from the step-level pass, with the three go changes recorded in `e6eaf3c`. Cosine is
+the plain dot product `matrix @ query_vector`. Tests store unit vectors and the fake
+embedder returns a unit query vector. A keyword hit's cosine is looked up directly, so a
+drifted FTS row raises. A document source is `str(path.relative_to(root))` for the first
+configured root that contains the path, else the file name. A fact source is the integer
+fact id. Floor 0.5 applies to the cosine after the reciprocal-rank merge. Empty memory
+returns `[]` before `embedder.query`. A model mismatch raises `RuntimeError`. An unknown
+mode raises `ValueError`.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 747 passed, 4 skipped, 1 warning,
+266.41s. After the last restore, `tests/test_memory_search.py`: 17 passed, 0.44s.
+
+Mutants one at a time against `tests/test_memory_search.py` through `cmd /c`. The fixed
+`memory/search.py` bytes were saved before the first mutant and written back after each
+(not `git checkout`). No write-back raised `OSError`. A mutant is killed only on exit
+code 1 with the named test among the failures. sha256
+`e21e16809da6d45c7239de862dc87eb85fc856b938228a18e356d8cf30198132` before and after.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| floor removed | `test_3_floor` | killed |
+| floor checked on the merged score | `test_1_vector_ranking`, `test_2_same_id_is_two_hits`, `test_3_floor`, `test_5_cut_at_1000`, `test_7_exact_term` | killed |
+| words not quoted in `fts_query` | `test_8_fts_syntax[NOT working]`, `test_8_fts_syntax[AND OR]` | killed |
+| keyword half skipped in hybrid | `test_7_exact_term` | killed |
+| rank counted from 0 | `test_6_rrf` | killed |
+| model check removed | `test_9_model_and_mode` | killed |
+| full path as `source` | `test_1_vector_ranking` | killed |
+| `[:CUT]` removed | `test_5_cut_at_1000` | killed |
+| empty-database early return removed | `test_4_empty_database` | killed |
+
+Files changed: `memory/search.py`, `tests/test_memory_search.py`, this file. `safety/`,
+`bridge/`, `core/`, `config/`, `pyproject.toml`, `uv.lock`, and PLAN.md untouched. The
+mutant runner was deleted after the run. Next step: the reviewer re-runs the suite and
+these 9 mutants.
 
 ### 2026-11-23 — Agent: Claude Code (P4.3 D1: pre-edit summary reviewed, go)
 
