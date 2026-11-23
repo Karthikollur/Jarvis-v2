@@ -8,7 +8,7 @@ Newest session entry goes at the top of the Session log.
 - **2026-11-23: P4.1b reviewed by Claude Code: code ACCEPTED, one test gap.** Suite
   703 passed, 4 skipped; mutants: `BEGIN IMMEDIATE` removed and WAL retry removed killed,
   second `user_version` read removed killed only 1 of 5 by test 11. Test 12 drafted in
-  `docs/plans/P4.md` A2 "Review addendum" (DRAFT, needs Karthik's OK; Cursor implements,
+  `docs/plans/P4.md` A2 "Review addendum" (APPROVED by Karthik 2026-11-23; Cursor implements,
   commit `P4.1b: re-read test`). PLAN.md P4.1b stays unticked until test 12 lands. Section
   B still waits on Karthik (`ollama pull nomic-embed-text` and the measurement).
 - **2026-11-23: P4.1b done** (`P4.1b: atomic schema`). The first create is one
