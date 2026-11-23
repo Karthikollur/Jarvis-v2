@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: undo rename retry plan APPROVED** by Karthik (plan mode; picked "Retry in
+  `_rename`" over a test-only retry or a known flake). `docs/plans/undo-rename-retry.md`:
+  one commit `fix: undo rename retry` (`safety/undo.py` `_rename` retries only winerror
+  5/32, 10 tries 0.05 s apart, then refuses as today; 3 new tests in
+  `tests/test_undo.py`; 5 mutants). This reverses P3.7 D1's cut: the flake has now failed
+  three times. Next: Cursor posts the pre-edit summary, then Karthik's go. P4.3 waits until
+  this commit is reviewed.
 - **2026-11-23: `P4.2: ingest fixes` ACCEPTED; PLAN.md P4.2 ticked** (Claude Code review
   of `4fccb94`). Code matches the approved fix plan and pre-edit answers. Full suite
   re-run: 726 passed, 4 skipped, 1 failed: `test_undo.py::test_quarantine_folder_and_undo`,
@@ -1265,6 +1272,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo rename retry: plan approved)
+
+Following the P4.2 review finding, Karthik asked for a plan for the
+`test_quarantine_folder_and_undo` flake. Made in plan mode (`safety/`). It failed 2026-11-16
+(`WinError 5`), in the P3.5b re-runs (`PermissionError`) and in this review. Each time
+`os.rename` was moving a folder that held a just-written file, which fits another process
+briefly holding a handle inside it. P3.7 had cut a retry because no one had seen the error
+outside a test (D1). That is still true, but Karthik chose the product retry over a
+test-only retry or a documented flake. Plan: `docs/plans/undo-rename-retry.md`
+(APPROVED). It retries only 5/32, bounded at 0.5 s; 183 and 17 are still refused at once;
+a failed rename moves nothing. `bridge/tools.py` `_move` (files only) is out of scope.
+Files changed: `docs/plans/undo-rename-retry.md` (new), this file. Next step: Cursor
+reads the plan and posts the pre-edit summary.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes review: accepted)
 
