@@ -5,6 +5,11 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo linked test setup` pre-edit summary reviewed; GO given** by
+  Karthik ("Send the go"), no changes. Cursor's summary (on `37c1531`, 730 passed,
+  4 skipped; 20 `test_undo.py` runs, 0 failures) matches the plan; the mutant target,
+  `safety/undo.py` lines 131–132, is `get`'s record-folder `_is_link` check. Next: Cursor
+  implements the one commit; then Claude Code reviews.
 - **2026-11-23: undo linked-item test setup plan APPROVED** by Karthik ("Approve the
   plan"), `docs/plans/undo-linked-test-setup.md`. `test_linked_item_refused` plants a
   junction record folder at a new id instead of renaming a just-written one; one commit
@@ -1301,6 +1306,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo linked test setup: pre-edit summary reviewed, go)
+
+Cursor's pre-edit summary for `fix: undo linked test setup` matches
+`docs/plans/undo-linked-test-setup.md`. Checked: `HEAD` `37c1531`, clean, level with
+origin; `safety/undo.py` 131–132 is the record-folder link check in `get`;
+`tests/test_undo.py` already imports `_winapi`, `json`, `os`, `Path`; 730 expected because
+the test is replaced, not added. Cursor's outside-repo checks (40/40 refused; mutant gets
+past the item check and overwrites `root/x.txt`) agree with the reviewer's. Note: the
+pre-change 20-run loop was already 0 failures, so the post-change loop only shows no new
+flake; the fix works by removing the folder rename. Karthik gave the go with no changes.
+Files changed: this file. Next step: Cursor's commit, then review.
 
 ### 2026-11-23 — Agent: Claude Code (undo linked-item test setup: plan drafted)
 
