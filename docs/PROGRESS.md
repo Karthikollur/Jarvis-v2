@@ -12,6 +12,9 @@ Newest session entry goes at the top of the Session log.
   summary, and waits for Karthik's go. Section B needs Karthik first
   (`ollama pull nomic-embed-text` and the measurement). Tests: 679 passed, 4 skipped.
   The history below is kept as it was written.
+  2026-11-23: P4 section A verify list run by Claude Code, all lines hold (Session log).
+  Karthik handed section A to Cursor. Next: Cursor re-runs the verify list, posts the
+  pre-edit summary for `P4.1: memory schema`, and waits for Karthik's go.
 - Active phase (history): P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
   (plan `docs/plans/P3.1b.md`, three commits, ticked in PLAN.md): A `POST /outcome`
   answers through `encoded()`, so a lone surrogate in a result no longer gives 500;
@@ -1097,6 +1100,38 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4 section A verify list; handed to Cursor)
+
+Ran `docs/plans/P4.md` "Verify before executing" for section A. No code changed.
+
+- P3 closed (`9d06b3a`). `safety/policy.py:71` `recall_memory` is `Rule(Tier.T0,
+  text_params=("query",), taints=True)`, `MAX_TEXT = 200` (`:29`). No `recall_memory`
+  handler in `bridge/`. `bridge/app.py:303` calls `handler({**args, **paths})`.
+  `core/specs.py` holds the schema; `evals/stub_tools.py` builds stubs from `SPECS`;
+  `tests/test_eval_set.py` pins 43 cases. Repo protected by default (`bridge/app.py:224`).
+- `memory/` exists with only a tracked `.gitkeep` (plan said no folder): harmless, leave it.
+- Venv: SQLite 3.49.1, `numpy` importable, `pypdf` not installed. `ollama list`: no
+  embedding model (`qwen3.5:2b`, `4b`, `9b`).
+- FTS5 probe on 3.49.1 (`:memory:`, section A tables and triggers, scratch script, `-I`):
+  `MATCH` ordered by `bm25()` returns both rows in order; deleting a `documents` row
+  cascades and the deleted chunk's only word no longer matches; `integrity-check` passes.
+  Under an authorizer allowing only rule 26's codes the search works, and these are
+  refused: INSERT and DELETE on `chunks`, `PRAGMA data_version = 5`, `delete-all`,
+  `DELETE FROM chunks_fts_data`, `SELECT load_extension('x')`. Codes seen during the
+  search: SELECT, READ on `chunks`, `chunks_fts`, `chunks_fts_idx`, `chunks_fts_docsize`,
+  FUNCTION, PRAGMA `data_version` (no value). Nothing outside rule 26.
+- Not checked (later sections): Ollama `/api/embed` (before B), tool result length (D).
+- Plan gap for the implementer to note, not to fix in A: the design says `memory.db` is
+  `protect()`-ed like the audit log, but no section says who calls it. The file lives in
+  `%LOCALAPPDATA%\Jarvis` (already user-only); section D, where the bridge first opens it,
+  is the natural place.
+
+Karthik: "Hand it to Cursor". Files changed: `docs/plans/P4.md` (verify line), this file.
+Next step: Cursor re-runs the verify list, posts the pre-edit summary for
+`P4.1: memory schema` (files: `memory/__init__.py`, `memory/store.py`,
+`tests/test_memory_store.py`; nothing in `safety/`, `bridge/`, `config/`,
+`pyproject.toml`), waits for Karthik's go, then implements section A with the 7 mutants.
 
 ### 2026-11-23 — Agent: Claude Code (P3.6 manual steps 1 and 2: PASSED; P3.6 ticked, P3 closed)
 
