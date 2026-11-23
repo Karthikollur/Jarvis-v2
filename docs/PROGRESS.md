@@ -5,6 +5,11 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: undo linked-item test setup plan DRAFT** (`docs/plans/undo-linked-test-setup.md`),
+  asked for by Karthik ("Plan a test-only fix"). `test_linked_item_refused` plants a
+  junction record folder at a new id instead of renaming a just-written one; one commit,
+  `tests/test_undo.py` + this file; one mutant. Next: Karthik approves or changes it, then
+  Cursor's pre-edit summary.
 - **2026-11-23: `fix: undo rename retry` ACCEPTED, with one finding** (Claude Code review of
   `7f3311f`). Code and tests match the plan; suite 730 passed, 4 skipped; 5/5 mutants
   killed by their named tests; `safety/undo.py` sha256 unchanged. Finding: the 20-run loop
@@ -1296,6 +1301,17 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo linked-item test setup: plan drafted)
+
+Karthik chose a test-only fix for the `test_linked_item_refused` flake found in the retry
+review. Drafted `docs/plans/undo-linked-test-setup.md` (DRAFT): the test plants a junction
+record folder at id `"f" * 32` holding a copy of the real record, so no folder is renamed.
+Checked first with a scratch test outside the repo (conftest loaded with `-p conftest`):
+40/40 runs refused with "link"; with only `get`'s record-folder `_is_link` check disabled,
+`undo` follows the planted record, so the test keeps its teeth. Only other folder rename in
+tests, `tests/test_memory_ingest.py:568`, left alone (never seen failing). Files changed:
+the new plan, this file. Next step: Karthik's approval.
 
 ### 2026-11-23 — Agent: Claude Code (undo rename retry review: accepted, one finding)
 
