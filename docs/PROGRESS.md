@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.3 step-level pass APPROVED** by Karthik (plan mode),
+  `docs/plans/P4.md` section D, "Step-level pass for section D". Three commits:
+  D1 `P4.3: memory search` (`memory/search.py` + tests, 9 mutants), D2
+  `P4.3: recall_memory handler` (bridge wiring, `HIDDEN` removed from `core/tools.py`,
+  3 mutants), D3 `P4.3: recall prompt` (description, rule 7, stub, eval loop). Changes
+  from section D: per-call bridge connection, no vector cache, floor starts at 0.5
+  (measured), a bad `memory.toml` stops the bridge start (missing = memory off). Next:
+  Cursor runs the verify list and posts the D1 pre-edit summary. PLAN.md P4.3 is ticked
+  after D3's review.
+
 - **2026-11-23: `fix: undo linked test setup` ACCEPTED** (Claude Code review of
   `353e376`). Test body is the plan's word for word; `safety/` untouched. Suite 730
   passed, 4 skipped; `tests/test_undo.py` 20 runs right after it, 0 failures; the mutant
@@ -1319,6 +1329,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.3 step-level pass: approved)
+
+Karthik asked for the P4.3 plan. Made in plan mode (touches `bridge/`). Read
+`memory/store.py`, `memory/embed.py`, `memory/ingest.py`, `bridge/tools.py`,
+`bridge/app.py`, `core/tools.py`, `core/specs.py`, `core/config.toml`,
+`evals/stub_tools.py` and the test patterns. Found beyond section D: `core/tools.py`
+`HIDDEN` still hides `recall_memory` (three `tests/test_core.py` tests pin it); a
+bridge-lifetime `memory.db` connection would lock files in every test that builds the
+production handlers, hence one connection per call and no vector cache; `documents.path`
+is absolute, so citations are made relative to the docs root. Probe (read-only, Ollama
+0.40.17, `nomic-embed-text`, 4 short notes): matches 0.73 to 0.75, unrelated questions at
+most 0.47; floor starts at 0.5. Karthik approved the pass; it is in `docs/plans/P4.md`
+section D, "Step-level pass for section D". Files changed: `docs/plans/P4.md`, this file.
+Next step: Cursor runs the pass's verify list and posts the D1 pre-edit summary.
 
 ### 2026-11-23 — Agent: Claude Code (undo linked test setup review: accepted)
 
