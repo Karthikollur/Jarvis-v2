@@ -22,9 +22,9 @@ Newest session entry goes at the top of the Session log.
   The history below is kept as it was written.
   2026-11-23: P4.1 DONE (`0092131`, Cursor) and reviewed by Claude Code: ACCEPTED with
   one finding, ticked. 701 passed, 4 skipped; 7 mutants killed. Finding: the first create
-  of `memory.db` is not atomic -> P4.1b, `docs/plans/P4.md` section A2, DRAFT, needs
-  Karthik's OK; lands before section C. Next: Karthik approves A2 (Cursor implements),
-  and separately runs `ollama pull nomic-embed-text` plus the section B measurement.
+  of `memory.db` is not atomic -> P4.1b, `docs/plans/P4.md` section A2, APPROVED by
+  Karthik 2026-11-23; lands before section C. Next: Cursor posts the pre-edit summary
+  for `P4.1b: atomic schema` and waits for Karthik's go. Separately Karthik runs `ollama pull nomic-embed-text` plus the section B measurement.
 - Active phase (history): P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
   (plan `docs/plans/P3.1b.md`, three commits, ticked in PLAN.md): A `POST /outcome`
   answers through `encoded()`, so a lone surrogate in a result no longer gives 500;
