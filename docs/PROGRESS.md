@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4 section B measured; BLOCKED on an Ollama setting.** Karthik pulled
+  `nomic-embed-text`. Every embed evicts `qwen3.5:4b`, on GPU and on CPU (`num_gpu 0`),
+  because Karthik's user environment has `OLLAMA_MAX_LOADED_MODELS=1`; the chat model
+  then reloads in 6.5-6.8 s. The plan's CPU fallback does not fix that. Numbers in the
+  Session log; decision under Open questions. Section B code waits for Karthik's answer
+  and one re-measure.
 - **2026-11-23: P4.1b ACCEPTED and ticked** (Claude Code review of `6c713b0`). Test 12
   re-run: 5 of 5 pass on the real code; second `user_version` read removed: killed 5 of
   5 (`table meta already exists`). PowerShell `uv run python -m pytest`: 704 passed,
@@ -359,6 +365,22 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Claude Code, 2026-11-23, P4 section B measurement; blocks section B)
+  Your user environment sets `OLLAMA_MAX_LOADED_MODELS=1` (also `OLLAMA_NUM_PARALLEL=1`,
+  `OLLAMA_KEEP_ALIVE=5m`); nothing in this repo set them. With one model allowed, every
+  embed call unloads the chat model, on GPU or CPU. Ingest (a batch CLI) could live with
+  that. `recall_memory` cannot: each recall inside a chat task would cost the embedder
+  load (1.9 s CPU) plus the chat reload (6.5 s).
+  (a) Recommended: set `OLLAMA_MAX_LOADED_MODELS=2` (you change it, then restart Ollama)
+  and embed on CPU (`num_gpu 0`). The chat model keeps the GPU; the embedder takes about
+  0.36 GB RAM and no VRAM. Query 0.2 s; ingest about 0.18 s per 1000-character chunk.
+  Then one re-measure to confirm nothing is evicted.
+  (b) Same setting, embed on GPU: 32 chunks in 0.6 s, but VRAM goes to about 5.6 of
+  6.0 GB (chat alone: 5.2 GB used), little room for anything else on screen.
+  (c) Keep the setting, accept the eviction. Fine for ingest, too slow for recall.
+  Was `=1` set on purpose (for example to stop `9b` and `4b` sharing VRAM)? With `=2`,
+  Ollama still unloads a model when VRAM is short; the setting is a cap, not a force.
 
 - (Claude Code, 2026-11-18, from the P3.5b manual check)
   (1) The model's final reply can claim work that failed. Run 1 (task `f87865b3…`): the
@@ -1132,6 +1154,45 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4 section B measurement: chat model evicted)
+
+Karthik ran `ollama pull nomic-embed-text` (274 MB, success). Measured with a scratch
+stdlib script (loopback `127.0.0.1:11434` only, no proxy, nothing written to the repo).
+The chat model was loaded first the way core loads it (`num_ctx` 16384). VRAM read with
+`nvidia-smi`, the same query `system_stats` uses. Ollama 0.40.17; RTX 3050 6 GB Laptop,
+6144 MiB, 1070 MiB used with no model loaded.
+
+- Route check (verify list): `POST /api/embed` with `{"model", "input": [..]}` answers
+  `embeddings`, `load_duration`, `model`, `prompt_eval_count`, `total_duration`; one
+  768-dim vector per input. `/api/ps` shows `nomic-embed-text` with context 2048.
+- `qwen3.5:4b` loaded: 3.31 GB, 100% GPU, 5211 MiB used. Cold load 22.0 s (first since
+  boot or pull).
+
+| | GPU (default) | CPU (`num_gpu 0`) |
+|---|---|---|
+| Embedder load | 21.5 s (first load after the pull) | 1.85 s |
+| Embedder size | 0.31 GB, 100% GPU | 0.36 GB, 0% GPU |
+| 1 x 1000 chars | 10.23 s, 0.04 s, 0.06 s | 0.21 s, 0.20 s, 0.21 s |
+| 32 x 1000 chars | 0.62 s, 0.58 s, 0.69 s | 5.76 s, 5.75 s, 5.80 s |
+| VRAM after embeds | 1505 MiB (chat gone) | 1070 MiB (chat gone) |
+| `qwen3.5:4b` after | evicted; reload 6.80 s | evicted; reload 6.54 s |
+
+The first warm 1-chunk GPU call (10.23 s) is one sample; cause not investigated.
+
+Cause: `OLLAMA_MAX_LOADED_MODELS=1` in Karthik's user environment, not VRAM. CPU mode
+does not help, because the cap counts models wherever they run. Section B's fallback
+assumed VRAM was the reason. Per the plan ("Do not continue on an unmeasured setup"),
+section B stops here. Options (a) to (c) under Open questions; (a) recommended.
+
+Also: `nomic-embed-text` runs at context 2048 tokens here. A 1000-character chunk is far
+below that, but `/api/embed` truncates by default, so section C must keep chunks small
+or send `"truncate": false` and fail loudly.
+
+Files changed: `docs/PROGRESS.md`, `docs/plans/P4.md` (verify list: route and model
+lines marked checked). Next step: Karthik picks (a), (b) or (c). For (a) or (b) he
+changes the variable and restarts Ollama; then Claude Code re-runs the measurement and
+writes the section B plan change for approval.
 
 ### 2026-11-23 — Agent: Claude Code (P4.1b test 12 review: accepted; P4.1b ticked)
 
