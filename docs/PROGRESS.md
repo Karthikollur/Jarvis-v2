@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.1b ACCEPTED and ticked** (Claude Code review of `6c713b0`). Test 12
+  re-run: 5 of 5 pass on the real code; second `user_version` read removed: killed 5 of
+  5 (`table meta already exists`). PowerShell `uv run python -m pytest`: 704 passed,
+  4 skipped (matches). `memory/store.py` sha256 `821af9a32c96...` unchanged. Next: P4
+  section B, which waits on Karthik (`ollama pull nomic-embed-text` and the measurement
+  in `docs/plans/P4.md`). Section C stays blocked behind B.
 - **2026-11-23: P4.1b test 12 done** (`P4.1b: re-read test`). A raw connection holds
   `BEGIN IMMEDIATE` on a new file at `user_version` 0; `connect` waits in its own
   `BEGIN IMMEDIATE`; the holder then commits the schema. PowerShell
@@ -1126,6 +1132,35 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.1b test 12 review: accepted; P4.1b ticked)
+
+Reviewed `6c713b0` (`P4.1b: re-read test`) against the A2 "Review addendum" in
+`docs/plans/P4.md` (approved, `c8d016a`).
+
+- Review check 1: files `tests/test_memory_store.py` and `docs/PROGRESS.md` only, as the
+  addendum says. Check 2: no change to `memory/store.py`, `pyproject.toml`, `uv.lock`,
+  `config/` or `safety/`. `memory/store.py` sha256 `821af9a32c96...` (same as `5586f9a`).
+- Test 12 is the addendum's test: raw connection (`isolation_level=None`), WAL,
+  `BEGIN IMMEDIATE` at `user_version` 0; `connect(path, "bridge")` in a thread; after
+  0.5 s the raw connection runs `_SCHEMA`, sets `user_version = 1`, commits, closes; join
+  10 s; the thread's error is re-raised; the opened connection is closed in `finally`.
+- `tests/test_memory_store.py` from PowerShell: 25 passed, 1.89s. Full suite from
+  PowerShell, `uv run python -m pytest`: 704 passed, 4 skipped, 198.32s (matches).
+- Mutant re-run (scratch script, exact 3-line anchor found once, bytes restored in
+  `finally`, sha256 `821af9a32c96...` before and after): baseline test 12 passed 5 of 5;
+  second `user_version` read removed: killed 5 of 5, each
+  `sqlite3.OperationalError: table meta already exists` (wall times 1.32-1.35s per run
+  including interpreter start). Matches Cursor's 5 of 5.
+- Note, not a finding: the 0.5 s sleep is what puts the opener's first read before the
+  holder's commit. If the thread were slower than that, test 12 would pass on the mutant
+  too (a missed kill, never a false failure). The 5 mutant kills show the opener reached
+  the re-read on every run here.
+
+P4.1b ACCEPTED, ticked in PLAN.md. Files changed: `docs/PLAN.md`, this file. Next step:
+P4 section B. D1 is already answered (`nomic-embed-text`, 2026-11-21). Karthik runs
+`ollama pull nomic-embed-text` (a download, his call) and the section B measurement; then
+the implementer posts the pre-edit summary for `P4.2: embeddings`.
 
 ### 2026-11-23 — Agent: Cursor (P4.1b re-read test)
 

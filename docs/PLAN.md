@@ -216,7 +216,7 @@ Phase plan (approved 2026-11-21, D1 to D9 as recommended): `docs/plans/P4.md`. S
 after P3 closes.
 
 - [x] P4.1 SQLite schema: `facts`, `pending_facts`, `task_history`, `documents`, `chunks`.
-- [ ] P4.1b First create of `memory.db` is one transaction (P4.1 review). Plan: `docs/plans/P4.md`
+- [x] P4.1b First create of `memory.db` is one transaction (P4.1 review). Plan: `docs/plans/P4.md`
       section A2 (approved 2026-11-23).
 - [ ] P4.2 Local embedding pipeline; ingest PDF/MD/TXT from a read-only docs root
       (for example the Obsidian vault, once Karthik adds it to allowed roots as read-only).
