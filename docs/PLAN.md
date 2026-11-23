@@ -218,7 +218,7 @@ after P3 closes.
 - [x] P4.1 SQLite schema: `facts`, `pending_facts`, `task_history`, `documents`, `chunks`.
 - [x] P4.1b First create of `memory.db` is one transaction (P4.1 review). Plan: `docs/plans/P4.md`
       section A2 (approved 2026-11-23).
-- [ ] P4.2 Local embedding pipeline; ingest PDF/MD/TXT from a read-only docs root
+- [x] P4.2 Local embedding pipeline; ingest PDF/MD/TXT from a read-only docs root
       (for example the Obsidian vault, once Karthik adds it to allowed roots as read-only).
 - [ ] P4.3 Retrieval tool returning answers with citations (file + chunk).
 - [ ] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.

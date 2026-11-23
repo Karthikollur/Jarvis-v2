@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest fixes` ACCEPTED; PLAN.md P4.2 ticked** (Claude Code review
+  of `4fccb94`). Code matches the approved fix plan and pre-edit answers. Full suite
+  re-run: 726 passed, 4 skipped, 1 failed: `test_undo.py::test_quarantine_folder_and_undo`,
+  a pre-existing flake (fails 1 of 5 runs alone, `PermissionError` from `os.rename`;
+  `safety/` untouched since P3.7). The 35 mutants re-run: all killed, sha256 as Cursor's.
+  Two extra reviewer mutants on `_open` survive (observations, Session log). Open: the
+  undo flake (a `safety/` fix: plan mode, Karthik's OK); Cursor's terminal intermittently
+  fails conftest with `No module named 'safety'` (not reproduced in 7 variants; workaround
+  `cmd /c`). Next: P4.3 `recall_memory` (section D) pre-edit summary.
 - **2026-11-23: P4.2 ingest fixes done** (`P4.2: ingest fixes`). One zero-chunk check for
   every file type. PDFs are parsed from the bytes read on the checked handle.
   `pypdf>=7.1.1`; `uv.lock` changes only that specifier. Suite through `cmd /c`: 727
@@ -1256,6 +1265,61 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes review: accepted)
+
+Reviewed `4fccb94` (`P4.2: ingest fixes`) against `docs/plans/P4.md` section C, its plan
+change of 2026-11-23 and the "Pre-edit answers for the fixes".
+
+- Review check 1: `memory/ingest.py`, `tests/test_memory_ingest.py`, `pyproject.toml`,
+  `uv.lock`, `docs/PROGRESS.md`. Exactly the plan change's file list. Nothing unnamed.
+- Review check 2: `pyproject.toml` `pypdf` becomes `pypdf>=7.1.1` (planned, point 3).
+  `uv.lock`: one line, the `requires-dist` specifier (planned). `config/`, `safety/`
+  untouched.
+- Code is the plan: one `if not chunks: return None, "no text"` for every file type;
+  `_blank` gone; the `st_size` checks stay in `_file`; `_open` (fd opened `O_BINARY`)
+  reads `_PDF_CAP + 1` or `_TEXT_CAP + 1` after the final-path and hard-link checks, then
+  `_over_pdf` / `_over_text` on `len(data)`; `_pdf_text(data)` with
+  `PdfReader(io.BytesIO(data))`, no path parameter. Test 3 wraps the real `_open` and
+  swaps `other.pdf` onto `hello.pdf` after it returns; test 10 adds `heading.pdf` (same
+  byte length) and `z.md`, `len(fake.calls) == 2`.
+- Re-run from PowerShell (`cmd /c`, log to file): 726 passed, 4 skipped, 1 failed,
+  212.83s. The failure is `tests/test_undo.py::test_quarantine_folder_and_undo`:
+  `UndoRefused: move failed: PermissionError` from `os.rename` of a folder the test had
+  just made. Alone, `tests/test_undo.py` failed 1 of 5 runs. Last change to `safety/undo.py`
+  and `tests/test_undo.py` is P3.7. Not this commit; finding below.
+- Mutants re-run: Cursor's harness (`%TEMP%\p42_mutants.py`, read in full; exit 1 killed,
+  0 survived, other invalid) through a scratch wrapper that adds a write retry and two
+  extra mutants. Baselines pass; the 35 planned mutants all killed (Cursor's table holds);
+  `memory/ingest.py` sha256 `a67e02b5...` and `memory/embed.py` `e0899a81...` before and
+  after, the same as Cursor's.
+- Extra mutants, both survive the whole ingest test file. Observations, not findings: the
+  plan made the two cap mutants remove both checks together.
+  - post-read size check removed (`if False:`): needs a file that grows between `lstat`
+    and the read. Only a race guard; reads stay bounded by cap + 1.
+  - PDF read cut to `_TEXT_CAP + 1`: no test PDF lies between 2 MB and 20 MB, so a
+    2-20 MB PDF would be truncated before parsing. A test needs a 2 MB+ PDF whose text
+    sits past the cut. Not proposed unless Karthik wants it.
+- Process note: Cursor's entry leaves out that its first mutant run died restoring
+  `memory/ingest.py` (`OSError 22` on the write) and left "PDF parsed from its path" on
+  disk. Cursor put the three lines back by hand and re-ran everything. The committed diff
+  was checked line by line against the approved change and the sha matches.
+- Cursor's terminal: the 7-variant collect-only matrix (plain, empty `PYTHONPATH`, startup
+  probe, `-s`, piped, `-vv`, plain again) all exited 0; the probe logged no failing
+  `listdir`/`stat`. Every failure seen so far was a full-suite run (Cursor's terminal; once
+  a Claude Code Git Bash run). Root cause open. Lead: `FileFinder` treats a
+  `PermissionError` from `listdir` as an empty folder, so a transient lock on the repo
+  root would give exactly this error, the same kind of lock as the undo flake. Next time
+  it fails: re-run the full suite with the startup probe. Workaround: `cmd /c`.
+
+Finding (pre-existing, not P4.2): `test_quarantine_folder_and_undo` is flaky on this
+machine. Fixing it touches `safety/undo.py` or its test, so it needs a plan in plan mode
+and Karthik's OK; nothing changed here.
+
+`P4.2: ingest fixes` ACCEPTED. PLAN.md P4.2 ticked (sections B and C both accepted; the P4
+manual check is the phase gate). Files changed: this file, `docs/PLAN.md`. Next step:
+Cursor runs section D's verify lines and posts the pre-edit summary for `P4.3:
+recall_memory`.
 
 ### 2026-11-23 — Agent: Cursor (P4.2 ingest fixes)
 
