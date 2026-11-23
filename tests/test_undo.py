@@ -394,19 +394,20 @@ def test_tampered_record_refused(env, dirs):
 
 def test_linked_item_refused(env, dirs):
     log, root, quarantine, resolve = env
-    # Someone replaces a record folder with a junction to elsewhere.
+    # Someone plants a record folder that is a junction to elsewhere, holding a copy of a
+    # real record. No folder is renamed here: renaming a just-written record folder races
+    # with Defender/the indexer (WinError 5, 2026-11-23).
     target = Path(os.path.realpath(dirs[1])) / "target"
     target.mkdir()
     (target / "item").write_text("not ours")
     original = root / "x.txt"
     original.write_text("x")
     record = log.quarantine(original, "delete_file")
-    os.rename(quarantine / record.id, quarantine / "moved-away")
-    _winapi.CreateJunction(str(target), str(quarantine / record.id))
-    (target / "record.json").write_text(
-        (quarantine / "moved-away" / "record.json").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    refused(log, record.id, resolve, root, quarantine, match="link")
+    data = json.loads((quarantine / record.id / "record.json").read_text(encoding="utf-8"))
+    planted = "f" * 32
+    (target / "record.json").write_text(json.dumps({**data, "id": planted}), encoding="utf-8")
+    _winapi.CreateJunction(str(target), str(quarantine / planted))
+    refused(log, planted, resolve, root, quarantine, match="link")
     assert (target / "item").read_text() == "not ours"
     assert not original.exists()
 

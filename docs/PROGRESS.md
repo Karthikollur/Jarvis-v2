@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo linked test setup` done.** `test_linked_item_refused` plants a
+  junction record folder at id `"f" * 32` instead of renaming a just-written one. Suite
+  through `cmd /c`: 730 passed, 4 skipped, 1 warning, 241.84s. `tests/test_undo.py` 20
+  runs right after that suite, 0 failures. One mutant killed (Session log).
+  `safety/undo.py` sha256 unchanged. PLAN.md not ticked. Next: the reviewer re-runs the
+  suite, the 20-run loop, and the mutant.
 - **2026-11-23: `fix: undo linked test setup` pre-edit summary reviewed; GO given** by
   Karthik ("Send the go"), no changes. Cursor's summary (on `37c1531`, 730 passed,
   4 skipped; 20 `test_undo.py` runs, 0 failures) matches the plan; the mutant target,
@@ -1306,6 +1312,33 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (undo linked test setup)
+
+`test_linked_item_refused` plants a junction at id `"f" * 32` that holds a copy of the
+real record. The just-written record folder is not renamed. The asserts are the same:
+`refused` matches `link`, `target/item` stays `not ours`, and `root/x.txt` stays gone.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 730 passed, 4 skipped, 1 warning,
+241.84s. `tests/test_undo.py` 20 runs in a row through `cmd /c`, started right after that
+suite: 24 passed each, 0 failures.
+
+One mutant. The `safety/undo.py` bytes were saved first and written back after the run
+(not `git checkout`). The edit deletes `get`'s record-folder check (`if _is_link(folder):
+raise UndoRefused("record folder is a link")`). The item check stays. Ran
+`tests/test_undo.py` through `cmd /c`. Killed means exit 1 and
+`test_linked_item_refused` among the failures. sha256
+`0f472976ad04daa51d03f4d8c194e6f22887f733e56caaba0fec7bd584ccbd65` before and after.
+After the restore, `git diff safety/undo.py` is empty. One `tests/test_undo.py` run was
+green (24 passed, 2.10s) before this commit. The write-back did not raise.
+
+| Mutant | Killed by | Failing tests | Result |
+|---|---|---|---|
+| `get`: record-folder link check removed | `test_linked_item_refused` | `test_linked_item_refused` (did not raise) | killed |
+
+Files changed: `tests/test_undo.py`, this file. `safety/`, `bridge/`, `config/`, and
+`pyproject.toml` untouched. PLAN.md not ticked. Next step: the reviewer re-runs the
+suite, the 20-run loop, and this mutant.
 
 ### 2026-11-23 — Agent: Claude Code (undo linked test setup: pre-edit summary reviewed, go)
 
