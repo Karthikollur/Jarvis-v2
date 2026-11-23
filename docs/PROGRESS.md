@@ -5,6 +5,9 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: Section C prompt prepared; 12 open points for its pre-edit** (Session log).
+  Cursor's pre-edit summary for `P4.2: ingest` must answer them; Karthik decides. Nothing
+  built.
 - **2026-11-23: `P4.2: embeddings` ACCEPTED** (Claude Code review of `a574df5`). Files are
   the six planned; `uv.lock` adds numpy only as a direct dependency, no version moved.
   Re-run from PowerShell: embed file 7 passed; full suite 711 passed, 4 skipped (matches).
@@ -1191,6 +1194,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (Section C read against the repo; open points)
+
+Read `docs/plans/P4.md` section C against the repo before writing Cursor's pre-edit prompt.
+Section C has no mutant list and does not name every file or behaviour it needs. Open
+points for the pre-edit summary (Cursor proposes, Karthik decides):
+
+1. `memory.embed.load` (accepted in `a574df5`) returns root paths only; each root's
+   `exclude` list is checked for presence, then dropped. Section C needs it: change
+   `load`'s return (a section B file: plan change) or read it another way.
+2. `_final_path`, `_single_name` and the `read_text_file` decode (NUL check, `utf-8-sig`,
+   `errors="replace"`) live in `bridge/tools.py`. Section D makes the bridge import
+   `memory`, so `memory` should not import `bridge`: copy them, or move them to `safety/`
+   (plan change; touches `bridge/` and `safety/`).
+3. Probe (scratch, Python 3.12.10): `os.walk(followlinks=False)` enters a junction and
+   lists files outside the root. The reparse-point prune is load-bearing. Several guards
+   cover the same cases (prune, `resolve_inside`, resolved path == walked path, protected
+   folders); each needs a test case where it is the only guard, or its mutant survives.
+4. `python -m memory reset-documents` is named (the only bulk delete, typed `yes`) but
+   has no test. If it lands in section C: a test that anything but `yes` deletes nothing.
+5. Order: embed a document's chunks before its write transaction. Otherwise the bridge's
+   `remember_fact` INSERT waits behind seconds of CPU embedding (5.4 s per 32 chunks).
+6. Zero-chunk file: never `documents([])` (raises `AxisError`); the fake embedder must
+   refuse an empty list too, or that mutant survives.
+7. `pypdf`: declared in this commit as numpy was (D4); `pyproject.toml`, `uv.lock` and the
+   fixture PDF join the file list. Installing it is a download: Karthik's go.
+8. Does the 1000-character cap include the stored heading path? Not stated.
+9. Ollama failing mid-run: not stated (stop or skip; what stays committed).
+10. `--dry-run` with no `memory.db`: `connect` would create it and the schema.
+11. `resolve_inside` refuses some names Obsidian allows (`con.md`, a trailing dot or
+    space, a zero-width joiner in an emoji): each must be a per-file skip with its reason.
+12. Storage (`%LOCALAPPDATA%\Jarvis`) and the repo as protected folders: `bridge/app.py`
+    builds both; the CLI needs the same two without importing `bridge`.
+
+Files changed: this file. Next step: Karthik gives Cursor the section C pre-edit prompt;
+Cursor posts the summary.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 embeddings review: accepted)
 
