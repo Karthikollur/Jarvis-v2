@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: D1 finding folded into D2** (Karthik: "Yes, fold into D2"). The D2 file
+  list in `docs/plans/P4.md` now includes `memory/search.py`, for one `# ponytail:`
+  comment about the missing vector cache (exact text in the plan) and nothing else. The
+  D1 review's roots note needs no change: D2 already passes `[root.path for root in
+  roots]` from `embed.load`. Next: Cursor runs D2's verify list and posts the D2
+  pre-edit summary.
+
 - **2026-11-23: `P4.3: memory search` ACCEPTED** (Claude Code review of `059c987`).
   Code follows the step-level pass and the three go changes. Suite 747 passed, 4 skipped, 1 warning, 271.08s. All 9
   mutants killed by the named tests; `memory/search.py` sha256 unchanged. One minor
@@ -1356,6 +1363,15 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (D1 finding folded into D2)
+
+Karthik approved the D1 review's proposed fix. The D2 section of `docs/plans/P4.md` now
+lists `memory/search.py` for one `# ponytail:` comment line above `def _rows`, with the
+exact text given. No test and no mutant, since it is a comment. The reviewer checks that
+the file's diff is comment lines only. The D1 roots note was already covered by D2's
+`[root.path for root in roots]`. Files changed: `docs/plans/P4.md`, this file. Next step:
+the D2 pre-edit summary from Cursor.
 
 ### 2026-11-23 — Agent: Claude Code (P4.3 D1 review: accepted, one minor finding)
 
