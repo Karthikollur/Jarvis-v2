@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.3: memory search` ACCEPTED** (Claude Code review of `059c987`).
+  Code follows the step-level pass and the three go changes. Suite 747 passed, 4 skipped, 1 warning, 271.08s. All 9
+  mutants killed by the named tests; `memory/search.py` sha256 unchanged. One minor
+  finding: the no-vector-cache `# ponytail:` comment the pass names is missing (Session
+  log). PLAN.md P4.3 stays unticked until D3's review. Next: Karthik decides on the
+  finding, then Cursor posts the D2 pre-edit summary.
+
 - **2026-11-23: `P4.3: memory search` done.** Cosine is `matrix @ query_vector`.
   A document source is relative to the first configured root that contains the path,
   else the file name. An FTS row with no loaded vector raises on the cosine lookup.
@@ -1349,6 +1356,55 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.3 D1 review: accepted, one minor finding)
+
+Reviewed `059c987` against `docs/plans/P4.md` section D, D1, and the go changes.
+Review check 1: `git show --stat` lists `memory/search.py`, `tests/test_memory_search.py`,
+and `docs/PROGRESS.md`. All three are named by D1. Review check 2: no change to
+`pyproject.toml`, `uv.lock`, `config/` or `safety/`. `memory/search.py` imports only `re`,
+`pathlib` and numpy. Steps 1 to 7 match the pass in order: mode, then model check, then
+rows, then the empty return before `embedder.query`. The query is a bound parameter.
+The floor is applied to the cosine after the merge, and the text is cut to `CUT`.
+`facts` holds approved rows only (`pending_facts` is a separate table), so searching every
+`facts` row is right. Tests 1 to 9 match the pass. Test 1's roots `[ROOT, ROOT / "notes"]`
+pin first-root-in-config-order.
+
+Suite through `cmd /c` (`uv run python -m pytest -q -p no:cacheprovider`): 747 passed, 4 skipped, 1 warning, 271.08s.
+
+Mutants were re-run by the reviewer's own harness in `.test-storage\` (gitignored), which
+was deleted afterwards. The harness ran each mutant one at a time on its own anchor
+(asserted to occur once) and restored from saved bytes. Each subprocess ran with
+`PYTHONDONTWRITEBYTECODE=1` so no stale `.pyc` could mask a mutant. sha256
+`e21e16809da6d45c7239de862dc87eb85fc856b938228a18e356d8cf30198132` before and after.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| floor removed | `test_3_floor` | killed |
+| floor checked on the merged score | `test_1`, `test_2`, `test_3`, `test_5`, `test_7` | killed |
+| words not quoted in `fts_query` | `test_8[NOT working]`, `test_8[AND OR]` | killed |
+| keyword half skipped in hybrid | `test_7_exact_term` | killed |
+| rank counted from 0 | `test_6_rrf` | killed |
+| model check removed | `test_9_model_and_mode` | killed |
+| full path as `source` (`"source": path`) | `test_1_vector_ranking` | killed |
+| `[:CUT]` removed | `test_5_cut_at_1000` | killed |
+| empty-database early return removed | `test_4_empty_database` | killed |
+
+Finding (minor, comment only): the pass says "A `# ponytail:` comment names the upgrade (a
+`data_version`-keyed cache if a search is ever seen above 200 ms)". `memory/search.py` has
+only the floor comment. The D1 file list names only the floor comment, so the plan was
+ambiguous here. Proposed fix: add the one comment line above `_rows` in D2's commit
+(add `memory/search.py` to D2's files for that line only). Needs Karthik's OK as a plan
+change.
+
+Note for D2, no change: `_source` matches roots lexically (`Path.is_relative_to`,
+case-insensitive on Windows). Ingest stores paths under `os.path.realpath` roots
+(`memory/embed.py` `load`). So the handler must pass `root.path` from that same `load`,
+not raw `memory.toml` strings. Otherwise a junction or a differently written root makes
+every citation fall back to the bare file name.
+
+Files changed: this file. Next step: Karthik's call on the finding, then the D2 pre-edit
+summary.
 
 ### 2026-11-23 — Agent: Cursor (P4.3 memory search)
 
