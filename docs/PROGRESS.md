@@ -5,6 +5,19 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.3 D1 pre-edit summary reviewed; GO given** by Karthik ("Send the go").
+  Cursor's summary (on `73dd069`, 730 passed, 4 skipped; verify list holds) stands, with
+  three changes to its stated assumptions:
+  1. Cosine is the plain dot product `matrix @ query_vector`: no re-normalizing, no
+     zero-length special case (vectors are unit by construction; a zero vector scores 0).
+     Tests store unit vectors; the fake embedder returns a unit query vector.
+  2. No special case for an FTS row with no loaded vector: look the cosine up directly;
+     drift (forbidden by rule 25) raises.
+  3. Document `source` is relative to the first configured root containing the path
+     (config order), else the file name. No longest-root rule.
+
+  Next: Cursor implements D1 in one commit; then Claude Code reviews.
+
 - **2026-11-23: P4.3 step-level pass APPROVED** by Karthik (plan mode),
   `docs/plans/P4.md` section D, "Step-level pass for section D". Three commits:
   D1 `P4.3: memory search` (`memory/search.py` + tests, 9 mutants), D2
@@ -1329,6 +1342,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.3 D1: pre-edit summary reviewed, go)
+
+Cursor's D1 pre-edit summary matches the step-level pass: files, nine tests, nine mutants,
+verify list (scratch database in `C:\JarvisSandbox`, deleted; checked). Three stated
+assumptions each added a branch no planned test reaches (a mutant on it would survive):
+re-normalizing stored vectors with a zero-length case, skipping an FTS row with no
+vector, and a longest-root rule for citations. Replaced by the simpler forms in Current
+state. Karthik gave the go with those three changes. Files changed: this file. Next step:
+Cursor's D1 commit, then review.
 
 ### 2026-11-23 — Agent: Claude Code (P4.3 step-level pass: approved)
 
