@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest fixes` pre-edit answers APPROVED** by Karthik ("Approve
+  all"). Answers in `docs/plans/P4.md` section C, "Pre-edit answers for the fixes".
+  Cursor's summary stands, with three changes:
+  - `_pdf_text(data)` with no `path` parameter;
+  - test 3 swaps `hello.pdf` right after `_open` returns, with no `PdfReader` spy;
+  - the exact edits for the five moved mutants go in the Session log.
+
+  Next: Cursor implements `P4.2: ingest fixes` in one commit with the five listed files,
+  35 mutants in the Session log. Stop if `uv.lock` moves anything besides the pypdf
+  specifier. PLAN.md not ticked.
 - **2026-11-23: `P4.2: ingest fixes` pre-edit summary reviewed; answers DRAFT** in
   `docs/plans/P4.md` section C, "Pre-edit answers for the fixes". Cursor's claims hold
   (probes in the Session log; suite re-run 727 passed, 4 skipped, matches). Two changes:
@@ -1239,6 +1249,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes pre-edit answers approved)
+
+Karthik approved the drafted answers ("Approve all"). `docs/plans/P4.md` section C marks
+"Pre-edit answers for the fixes" APPROVED with changes 1 to 3:
+1. `_pdf_text(data)` with no `path` parameter. The reopen mutant is the `c7a86b1` lines
+   put back.
+2. Test 3 is the swap test, with no `PdfReader` spy.
+3. Exact edits in the Session log for the five mutants whose code moves.
+
+Files changed: `docs/plans/P4.md`, this file. Next step: on Karthik's go, Cursor
+implements `P4.2: ingest fixes` in one commit (`memory/ingest.py`,
+`tests/test_memory_ingest.py`, `pyproject.toml`, `uv.lock`, `docs/PROGRESS.md`) and puts
+the 35-mutant table in the Session log. Then the reviewer re-runs the suite and the
+mutants. PLAN.md not ticked.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes: pre-edit summary reviewed)
 
