@@ -2551,7 +2551,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136.3" },
     { name = "numpy", specifier = ">=2.3.5" },
     { name = "openjarvis", editable = "OpenJarvis" },
-    { name = "pypdf" },
+    { name = "pypdf", specifier = ">=7.1.1" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 

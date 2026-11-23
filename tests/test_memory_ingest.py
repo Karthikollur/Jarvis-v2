@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import sqlite3
 from pathlib import Path
 
@@ -197,7 +196,10 @@ def test_edits_removals_and_skipped_rows_are_replaced(tmp_path: Path) -> None:
 
 
 def test_junctions_and_final_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test 3. The symlink half skips where this account cannot create one."""
+    """Test 3. The symlink half skips where this account cannot create one.
+
+    hello.pdf is swapped for other.pdf the moment the checked read returns.
+    """
     import _winapi
 
     import memory.ingest as ingest_mod
@@ -212,6 +214,12 @@ def test_junctions_and_final_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     (root / "sibling.md").write_text("siblingbody\n", encoding="utf-8")
     (root / "trick.md").write_text("trickbody\n", encoding="utf-8")
     (root / "plain.md").write_text("plainbody\n", encoding="utf-8")
+    fixture = (Path(__file__).parent / "fixtures" / "hello.pdf").read_bytes()
+    (root / "hello.pdf").write_bytes(fixture)
+    other = tmp_path / "other.pdf"
+    swapped = fixture.replace(b"(Hello PDF)", b"(Other PDF)", 1)
+    assert swapped != fixture and len(swapped) == len(fixture)
+    other.write_bytes(swapped)
     _winapi.CreateJunction(str(real), str(root / "jin"))
     _winapi.CreateJunction(str(outside), str(root / "outj"))
     alias = root / "alias.md"
@@ -228,7 +236,16 @@ def test_junctions_and_final_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
             return str(root / "not-the-file.md")
         return found
 
+    real_open = ingest_mod._open
+
+    def wrapped_open(path: str, pdf: bool) -> tuple[bytes | None, str | None]:
+        result = real_open(path, pdf)
+        if os.path.basename(path).casefold() == "hello.pdf":
+            os.replace(other, path)
+        return result
+
     monkeypatch.setattr(ingest_mod, "_final_path", patched)
+    monkeypatch.setattr(ingest_mod, "_open", wrapped_open)
     try:
         report = _run(root, db, Fake())
     finally:
@@ -251,6 +268,13 @@ def test_junctions_and_final_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     if linked:
         assert _reason(report, "alias.md") == "resolved path differs"
         assert not any(path.endswith("alias.md") for path in _paths(db))
+    assert "Hello PDF" in _chunks(db, "hello.pdf")[0]
+    conn = _connect(db)
+    try:
+        texts = [text for (text,) in conn.execute("SELECT text FROM chunks")]
+    finally:
+        conn.close()
+    assert all("Other PDF" not in text for text in texts)
 
 
 def test_hard_link_is_skipped(tmp_path: Path) -> None:
@@ -406,7 +430,10 @@ def test_pdf(tmp_path: Path) -> None:
     from pypdf import PdfWriter
 
     root, db = _root(tmp_path), tmp_path / "memory.db"
-    shutil.copy(Path(__file__).parent / "fixtures" / "hello.pdf", root / "hello.pdf")
+    fixture = (Path(__file__).parent / "fixtures" / "hello.pdf").read_bytes()
+    (root / "hello.pdf").write_bytes(fixture)
+    (root / "heading.pdf").write_bytes(fixture.replace(b"(Hello PDF)", b"(# Heading)", 1))
+    (root / "z.md").write_text("laternote\n", encoding="utf-8")
     blank = root / "blank.pdf"
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
@@ -422,10 +449,13 @@ def test_pdf(tmp_path: Path) -> None:
     fake = Fake()
     report = _run(root, db, fake)
     assert "Hello PDF" in _chunks(db, "hello.pdf")[0]
+    assert _reason(report, "heading.pdf") == "no text"
+    assert not any(os.path.basename(path) == "heading.pdf" for path in _paths(db))
+    assert _match(db, "laternote")
     assert _reason(report, "blank.pdf") == "no text"
     assert _reason(report, "secret.pdf") == "encrypted"
     assert _reason(report, "huge.pdf") == "too large"
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 2
     assert not any(os.path.basename(path) == "blank.pdf" for path in _paths(db))
 
 

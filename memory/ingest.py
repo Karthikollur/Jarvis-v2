@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 import datetime
+import io
 import msvcrt
 import os
 from pathlib import Path
@@ -333,21 +334,17 @@ def _file(
     data, reason = _open(path, pdf)
     if reason is not None:
         return None, reason
+    assert data is not None
     if pdf:
-        text, reason = _pdf_text(path)
+        text, reason = _pdf_text(data)
         if reason is not None:
             return None, reason
-        if _blank(text):
-            return None, "no text"
     else:
-        assert data is not None
-        if _over_text(len(data)):
-            return None, "too large"
         if b"\x00" in data:
             return None, "binary"
         text = data.decode("utf-8-sig", errors="replace")
     chunks = chunk_text(text or "")
-    if not pdf and not chunks:
+    if not chunks:
         return None, "no text"
     return _Kept(path, size, mtime, chunks), None
 
@@ -358,10 +355,6 @@ def _over_text(size: int) -> bool:
 
 def _over_pdf(size: int) -> bool:
     return size > _PDF_CAP
-
-
-def _blank(text: str | None) -> bool:
-    return not (text or "").strip()
 
 
 def _inside(path: str, roots: list[Path], protected: list[Path]) -> str | None:
@@ -384,17 +377,17 @@ def _open(path: str, pdf: bool) -> tuple[bytes | None, str | None]:
             if "hard link" not in str(exc):
                 raise
             return None, "hard link"
-        if pdf:
-            return None, None
-        data = os.read(fd, _TEXT_CAP + 1)
+        data = os.read(fd, (_PDF_CAP if pdf else _TEXT_CAP) + 1)
     finally:
         os.close(fd)
+    if _over_pdf(len(data)) if pdf else _over_text(len(data)):
+        return None, "too large"
     return data, None
 
 
-def _pdf_text(path: str) -> tuple[str | None, str | None]:
+def _pdf_text(data: bytes) -> tuple[str | None, str | None]:
     try:
-        reader = PdfReader(path)
+        reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             return None, "encrypted"
         parts = [(page.extract_text() or "") for page in reader.pages]

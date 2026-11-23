@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.2 ingest fixes done** (`P4.2: ingest fixes`). One zero-chunk check for
+  every file type. PDFs are parsed from the bytes read on the checked handle.
+  `pypdf>=7.1.1`; `uv.lock` changes only that specifier. Suite through `cmd /c`: 727
+  passed, 4 skipped. Plain PowerShell `uv run python -m pytest` in this terminal fails
+  with `No module named 'safety'` when conftest loads; the reviewer is investigating.
+  35 mutants killed (Session log). PLAN.md not ticked. The real vault was not ingested.
+  Next: the reviewer re-runs the suite and the mutants.
 - **2026-11-23: `P4.2: ingest fixes` pre-edit answers APPROVED** by Karthik ("Approve
   all"). Answers in `docs/plans/P4.md` section C, "Pre-edit answers for the fixes".
   Cursor's summary stands, with three changes:
@@ -1249,6 +1256,80 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.2 ingest fixes)
+
+Section C plan change as amended by the approved pre-edit answers. `_file` skips every
+file type with no chunks (`no text`). `_blank` is gone. `_open` reads `_PDF_CAP + 1` or
+`_TEXT_CAP + 1` bytes after the final-path and hard-link checks, then applies `_over_pdf`
+or `_over_text` to `len(data)`. `_pdf_text(data)` parses `PdfReader(io.BytesIO(data))`
+and takes no path. Test 3 swaps `hello.pdf` for `other.pdf` right after `_open` returns.
+Test 10 adds `heading.pdf` and `z.md`. `pyproject.toml` requires `pypdf>=7.1.1`.
+`uv.lock` changes only that `requires-dist` specifier. The real vault and
+`%LOCALAPPDATA%\Jarvis\memory.db` were not touched.
+
+The suite ran through `cmd /c` (`uv run python -m pytest`) because plain PowerShell runs
+in this terminal fail with `No module named 'safety'` when conftest loads. The reviewer
+is investigating. `cmd /c` result: 727 passed, 4 skipped, 1 warning, 257.40s.
+PLAN.md not ticked.
+
+Mutants one at a time, restored after each. A mutant is killed only on exit code 1.
+Exit 0 is SURVIVED. Any other exit is INVALID and the script prints that run and stops.
+`memory/ingest.py` sha256 `a67e02b52760d7badb62f73ed610a307d849d9901ee800dfd2daf4898ecb9a1c`
+and `memory/embed.py` sha256 `e0899a818bd6c670bc98de943206df1ed1bfb52d98006119cae5e9ca95d3c74a`
+before and after. 35 killed, none survived.
+
+The five mutants whose code moved, exact edit (the other 30 keep the last run's edits):
+
+- text cap removed: `_over_text` body `return size > _TEXT_CAP` becomes `return False`.
+  Both the `st_size` check and the post-read check call `_over_text`.
+- PDF cap removed: `_over_pdf` body `return size > _PDF_CAP` becomes `return False`.
+- empty file embedded: the one `if not chunks:` in `_file` becomes `if False and not chunks:`.
+- zero-text PDF not skipped: that same line becomes `if not pdf and not chunks:`.
+- PDF parsed from its path: `_pdf_text(data)` becomes `_pdf_text(path)`, the parameter
+  becomes `path: str`, and `PdfReader(io.BytesIO(data))` becomes `PdfReader(path)`.
+
+| Mutant | Test | Result |
+|---|---|---|
+| incremental skip removed | 1 | killed |
+| old row not deleted before the insert | 2 | killed |
+| delete pass removed | 2 | killed |
+| only gone files deleted | 2 | killed |
+| changed-to-skipped file keeps its row | 2 | killed |
+| prune removed | 3 | killed |
+| path equality removed | 3 | killed |
+| hard-link check removed | 4 | killed |
+| protected list not passed | 5 | killed |
+| `.obsidian` / `.git` / `.trash` skip removed | 6 | killed |
+| `exclude` ignored | 6 | killed |
+| extension filter removed | 6 | killed |
+| text cap removed | 6 | killed |
+| NUL check removed | 6 | killed |
+| chunk cap raised | 7 | killed |
+| heading split removed | 7 | killed |
+| heading path dropped | 7 | killed |
+| heading path not counted in the cap | 7 | killed |
+| heading inside a fence counted | 7 | killed |
+| `#tag` counted as a heading | 7 | killed |
+| newlines not normalised | 7 | killed |
+| empty file embedded | 7 | killed |
+| model check removed | 8 | killed |
+| dry-run writes | 9 | killed |
+| dry-run embeds | 9 | killed |
+| dry-run skips the content reads | 9 | killed |
+| encrypted check removed | 10 | killed |
+| PDF cap removed | 10 | killed |
+| zero-text PDF not skipped | 10 | killed |
+| typed-`yes` check removed | 12 | killed |
+| write transaction opened before the embed | 13 | killed |
+| a failed embed caught and the run goes on | 14 | killed |
+| `exclude` type check removed | load | killed |
+| `onerror` dropped | 16 | killed |
+| PDF parsed from its path | 3 | killed |
+
+Files changed: `memory/ingest.py`, `tests/test_memory_ingest.py`, `pyproject.toml`,
+`uv.lock`, this file. `safety/`, `bridge/`, `config/`, and PLAN.md untouched. Next step:
+the reviewer re-runs the suite and these 35 mutants.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest fixes pre-edit answers approved)
 
