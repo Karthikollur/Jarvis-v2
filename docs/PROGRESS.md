@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4 section B re-measured: PASSED.** Karthik set
+  `OLLAMA_MAX_LOADED_MODELS=2` (option (a)). With CPU embeds both models stay loaded, the
+  chat model does not reload (0.02 s), VRAM unchanged; 1 chunk 0.18 s, 32 chunks 5.4 s;
+  `truncate: false` refuses a too-long input with HTTP 400. Section B plan change
+  (`num_gpu 0`, `truncate: false`, two test additions) is DRAFT in `docs/plans/P4.md`.
+  Next: Karthik approves it; then Cursor posts the pre-edit summary for
+  `P4.2: embeddings` (which also needs his OK on the new `config/memory.toml`).
 - **2026-11-23: P4 section B measured; BLOCKED on an Ollama setting.** Karthik pulled
   `nomic-embed-text`. Every embed evicts `qwen3.5:4b`, on GPU and on CPU (`num_gpu 0`),
   because Karthik's user environment has `OLLAMA_MAX_LOADED_MODELS=1`; the chat model
@@ -366,7 +373,8 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- (Claude Code, 2026-11-23, P4 section B measurement; blocks section B)
+- (Claude Code, 2026-11-23, P4 section B measurement) RESOLVED 2026-11-23: Karthik chose
+  (a); re-measure passed (Session log). Kept as written:
   Your user environment sets `OLLAMA_MAX_LOADED_MODELS=1` (also `OLLAMA_NUM_PARALLEL=1`,
   `OLLAMA_KEEP_ALIVE=5m`); nothing in this repo set them. With one model allowed, every
   embed call unloads the chat model, on GPU or CPU. Ingest (a batch CLI) could live with
@@ -589,6 +597,11 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-23 — `OLLAMA_MAX_LOADED_MODELS=2` in Karthik's user environment (was 1), and
+  embeddings run on CPU (`num_gpu 0`) — with 1, every embed unloaded `qwen3.5:4b` (6.5 s
+  reload per recall); with 2 and CPU embeds both stay loaded and VRAM does not move
+  (measured, Session log). A machine setting, not repo config: nothing in the code
+  checks it — Karthik (option (a)).
 - 2026-11-21 — P4 plan approved, D1 to D9 as recommended: `nomic-embed-text` (measured in
   section B first; Karthik runs the pull); docs roots in `config/memory.toml`, never an
   allowed root; ingest starts with the vault's `Learning/` folder only; `remember_fact` at
@@ -1154,6 +1167,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4 section B re-measure: passed; plan change drafted)
+
+Karthik chose option (a), set `OLLAMA_MAX_LOADED_MODELS=2` in his user environment and
+restarted Ollama (process start 13:35:09; user value read back as 2). Same scratch script,
+CPU mode, now sending the planned body: `options.num_gpu 0` and `truncate: false`.
+
+- Idle: 1024 MiB used. `qwen3.5:4b` loaded (`num_ctx` 16384): 7.47 s, 3.31 GB, 100% GPU,
+  5165 MiB used.
+- Embedder load 0.84 s; 0.36 GB, 0% GPU. `/api/ps` then lists both models.
+- 1 x 1000 chars: 0.18 s, 0.18 s, 0.19 s. 32 x 1000 chars: 5.38 s, 5.38 s, 5.48 s.
+- VRAM after the embeds: 5165 MiB (unchanged). Both models still listed.
+- 20000-character input with `truncate: false`: `HTTP 400`,
+  `{"error":"the input length exceeds the context length"}`.
+- Chat call after the embeds: `load_duration` 0.02 s (no reload), total 0.77 s.
+
+Files changed: `docs/plans/P4.md` (section B plan change, DRAFT), `docs/PROGRESS.md`
+(Decisions entry, open question resolved). Next step: Karthik approves or changes the
+section B plan change; then Cursor posts the pre-edit summary for `P4.2: embeddings`.
 
 ### 2026-11-23 — Agent: Claude Code (P4 section B measurement: chat model evicted)
 
