@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo linked test setup` ACCEPTED** (Claude Code review of
+  `353e376`). Test body is the plan's word for word; `safety/` untouched. Suite 730
+  passed, 4 skipped; `tests/test_undo.py` 20 runs right after it, 0 failures; the mutant
+  (`get`'s record-folder link check deleted) killed by `test_linked_item_refused` alone;
+  `safety/undo.py` sha256 unchanged. Both undo flakes are closed. No PLAN.md task.
+  Next: P4.3.
+
 - **2026-11-23: `fix: undo linked test setup` done.** `test_linked_item_refused` plants a
   junction record folder at id `"f" * 32` instead of renaming a just-written one. Suite
   through `cmd /c`: 730 passed, 4 skipped, 1 warning, 241.84s. `tests/test_undo.py` 20
@@ -1312,6 +1319,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (undo linked test setup review: accepted)
+
+Reviewed `353e376` against `docs/plans/undo-linked-test-setup.md` and the go in
+`493ce25`. The new `test_linked_item_refused` body is the plan's word for word; the raw
+`os.rename` of the record folder is gone; `safety/undo.py` is not in the commit. Re-runs
+(Claude Code's Bash, scratchpad harness, `PYTHONDONTWRITEBYTECODE=1`):
+
+- Suite: 730 passed, 4 skipped, 1 warning, 287s.
+- `tests/test_undo.py` 20 runs started right after the suite (the window where the old
+  setup failed 7/51): 24 passed each, 0 failures.
+- Mutant, `get`'s `if _is_link(folder): raise UndoRefused("record folder is a link")`
+  deleted, restored from the saved bytes: exit 1, only `test_linked_item_refused` failed.
+  Killed. sha256 `0f472976…ccbd65` before and after, same as Cursor's; green run after.
+
+As noted at the go, the 20-run loop only shows no new flake; the race itself is removed by
+construction (no folder rename left in the test). Verdict: accepted. Files changed: this
+file. Next step: P4.3.
 
 ### 2026-11-23 — Agent: Cursor (undo linked test setup)
 
