@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: embeddings` ACCEPTED** (Claude Code review of `a574df5`). Files are
+  the six planned; `uv.lock` adds numpy only as a direct dependency, no version moved.
+  Re-run from PowerShell: embed file 7 passed; full suite 711 passed, 4 skipped (matches).
+  12 mutants re-run (Cursor's 11, "swapped or dropped" split in two): all killed. PLAN.md
+  P4.2 stays unticked: it also covers section C (`P4.2: ingest`). Note for section C:
+  `documents([])` raises `AxisError`, and an empty file gives no chunks (Session log).
+  Next: Cursor posts the pre-edit summary for `P4.2: ingest`.
 - **2026-11-23: P4.2 done** (`P4.2: embeddings`). `memory/embed.py` posts `/api/embed`
   with `options.num_gpu` 0 and `truncate: false`, in batches of 32, loopback only, no
   proxy. `config/memory.toml` is the approved `Learning` root. `numpy>=2.3.5` is a direct
@@ -1184,6 +1191,60 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 embeddings review: accepted)
+
+Reviewed `a574df5` (`P4.2: embeddings`) against `docs/plans/P4.md` section B, its plan
+change and its "Pre-edit answers".
+
+- Review check 1: `config/memory.toml`, `memory/embed.py`, `tests/test_memory_embed.py`,
+  `pyproject.toml`, `uv.lock`, `docs/PROGRESS.md`. Exactly section B's amended file list
+  plus this file. Nothing unnamed.
+- Review check 2: `pyproject.toml` gains `numpy>=2.3.5` (planned, D4). `uv.lock`: 3 lines,
+  numpy on the project's dependency list (2.3.5 for Python < 3.13, 2.4.6 for >= 3.13; both
+  already in the lock at `e6555b6`; the venv is 3.12.10) and its `requires-dist`
+  specifier. No package block added, no version moved. `config/memory.toml` is new and is
+  the approved text. `safety/` untouched.
+- Code is the plan: body exactly `model`, `input`, `options.num_gpu` 0, `truncate` false,
+  with the ponytail comment; batches of 32; unit-normalised `float32`; loopback check is
+  rule 22's literal prefix; 60 s timeout; non-200 and a wrong count raise `RuntimeError`;
+  `load` demands the exact key sets (a missing key raises too); drive-root check as
+  `load_roots`. The opener is built per instance, which is right: a class-level opener
+  is built at import, before the test sets `HTTP_PROXY`, so the "proxy handler removed"
+  mutant would survive.
+- Re-run from PowerShell: `tests/test_memory_embed.py` 7 passed, 3.45s; full suite
+  `uv run python -m pytest` 711 passed, 4 skipped, 200.00s (matches).
+- Mutants re-run (scratch script, exact anchors each found once, bytes restored after
+  each, sha256 `660723e81255...` before and after; the five target tests pass on the real
+  code first):
+
+| Mutant | Test | Result |
+|---|---|---|
+| documents use the query prefix | 1 | killed |
+| prefix dropped | 1 | killed |
+| vectors not normalised | 1 | killed |
+| `float32` cast removed | 1 | killed |
+| `options.num_gpu` dropped | 1 | killed |
+| `truncate` set true | 1 | killed |
+| batch size 30 | 2 | killed |
+| loopback check removed | 3 | killed |
+| proxy handler removed | 3 | killed (2.66s) |
+| count check removed | 4 | killed (`count` case) |
+| HTTP 400 treated as success | 4 | killed (`400` case) |
+| drive-root check removed | 5 | killed |
+
+- Note for section C, not a finding here: `Embedder.documents([])` sends no request and
+  raises `numpy.exceptions.AxisError` (an empty array normalised along axis 1). Section C
+  test 7 says an empty file gives no chunks, so ingest must not call `documents` with an
+  empty list. Section C's pre-edit summary must say what ingest does with a zero-chunk file
+  (skip the embed call; whether the `documents` row is still written is section C's
+  decision). A guard in `embed.py` would be a section B plan change; not proposed, because
+  only the caller knows what an empty document means.
+
+`P4.2: embeddings` ACCEPTED. PLAN.md P4.2 not ticked: that line also covers section C,
+`P4.2: ingest`. Files changed: this file. Next step: Cursor runs section C's verify lines
+and posts the pre-edit summary for `P4.2: ingest`, including the zero-chunk answer and the
+`pypdf` install (a download: Karthik's go, D4 already approved the dependency).
 
 ### 2026-11-23 — Agent: Cursor (P4.2 embeddings)
 
