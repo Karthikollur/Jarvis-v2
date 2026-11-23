@@ -263,6 +263,68 @@ def test_move_across_drives_refused(env, monkeypatch):
     }
 
 
+def test_busy_rename_is_retried(env, monkeypatch):
+    log, root, quarantine, _resolve = env
+    original = root / "a.txt"
+    original.write_text("old")
+    real_rename = os.rename
+    calls = 0
+
+    def busy_then_rename(src, dst):
+        nonlocal calls
+        calls += 1
+        if calls <= 2:
+            raise OSError(0, "busy", None, 5)
+        real_rename(src, dst)
+
+    monkeypatch.setattr(os, "rename", busy_then_rename)
+    record = log.quarantine(original, "delete_file")
+    assert calls == 3
+    assert not original.exists()
+    assert (quarantine / record.id / "item").read_text() == "old"
+
+
+def test_rename_busy_too_long_is_refused(env, monkeypatch):
+    log, root, quarantine, _resolve = env
+    original = root / "a.txt"
+    original.write_text("old")
+    before = snapshot(root, quarantine)
+    calls = 0
+
+    def always_busy(src, dst):
+        nonlocal calls
+        calls += 1
+        raise OSError(0, "busy", None, 32)
+
+    monkeypatch.setattr(os, "rename", always_busy)
+    with pytest.raises(UndoRefused, match="move failed: PermissionError"):
+        log.quarantine(original, "delete_file")
+    assert calls == 10
+    assert original.read_text() == "old"
+    assert log.list() == []
+    assert {k: v for k, v in snapshot(root, quarantine).items() if v is not None} == {
+        k: v for k, v in before.items() if v is not None
+    }
+
+
+def test_other_rename_errors_are_not_retried(env, monkeypatch):
+    log, root, quarantine, _resolve = env
+    original = root / "a.txt"
+    original.write_text("old")
+    calls = 0
+
+    def exists(src, dst):
+        nonlocal calls
+        calls += 1
+        raise FileExistsError(0, "exists", None, 183)
+
+    monkeypatch.setattr(os, "rename", exists)
+    with pytest.raises(UndoRefused, match="move failed: FileExistsError"):
+        log.quarantine(original, "delete_file")
+    assert calls == 1
+    assert original.read_text() == "old"
+
+
 def test_item_missing_refused(env):
     log, root, quarantine, resolve = env
     record = log.moved(root / "a.txt", root / "gone.txt", "move_file")

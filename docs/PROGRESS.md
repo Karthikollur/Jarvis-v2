@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `fix: undo rename retry` done.** `_rename` retries only winerror 5 and 32,
+  10 tries 0.05 s apart, then refuses as before. Three tests in `tests/test_undo.py`.
+  Suite through `cmd /c`: 730 passed, 4 skipped, 1 warning, 267.38s.
+  `tests/test_undo.py` 20 runs, 0 failures. 5 mutants killed (Session log). "Sleep
+  removed" not run. PLAN.md not ticked. Next: the reviewer re-runs the suite, the
+  20-run loop, and the mutants.
 - **2026-11-23: `fix: undo rename retry` pre-edit summary reviewed; GO given** by Karthik
   ("Send the go"). Cursor's summary stands as posted, plus two mutant-step additions:
   1. Save the fixed `safety/undo.py` text before the first mutant and restore from it
@@ -1283,6 +1289,48 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (undo rename retry)
+
+`_rename` retries `os.rename` only for winerror 5 and 32, 10 tries, 0.05 s apart, then
+the same refusal as before. Winerror 17 and `errno.EXDEV` still refuse on the first try.
+A failed rename moves nothing. `bridge/tools.py` `_move` was left as it was.
+
+Tests added after `test_move_across_drives_refused`: `test_busy_rename_is_retried`,
+`test_rename_busy_too_long_is_refused`, `test_other_rename_errors_are_not_retried`.
+The folder test is unchanged. A refused quarantine still leaves an empty record folder;
+test 2 compares file bytes only, the same way the cross-drive test does, and `list()`
+is empty.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 730 passed, 4 skipped, 1 warning,
+267.38s. `tests/test_undo.py` 20 runs in a row through `cmd /c`: 24 passed each, 0
+failures.
+
+Mutants one at a time against `tests/test_undo.py` through `cmd /c`. The fixed
+`safety/undo.py` bytes were saved before the first mutant and written back after each
+(not `git checkout`). A mutant is killed only on exit code 1 with the table's test among
+the failures. `safety/undo.py` sha256
+`0f472976ad04daa51d03f4d8c194e6f22887f733e56caaba0fec7bd584ccbd65` before and after.
+After the last restore, `git diff safety/undo.py` is only the planned `_rename` change,
+and one `tests/test_undo.py` run was green (24 passed, 1.87s) before this commit.
+"Sleep removed" was not run: no test measures time.
+
+The first harness call exited before restore: `cmd` rejected the quoted log path and the
+log file was never created. The on-disk edit was `range(1)` only. It was put back to
+`range(10)` before the run in this table. That run's before and after sha256 match, and
+the write-back of the fixed bytes did not raise.
+
+| Mutant | Killed by | Failing tests | Result |
+|---|---|---|---|
+| retry removed (`range(1)`) | `test_busy_rename_is_retried` | `test_busy_rename_is_retried` (`assert 1 == 3`), `test_rename_busy_too_long_is_refused` (did not raise) | killed |
+| every `OSError` retried (busy check dropped) | `test_other_rename_errors_are_not_retried` | `test_other_rename_errors_are_not_retried` | killed |
+| bound raised (`range(20)`, `attempt == 19`) | `test_rename_busy_too_long_is_refused` | `test_rename_busy_too_long_is_refused` (`assert 20 == 10`) | killed |
+| 5 dropped from `_BUSY` | `test_busy_rename_is_retried` | `test_busy_rename_is_retried` (`UndoRefused`) | killed |
+| 32 dropped from `_BUSY` | `test_rename_busy_too_long_is_refused` | `test_rename_busy_too_long_is_refused` (`assert 1 == 10`) | killed |
+
+Files changed: `safety/undo.py`, `tests/test_undo.py`, this file. PLAN.md not ticked.
+`bridge/`, `config/`, and `pyproject.toml` untouched. Next step: the reviewer re-runs
+the suite, the 20-run loop, and these 5 mutants.
 
 ### 2026-11-23 — Agent: Claude Code (undo rename retry: pre-edit summary reviewed, go)
 

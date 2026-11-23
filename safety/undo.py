@@ -56,14 +56,23 @@ def _is_link(path: Path) -> bool:
     return path.is_symlink() or path.is_junction()
 
 
+_BUSY = {5, 32}  # ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION
+
+
 def _rename(source: Path, target: Path) -> None:
     """The only way anything moves. Refuses instead of overwriting, nesting or copying."""
-    try:
-        os.rename(source, target)
-    except OSError as error:
-        if getattr(error, "winerror", None) == 17 or error.errno == errno.EXDEV:
-            raise UndoRefused("cannot move across drives") from error
-        raise UndoRefused(f"move failed: {type(error).__name__}") from error
+    for attempt in range(10):
+        try:
+            os.rename(source, target)
+            return
+        except OSError as error:
+            if getattr(error, "winerror", None) == 17 or error.errno == errno.EXDEV:
+                raise UndoRefused("cannot move across drives") from error
+            if getattr(error, "winerror", None) not in _BUSY or attempt == 9:
+                raise UndoRefused(f"move failed: {type(error).__name__}") from error
+            # ponytail: another process briefly holds a handle inside the folder
+            # (Defender, indexer); bounded, 0.5 s at most, then refuse as before.
+            time.sleep(0.05)
 
 
 class UndoLog:
