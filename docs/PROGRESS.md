@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest` pre-edit summary reviewed; answers DRAFT** in
+  `docs/plans/P4.md` section C, "Pre-edit answers". Cursor's claims hold (re-checked, five
+  probes; suite 711 passed, 4 skipped). Accepted with changes: one guarded delete pass (as
+  proposed, a missing root would have deleted every row), stored path not lower-cased,
+  chunker handles code fences, `#tags` and CRLF, `exclude` validated, encrypted PDFs skipped
+  without decrypting; tests 2, 7, 9, 10, 11, 15 amended, 16 new. Waiting on Karthik:
+  approve; `reset-documents` in this commit (recommended yes); rows of now-skipped files
+  deleted (recommended yes); go for the `pypdf` download. Nothing built.
 - **2026-11-23: Section C prompt prepared; 12 open points for its pre-edit** (Session log).
   Cursor's pre-edit summary for `P4.2: ingest` must answer them; Karthik decides. Nothing
   built.
@@ -1194,6 +1202,41 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest: pre-edit summary reviewed)
+
+Cursor posted the pre-edit summary for `P4.2: ingest` on `618524e` (711 passed, 4 skipped;
+nothing edited, `pypdf` not installed, the vault not ingested). Claude Code re-ran the
+suite from PowerShell: 711 passed, 4 skipped, 240.65s (matches). The summary's eight claims
+hold, including its own correction: the symlink skip pattern is in `tests/test_tools.py`
+and `tests/test_policy.py`, not `tests/test_bridge.py`. Two verify lines were stale
+(annotated in `docs/plans/P4.md`).
+
+Probes (scratch temp folder, venv Python 3.12.10, SQLite 3.49.1; no vault, no real
+`memory.db`):
+- `load` accepts a docs root that does not exist, and `exclude = "Archive"` (a string).
+  `os.walk` of a missing folder yields nothing and raises nothing. With the proposed
+  delete pass for rows not seen, a renamed or missing root would delete every row.
+- A file with two names: `DirEntry.stat().st_nlink` is 0, `os.fstat` on the open handle
+  says 2. The hard-link check must stay on the handle (`_single_name`).
+- `os.path.realpath` of the lower-cased repo path returns
+  `C:\Mainframe\Second_Brain\Jarvis_v2`: walked paths are already in on-disk case.
+- A `mode=ro` open of a WAL database made by `store.connect` leaves `memory.db-wal` and
+  `memory.db-shm` after close; the main file's bytes are unchanged.
+- A committed write on a connection still open sits in `-wal`: the main file's bytes are
+  unchanged and a fresh connection counts the row. A byte compare alone misses it.
+
+Not checked: `pypdf` itself (encrypted files, RC4 writing); not installed. Cursor checks
+after the install and stops if test 10's encrypted case cannot be built.
+
+Answers drafted into `docs/plans/P4.md` section C, "Pre-edit answers" (DRAFT): the twelve
+points as Cursor proposed, plus one global delete pass after a complete walk, no
+`normcase`, a chunker that skips fenced code and `#tags` and normalises newlines,
+`exclude` validation, `is_encrypted` without decrypting; tests 2, 7, 9, 10, 11, 15
+amended, test 16 new; 34 mutants. Files changed: `docs/plans/P4.md`, this file. Next
+step: Karthik approves (and decides `reset-documents` and the now-skipped rows) and gives
+the go for the `pypdf` download; then Cursor implements section C as amended, one commit
+`P4.2: ingest`.
 
 ### 2026-11-23 — Agent: Claude Code (Section C read against the repo; open points)
 
