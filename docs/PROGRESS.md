@@ -20,9 +20,11 @@ Newest session entry goes at the top of the Session log.
   summary, and waits for Karthik's go. Section B needs Karthik first
   (`ollama pull nomic-embed-text` and the measurement). Tests: 679 passed, 4 skipped.
   The history below is kept as it was written.
-  2026-11-23: P4 section A verify list run by Claude Code, all lines hold (Session log).
-  Karthik handed section A to Cursor. Next: Cursor re-runs the verify list, posts the
-  pre-edit summary for `P4.1: memory schema`, and waits for Karthik's go.
+  2026-11-23: P4.1 DONE (`0092131`, Cursor) and reviewed by Claude Code: ACCEPTED with
+  one finding, ticked. 701 passed, 4 skipped; 7 mutants killed. Finding: the first create
+  of `memory.db` is not atomic -> P4.1b, `docs/plans/P4.md` section A2, DRAFT, needs
+  Karthik's OK; lands before section C. Next: Karthik approves A2 (Cursor implements),
+  and separately runs `ollama pull nomic-embed-text` plus the section B measurement.
 - Active phase (history): P3 (Windows control tools). P3.1 done 2026-11-13. P3.1b done 2026-11-13
   (plan `docs/plans/P3.1b.md`, three commits, ticked in PLAN.md): A `POST /outcome`
   answers through `encoded()`, so a lone surrogate in a result no longer gives 500;
@@ -1108,6 +1110,38 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.1 review: accepted with one finding)
+
+Reviewed `0092131` (`P4.1: memory schema`) and `bdb8307` against `docs/plans/P4.md`
+section A and the pre-edit note (no UPDATE on `documents`).
+
+- Review check 1: files are `memory/__init__.py`, `memory/store.py`,
+  `tests/test_memory_store.py`, exactly section A's list. Check 2: no change to
+  `pyproject.toml`, `uv.lock`, `config/` or `safety/`.
+- Suite re-run from PowerShell: 701 passed, 4 skipped (matches).
+- Mutants re-run (`%TEMP%` scratch script, exact anchors, one target test each, bytes
+  restored in `finally`, sha256 `fe6f914b44e4...` before and after): baseline 5 targets
+  pass; all 7 killed (OK for every INSERT; any PRAGMA; `chunks_ad` removed; UPDATE on
+  `chunks` for ingest; cap removed; `foreign_keys` removed from `connect`; role check
+  removed).
+- Code is the plan: schema before the authorizer; rule 26 read codes; `data_version` only
+  without a value; INSERT/DELETE per role, UPDATE only `meta` for ingest; bridge
+  `check_same_thread=False`; `propose` checks the cap, stamps UTC ISO-8601, does not
+  commit. All nine plan tests present (test 3 has all 11 refused statements).
+- Finding (moderate, first create only): `_SCHEMA` sets `user_version = 1` before the
+  `CREATE`s and `executescript` autocommits each statement. Probe: a script failing after
+  the first `CREATE` leaves `user_version` 1 with only `meta`, and `connect` accepts it
+  (then `no such table: facts`). Two first opens racing: `database is locked` 16 of 20.
+  Opens of an existing file: 0 errors in 150 concurrent opens. Fix drafted as P4.1b,
+  `docs/plans/P4.md` section A2 (DRAFT), before section C.
+- Note for section E: `propose` leaves the transaction open; the bridge handler must
+  commit under its lock, and a `Full` must not leave a transaction open.
+
+P4.1 ticked in PLAN.md; P4.1b added unticked. Files changed: `docs/plans/P4.md`,
+`docs/PLAN.md`, this file. Next step: Karthik approves or changes section A2; then Cursor
+posts the pre-edit summary for `P4.1b: atomic schema`. Section B waits on Karthik's
+`ollama pull nomic-embed-text` and the measurement.
 
 ### 2026-11-23 — Agent: Cursor (P4.1 memory schema)
 
