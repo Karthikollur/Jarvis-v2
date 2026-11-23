@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: P4.1 done** (`0092131`, `P4.1: memory schema`). `memory/store.py` creates
+  the section A schema and the role authorizer. `propose` does not commit; the caller
+  owns the transaction. UPDATE on `documents` is refused for ingest. Tests after the
+  commit: 701 passed, 4 skipped. 7 mutants killed (baseline 22; Session log). PLAN.md
+  not ticked. Next: P4 section B, and that waits on Karthik (`ollama pull nomic-embed-text`
+  and the measurement in `docs/plans/P4.md`) before anything is built on the model.
+  `memory.db` is not `protect()`-ed in this commit; section D is where the bridge first
+  opens it.
 - **2026-11-23: P3 CLOSED.** P3.6 manual steps 1 and 2 re-run on `4fc949e` passed
   (Session log); P3.6 ticked in PLAN.md. Every P3 task is ticked and the P3 "Done when"
   passed 2026-11-18. Next: P4 section A (`P4.1: memory schema`): the implementer runs the
@@ -1100,6 +1108,47 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Cursor (P4.1 memory schema)
+
+Implemented `docs/plans/P4.md` section A after Karthik's go. Commit `0092131`
+`P4.1: memory schema`. Files: `memory/__init__.py` (empty), `memory/store.py`,
+`tests/test_memory_store.py`. Nothing in `safety/`, `bridge/`, `config/`,
+`pyproject.toml`, or `PLAN.md` (not ticked).
+
+`connect(path, role)` accepts `bridge`, `ingest`, and `review`. It creates the schema
+when `user_version` is 0, refuses any other version, sets WAL and `foreign_keys` on
+every open, then installs the authorizer. The bridge connection uses
+`check_same_thread=False`. `propose` inserts one `pending_facts` row with a UTC
+ISO-8601 `proposed` time and does not commit. The 51st call raises `Full` and the
+table stays at 50. Ingest may UPDATE `meta` only. UPDATE on `documents`, `chunks`,
+and `facts` is refused.
+
+FTS5 writes seen on SQLite 3.49.1 before the code was committed, under that
+authorizer: INSERT and DELETE on the virtual table and the shadow tables
+`chunks_fts_data`, `chunks_fts_idx`, and `chunks_fts_docsize`, a valueless
+`PRAGMA data_version`, and transaction BEGIN/COMMIT. No UPDATE on a shadow table.
+The authorizer was not widened.
+
+Tests after the commit, from PowerShell: `uv run python -m pytest` -> 701 passed,
+4 skipped (was 679 passed, 4 skipped). `tests/test_memory_store.py` alone: 22 passed.
+
+Mutants, one at a time against `memory/store.py`, restored after each run. sha256
+before and after `fe6f914b44e48e6267267afdb4ac28871f05ec3534fb92277c0e19879980632f`.
+Baseline 22 passed in 0.63s. All 7 killed:
+
+| Mutant | Test | Result |
+|---|---|---|
+| authorizer returns OK for every INSERT | `test_bridge_refuses` | killed, 0.35s (2 of 11 no longer raised) |
+| bridge authorizer allows any `SQLITE_PRAGMA` | `test_bridge_refuses` | killed, 0.35s (`writable_schema` and `data_version = 5`) |
+| `chunks_ad` trigger removed | `test_delete_removes_fts_rows` | killed, 0.10s |
+| UPDATE allowed on `chunks` for ingest | `test_roles_cannot_write_each_others_tables` | killed, 0.09s |
+| cap check removed | `test_propose_cap` | killed, 0.12s |
+| `foreign_keys` pragma removed | `test_delete_removes_fts_rows` | killed, 0.10s (second connection) |
+| role check removed | `test_unknown_role` | killed, 0.11s |
+
+Next: P4 section B. Karthik runs `ollama pull nomic-embed-text`, then the embed-time
+and VRAM measurement in section B, before any code is built on that model.
 
 ### 2026-11-23 — Agent: Claude Code (P4 section A verify list; handed to Cursor)
 
