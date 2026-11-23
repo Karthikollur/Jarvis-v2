@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: embeddings` pre-edit summary answered; Karthik's go given** ("Approve
+  all"). Answers are in `docs/plans/P4.md` section B, "Pre-edit answers": `config/memory.toml`
+  OK; `numpy` declared in this commit (`pyproject.toml`, `uv.lock` added to the file list);
+  exact allowed keys; tests 1 to 4 tightened; 11 mutants. Next: Cursor implements section B
+  as amended, one commit `P4.2: embeddings`, mutant table in the Session log, PLAN.md not
+  ticked.
 - **2026-11-23: P4 section B plan change APPROVED** by Karthik ("Approve it"). Next: Cursor
   posts the pre-edit summary for `P4.2: embeddings` (section B plus its plan change:
   `num_gpu 0`, `truncate: false`, tests 1 and 4 extended) and waits for Karthik's go. The
@@ -1171,6 +1177,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 embeddings: pre-edit summary reviewed)
+
+Cursor posted the pre-edit summary for `P4.2: embeddings` on `2b6200d` (704 passed,
+4 skipped; no files edited). Claude Code checked its claims against the repo: all hold
+(`numpy` 2.3.5 locked transitively, not declared; `load_roots` in `safety/policy.py`
+ignores unknown keys; no-proxy opener in `core/bridge_client.py`; opener reset in
+`tests/test_core.py` `test_proxy_env_is_ignored`). Also found: `core/config.toml` `host`
+already holds `http://127.0.0.1:11434`.
+
+Answers, approved by Karthik ("Approve all") and written into `docs/plans/P4.md` section B
+"Pre-edit answers": `config/memory.toml` OK; `numpy` declared in this commit (D4 gave the
+reason 2026-11-21; the lock may only gain numpy as a direct dependency); allowed keys
+exact; base URL a module constant; test 3 copies the full proxy pattern (dead-port
+`HTTP_PROXY`, `NO_PROXY` removed, opener reset); tests 1, 2, 4 tightened so the
+normalisation, `float32`, order and partial-result mutants can be killed. Mutant list: 11.
+
+Files changed: `docs/plans/P4.md`, this file. Next step: Cursor implements section B as
+amended and commits `P4.2: embeddings`.
 
 ### 2026-11-23 — Agent: Claude Code (P4 section B plan change approved)
 
