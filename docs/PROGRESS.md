@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-23: `P4.2: ingest` pre-edit answers APPROVED** by Karthik ("Approve all"):
+  `reset-documents` lands in this commit, rows of now-skipped files are deleted, and the
+  `pypdf` download has his go. Answers in `docs/plans/P4.md` section C, "Pre-edit
+  answers". Next: Cursor installs `pypdf` (`uv lock` may add only `pypdf`), implements
+  section C as amended in one commit `P4.2: ingest`, mutant table (34) in the Session log,
+  PLAN.md not ticked.
 - **2026-11-23: `P4.2: ingest` pre-edit summary reviewed; answers DRAFT** in
   `docs/plans/P4.md` section C, "Pre-edit answers". Cursor's claims hold (re-checked, five
   probes; suite 711 passed, 4 skipped). Accepted with changes: one guarded delete pass (as
@@ -1202,6 +1208,15 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-23 — Agent: Claude Code (P4.2 ingest pre-edit answers approved)
+
+Karthik approved the drafted answers ("Approve all"), with both recommendations:
+`reset-documents` lands in this commit, and the one delete pass removes the rows of files
+no longer accepted (gone, excluded, protected, refused). The approval includes the go for
+the `pypdf` download. `docs/plans/P4.md` section C marks the answers APPROVED. Files
+changed: `docs/plans/P4.md`, this file. Next step: Cursor implements section C as amended
+and commits `P4.2: ingest`.
 
 ### 2026-11-23 — Agent: Claude Code (P4.2 ingest: pre-edit summary reviewed)
 
