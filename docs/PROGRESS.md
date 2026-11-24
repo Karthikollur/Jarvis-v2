@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.3: recall_memory handler` done.** `recall_memory` is registered only
+  when `config/memory.toml` exists; a missing file leaves it unregistered and the bridge
+  starts; a bad file stops the start. `HIDDEN` is gone, so the core offers every name in
+  `TOOLS` and `_guard` compares with `set(TOOLS)`. One `# ponytail:` line in
+  `memory/search.py` names the missing vector cache. Suite through `cmd /c`: 753 passed,
+  4 skipped, 1 warning, 332.30s. 3 mutants killed (Session log). `bridge/app.py` sha256
+  `93c183f726757748c3d42018e733c502b2f6b08e09cd991ffb99529b481afcd0` and `core/tools.py`
+  sha256 `2537025bf28508fa2be18e11ce5ca7d51dc0c67a003732321840d4f21043c044` before and
+  after. PLAN.md not ticked. Next: the reviewer re-runs the suite and these 3 mutants.
+
 - **2026-11-24: P4.3 D2 pre-edit summary reviewed; GO given** by Karthik ("Approve, send
   the go"). Cursor's summary (on `8a7c5de`, 747 passed, 4 skipped; verify list holds)
   stands as written, with one plan change: `core/agent.py` joins D2 (drop `HIDDEN` from
@@ -1371,6 +1381,44 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.3 recall_memory handler)
+
+D2 from the step-level pass, on `c3d5d81`, with the approved `core/agent.py` change:
+drop `HIDDEN` from the import and compare with `set(TOOLS)` on both guard lines. No
+other change in that file, no new guard test, no new mutant. `memory_tools` connects as
+the bridge role when the handler runs, searches, closes in `finally`, and returns
+`{"results": [...]}`. `create_app` loads `memory.toml` only when `handlers is None`,
+after apps and scripts, and passes `[root.path for root in docs_roots]` so the local
+name does not shadow the policy roots. A missing file leaves `recall_memory`
+unregistered. `bridge_tools` offers every name in `TOOLS`. The handler-table test
+compares `set(TOOLS)` with the union of the three handler dicts. The cache comment is
+the one line above `def _rows`.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 753 passed, 4 skipped, 1 warning,
+332.30s. The two `test_guard_refuses_recall_memory` cases are gone; seven tests in
+`tests/test_tools.py` and one in `tests/test_bridge.py` are new.
+
+Mutants one at a time, against the named file, through `cmd /c`. Each file's bytes were
+saved before its first mutant and written back after each (not `git checkout`). No
+write-back raised `OSError`. A mutant is killed only on exit code 1 with the named test
+among the failures. sha256 before and after:
+`bridge/app.py` `93c183f726757748c3d42018e733c502b2f6b08e09cd991ffb99529b481afcd0`,
+`core/tools.py` `2537025bf28508fa2be18e11ce5ca7d51dc0c67a003732321840d4f21043c044`.
+The `HIDDEN` mutant puts the constant back and filters inside `bridge_tools` (`if name
+not in HIDDEN`). The constant alone does not hide the tool.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| `memory_tools` not added in `create_app` | `test_5_recall_production_wiring` | killed |
+| `.exists()` check dropped | `test_6_recall_missing_memory_toml` | killed |
+| `HIDDEN` kept as `{"recall_memory"}`, and `bridge_tools` filters on it | `test_built_core_offers_recall_memory`, plus 22 others (`test_one_task_per_request`, `test_fresh_is_passed_to_new_task`, `test_history_carries_until_fresh`, `test_fast_path_get_time_and_open_notepad`, `test_stop_ends_tasks_without_a_new_one`, `test_refusal_is_an_observation`, `test_refused_create_folder_is_not_ok`, `test_results_reset_then_fast_path_keeps_one`, `test_pending_approve_and_deny[approve]`, `test_pending_approve_and_deny[deny]`, `test_sequential_confirmations`, `test_bridge_tools_match_the_table`, `test_handle_ends_the_agent_task`, `test_handle_ends_the_fast_path_task`, `test_raising_engine_still_ends_the_task`, `test_end_urlerror_keeps_the_answer`, `test_end_404_is_not_retried`, `test_each_request_ends_its_own_task`, `test_stop_opens_no_task_and_does_not_end`, `test_end_valueerror_propagates`, `test_new_task_error_does_not_end`, `test_ctrl_c_cancels_the_pending_action`) | killed |
+
+Files changed: `bridge/tools.py`, `bridge/app.py`, `core/tools.py`, `core/agent.py`,
+`memory/search.py` (comment line only), `tests/test_tools.py`, `tests/test_bridge.py`,
+`tests/test_core.py`, this file. `safety/`, `config/`, `pyproject.toml`, `uv.lock`, and
+PLAN.md untouched. The mutant runner was deleted after the run. Next step: the reviewer
+re-runs the suite and these 3 mutants. D3 is not started.
 
 ### 2026-11-24 — Agent: Claude Code (P4.3 D2: pre-edit summary reviewed, go)
 

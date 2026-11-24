@@ -16,6 +16,7 @@ import time
 import types
 
 import pytest
+import numpy as np
 from fastapi.testclient import TestClient
 
 from bridge import tools
@@ -23,6 +24,8 @@ from bridge import app as bridge_app
 from bridge.app import create_app, load_token
 from core.router import APP_ALIASES
 from evals.stub_tools import APPS, SCRIPTS
+from memory.embed import Embedder
+from memory.store import connect
 from safety.policy import load_names
 from safety.undo import UndoLog
 
@@ -1802,3 +1805,161 @@ def test_run_named_script_deny_never_runs(bridge, popen_spy):
     outcome = client.post("/outcome", json={"pending_id": queued.json()["pending_id"]})
     assert outcome.json() == {"status": "denied"}
     assert not any(args and str(args[0][0]).casefold() == _HOST.casefold() for args, _kwargs in popen_spy)
+
+
+# --- recall_memory (P4.3 D2) -------------------------------------------------
+
+
+_RECALL_VECTOR = np.array([1.0, 0.0], dtype=np.float32)
+
+
+class _Embedder:
+    model = "nomic-embed-text"
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def query(self, text: str) -> np.ndarray:
+        self.calls.append(text)
+        return _RECALL_VECTOR
+
+
+def _blob() -> bytes:
+    return np.ascontiguousarray(_RECALL_VECTOR, dtype=np.float32).tobytes()
+
+
+def _remember_chunk(db: Path, doc: Path, text: str) -> None:
+    ingest = connect(db, "ingest")
+    try:
+        cursor = ingest.execute(
+            "INSERT INTO documents (path, size, mtime_ns, ingested) VALUES (?, 1, 1, 't')",
+            (str(doc),),
+        )
+        ingest.execute(
+            "INSERT INTO chunks (document_id, seq, text, embedding) VALUES (?, 0, ?, ?)",
+            (cursor.lastrowid, text, _blob()),
+        )
+        ingest.commit()
+    finally:
+        ingest.close()
+
+
+def _counts(db: Path) -> dict[str, int]:
+    conn = connect(db, "bridge")
+    try:
+        return {
+            name: conn.execute(f"SELECT count(*) FROM {name}").fetchone()[0]
+            for name in ("facts", "chunks", "documents", "pending_facts")
+        }
+    finally:
+        conn.close()
+
+
+def _recall_bridge(folders, embedder, text="inside chunk"):
+    root, _outside = folders
+    storage = root.parent / "storage"
+    storage.mkdir()
+    db = storage / "memory.db"
+    doc = root / "notes" / "a.md"
+    _remember_chunk(db, doc, text)
+    app = create_app(
+        storage, roots=[root], handlers=tools.memory_tools(db, embedder, [root]),
+        hotkey=None, protected=[],
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    return storage, db, doc, app, headers
+
+
+def test_1_recall_result_shape(folders):
+    _storage, _db, doc, app, headers = _recall_bridge(folders, _Embedder())
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "recall_memory", query="notes")
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert_plain(result)
+    [hit] = result["results"]
+    assert hit["kind"] == "document"
+    assert hit["source"] == str(doc.relative_to(doc.parents[1]))
+    assert hit["chunk"] == 0
+    assert hit["text"] == "inside chunk"
+    assert hit["score"] == 1.0
+
+
+def test_2_recall_row_counts(folders):
+    _storage, db, _doc, app, headers = _recall_bridge(folders, _Embedder())
+    before = _counts(db)
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "recall_memory", query="notes")
+    assert response.status_code == 200
+    assert _counts(db) == before
+
+
+def test_3_recall_dead_embedder(folders):
+    embedder = Embedder("http://127.0.0.1:9", "nomic-embed-text", "search_document: ", "search_query: ")
+    storage, _db, _doc, app, headers = _recall_bridge(folders, embedder)
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "recall_memory", query="notes")
+    assert (response.status_code, response.json()["detail"]) == (500, "Tool failed")
+    lines = [
+        json.loads(line)
+        for line in (storage / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    [logged] = [line for line in lines if line["event"] == "result"]
+    assert logged["status"] == "failed" and logged["error"]
+    assert logged["error"] not in response.text
+
+
+def test_4_recall_fts_syntax(folders):
+    _storage, _db, _doc, app, headers = _recall_bridge(folders, _Embedder())
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "recall_memory", query='NOT "')
+    assert response.status_code == 200
+    assert isinstance(response.json()["result"]["results"], list)
+
+
+def test_5_recall_production_wiring(folders, monkeypatch):
+    root, _outside = folders
+    storage = root.parent / "storage"
+    storage.mkdir()
+    calls = []
+
+    def query(self, text):
+        calls.append(text)
+        return _RECALL_VECTOR
+
+    monkeypatch.setattr(Embedder, "query", query)
+    app = create_app(storage, roots=[root], protected=[], hotkey=None)
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        assert not (storage / "memory.db").exists()
+        response = call(client, fresh_task(client), "recall_memory", query="notes")
+    assert response.status_code == 200
+    assert response.json()["result"] == {"results": []}
+    assert calls == []
+    assert (storage / "memory.db").exists()
+
+
+def test_6_recall_missing_memory_toml(folders, monkeypatch):
+    root, _outside = folders
+    config = root.parent / "config"
+    config.mkdir()
+    storage = root.parent / "storage"
+    storage.mkdir()
+    monkeypatch.setattr(bridge_app, "CONFIG", config)
+    app = create_app(storage, roots=[root], protected=[], hotkey=None)
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "recall_memory", query="notes")
+    assert (response.status_code, response.json()["detail"]) == (501, "Tool not implemented")
+
+
+def test_7_recall_bad_memory_toml(folders, monkeypatch):
+    root, _outside = folders
+    config = root.parent / "config"
+    config.mkdir()
+    (config / "memory.toml").write_text("unknown = 1\n", encoding="utf-8")
+    storage = root.parent / "storage"
+    storage.mkdir()
+    monkeypatch.setattr(bridge_app, "CONFIG", config)
+    with pytest.raises(ValueError):
+        create_app(storage, roots=[root], protected=[], hotkey=None)

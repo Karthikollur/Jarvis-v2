@@ -62,8 +62,5 @@ class BridgeTool(BaseTool):
             self._sleep(POLL)
 
 
-HIDDEN = frozenset({"recall_memory"})  # policy only until P4: the bridge has no handler yet
-
-
 def bridge_tools(client, task, on_pending=None) -> list[BridgeTool]:
-    return [BridgeTool(name, client, task, on_pending) for name in TOOLS if name not in HIDDEN]
+    return [BridgeTool(name, client, task, on_pending) for name in TOOLS]

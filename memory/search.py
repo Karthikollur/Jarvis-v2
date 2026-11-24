@@ -83,6 +83,7 @@ def search(
     return [_hit(by_key[key], cosine_of[key]) for key in kept]
 
 
+# ponytail: no vector cache, vectors are read on every search (one connection per call). Add a data_version-keyed cache if a search is ever seen above 200 ms.
 def _rows(conn, roots) -> list[dict]:
     rows = []
     for fact_id, text, embedding in conn.execute(

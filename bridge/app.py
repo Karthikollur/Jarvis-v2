@@ -229,6 +229,19 @@ def create_app(
         app_entries = tools.load_apps(CONFIG / "apps.toml")  # a bad entry stops the start
         scripts_cmds = tools.load_scripts(CONFIG / "scripts.toml")
         handlers = {**tools.HANDLERS, **tools.mutating(undo_log, app_entries, scripts_cmds)}
+        memory_toml = CONFIG / "memory.toml"
+        if memory_toml.exists():
+            from memory.embed import load
+
+            embedder, docs_roots = load(memory_toml)
+            handlers = {
+                **handlers,
+                **tools.memory_tools(
+                    storage / "memory.db",
+                    embedder,
+                    [root.path for root in docs_roots],
+                ),
+            }
     handlers = dict(handlers)
     tasks: dict[str, Task] = {}  # evict() forgets a task once it is older than KEEP
     outcomes: dict[str, dict[str, Any]] = {}  # pending_id -> outcome; evict() forgets it with the task

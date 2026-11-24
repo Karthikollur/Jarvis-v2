@@ -13,8 +13,11 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 import json
+import numpy as np
 
+from bridge import tools
 from bridge.app import create_app, load_token
+from memory.store import connect
 from bridge import app as bridge_app
 from safety.audit import AuditLog
 from safety.confirm import ConfirmQueue
@@ -2120,3 +2123,59 @@ def test_any_audit_error_fails_closed(sandbox):
         response = call(client, task, "create_folder", path=str(root / "new"))
     assert (response.status_code, response.json()["detail"]) == (500, "Audit log unavailable")
     assert not (root / "new").exists()
+
+
+def test_recall_taints_the_task_and_a_long_query_is_refused(storage):
+    root = Path(os.path.realpath(storage.parent / "root"))
+    root.mkdir()
+    doc = root / "notes" / "a.md"
+    db = storage / "memory.db"
+    vector = np.array([1.0, 0.0], dtype=np.float32)
+    ingest = connect(db, "ingest")
+    try:
+        cursor = ingest.execute(
+            "INSERT INTO documents (path, size, mtime_ns, ingested) VALUES (?, 1, 1, 't')",
+            (str(doc),),
+        )
+        ingest.execute(
+            "INSERT INTO chunks (document_id, seq, text, embedding) VALUES (?, 0, ?, ?)",
+            (cursor.lastrowid, "inside chunk", np.ascontiguousarray(vector).tobytes()),
+        )
+        ingest.commit()
+    finally:
+        ingest.close()
+
+    class Embedder:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, text):
+            self.calls.append(text)
+            return vector
+
+    embedder = Embedder()
+
+    def create_folder(args):
+        args["path"].mkdir()
+        return {"created": True}
+
+    app = create_app(
+        storage, roots=[root], protected=[], hotkey=None,
+        handlers={
+            "create_folder": create_folder,
+            **tools.memory_tools(db, embedder, [root]),
+        },
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        task = fresh_task(client)
+        assert call(client, task, "create_folder", path=str(root / "a")).status_code == 200
+        recalled = call(client, task, "recall_memory", query="notes")
+        assert recalled.status_code == 200
+        assert len(embedder.calls) == 1
+        queued = call(client, task, "create_folder", path=str(root / "b"))
+        assert queued.status_code == 202 and "pending_id" in queued.json()
+        before = len(embedder.calls)
+        refused = call(client, fresh_task(client), "recall_memory", query="x" * 201)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "query: must be short plain text")
+    assert len(embedder.calls) == before

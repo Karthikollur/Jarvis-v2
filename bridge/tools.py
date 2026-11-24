@@ -20,6 +20,8 @@ import time
 import tomllib
 from typing import Any
 
+from memory.search import search
+from memory.store import connect
 from safety.policy import MAX_TEXT
 
 MAX_ENTRIES = 200  # list_dir: entries returned; `total` still counts all
@@ -334,6 +336,17 @@ HANDLERS = {
     "system_stats": system_stats,
     "get_time": get_time,
 }
+
+
+def memory_tools(db, embedder, roots) -> dict[str, Any]:
+    def recall_memory(args: dict[str, Any]) -> dict[str, Any]:
+        conn = connect(db, "bridge")
+        try:
+            return {"results": search(conn, embedder, args["query"], roots)}
+        finally:
+            conn.close()
+
+    return {"recall_memory": recall_memory}
 
 
 def _checked_command(config: Path, name: str, entry: object) -> list[str]:

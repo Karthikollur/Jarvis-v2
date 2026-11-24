@@ -21,7 +21,7 @@ from bridge.app import create_app, load_token
 from core.agent import Core, GuardError, build
 from core.bridge_client import BridgeClient, BridgeError
 from core.specs import SPECS
-from core.tools import BridgeTool, HIDDEN, bridge_tools
+from core.tools import BridgeTool, bridge_tools
 from openjarvis.core.types import Role, ToolResult
 from openjarvis.engine._stubs import InferenceEngine
 from openjarvis.tools._stubs import BaseTool, ToolSpec
@@ -361,34 +361,18 @@ def test_guard_refuses_a_changed_executor(live_bridge, change):
     assert [line for line in audit(storage) if line["event"] == "task"] == []
 
 
-def test_hidden_is_the_tools_without_a_handler():
-    from bridge.tools import HANDLERS, mutating
-    from core.tools import HIDDEN
+def test_every_tool_has_a_production_handler():
+    from bridge.tools import HANDLERS, memory_tools, mutating
 
-    production_handlers = set(HANDLERS) | set(mutating(None, {}, {}))
-    assert HIDDEN == set(TOOLS) - production_handlers
+    assert set(TOOLS) == set(HANDLERS) | set(mutating(None, {}, {})) | set(memory_tools(None, None, []))
 
 
-def test_built_core_hides_recall_memory(live_bridge):
+def test_built_core_offers_recall_memory(live_bridge):
     core, _engine, _client, _root, _storage, _base = make_core(live_bridge, [])
-    assert all(tool.spec.name != "recall_memory" for tool in core._agent._tools)
-    assert "recall_memory" not in core._agent._executor._tools
+    assert any(tool.spec.name == "recall_memory" for tool in core._agent._tools)
+    assert "recall_memory" in core._agent._executor._tools
     offered = {item["function"]["name"] for item in core._agent._executor.get_openai_tools()}
-    assert "recall_memory" not in offered
-
-
-@pytest.mark.parametrize("where", ["both", "executor_only"])
-def test_guard_refuses_recall_memory(live_bridge, where):
-    core, engine, client, _root, storage, _base = make_core(live_bridge, [])
-    run = core._agent._executor._tools
-    hidden = BridgeTool("recall_memory", client, lambda: None)
-    if where == "both":
-        core._agent._tools[:] = [t for t in core._agent._tools if t.spec.name != "recall_memory"] + [hidden]
-    run["recall_memory"] = hidden
-    with pytest.raises(GuardError):
-        core.handle("sort it")
-    assert engine.calls == []
-    assert [line for line in audit(storage) if line["event"] == "task"] == []
+    assert "recall_memory" in offered
 
 
 def test_fast_path_get_time_and_open_notepad(live_bridge, monkeypatch):
@@ -575,7 +559,7 @@ def test_sequential_confirmations(live_bridge):
 
 def test_bridge_tools_match_the_table():
     made = bridge_tools(None, lambda: "t")
-    assert [tool.spec.name for tool in made] == [name for name in TOOLS if name not in HIDDEN]
+    assert [tool.spec.name for tool in made] == list(TOOLS)
     for tool in made:
         assert tool.spec.parameters == SPECS[tool.spec.name][1]
         assert tool.spec.timeout_seconds > MAX_SECONDS
