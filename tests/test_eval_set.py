@@ -14,7 +14,7 @@ CASES = yaml.safe_load(
 
 def test_counts_match_plan():
     kinds = Counter(case["expect"] for case in CASES)
-    assert len(CASES) == 43  # 40 from P1.2, plus move_files (P3.2 F1), plus open_in_app (P3.4), plus sort (P3.5b)
+    assert len(CASES) == 44  # 40 from P1.2, plus move_files (P3.2 F1), plus open_in_app (P3.4), plus sort (P3.5b) + remember_fact (P4.4)
     assert kinds["refuse"] == 10
     assert kinds["clarify"] == 5
     assert set(kinds) == {"tool", "answer", "refuse", "clarify"}

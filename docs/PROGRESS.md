@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: remember_fact` done.** Policy entry is T1 with `text_params=("text",)`,
+  after `focus_window`. The handler in `memory_tools` connects as `bridge`, runs
+  `BEGIN IMMEDIATE`, `propose`, and commit, and closes in `finally`. `Full` propagates.
+  Spec, case t27 (no args), and the eval count are 44. The key test keeps `desktop` for
+  the whole test and scopes the process fake to `open_app` and `open_in_app`; all sixteen
+  tools succeeded (`facts` 0, `pending_facts` 1, every recorded role `bridge`). Suite
+  through `cmd /c`: 759 passed, 4 skipped, 1 warning, 232.26s. 5 mutants killed (Session
+  log). PLAN.md P4.4 is not ticked. Next: the reviewer re-runs the suite and these 5
+  mutants. E2 is not started.
+
 - **2026-11-24: P4.4 E1 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
   and send"). Cursor's summary (on `5f7b4df`, 753 passed, 4 skipped; verify list holds)
   stands as written except the key test (test_tools 3): `system_stats` and
@@ -1445,6 +1455,51 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.4 remember_fact)
+
+E1 from the step-level pass, on `a17f946`, with the go's key-test change. `desktop` stays
+on for the whole key test. The `fake_popen` stand-in is set with `monkeypatch.context()`
+around `open_app` and `open_in_app` only. `system_stats` and `run_named_script` use the
+real subprocess. The per-tool arguments dict's keys equal `set(TOOLS)`.
+
+`remember_fact` is `Rule(Tier.T1, text_params=("text",))` after `focus_window`. Nothing
+else in `safety/`. The handler connects as `"bridge"`, `BEGIN IMMEDIATE`, `propose`,
+commit, and closes in `finally` (an uncommitted `Full` rolls back on close). It returns
+`{"queued": True}`. `Full` propagates, so the bridge answers 500 `Tool failed`. The spec
+sentence is the plan's. Case t27 is after t26, with no `args`. `evals/stub_tools.py` is
+unchanged; the two count comments in `evals/commands.yaml` moved from 43 to 44 with the
+case. `tests/test_eval_set.py` pins 44. PLAN.md gained only the P1.2 line
+`(44 since P4.4: case t27 for remember_fact.)`. The P4.4 checkbox is not ticked.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 759 passed, 4 skipped, 1 warning,
+232.26s. Parent `a17f946` was 753. The difference is the four new tests plus one new case
+each of `test_only_declared_arguments_are_accepted` and
+`test_undeclared_argument_never_reaches_a_handler`, which parametrize over `TOOLS`. The
+key test passed on the first run: every tool returned 200, or 202 then outcome `done`.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. Each file's bytes were saved before its first mutant and
+written back after each (not `git checkout`). No write-back raised. A mutant is killed
+only on exit code 1 with the named test among the failures. sha256 before and after:
+`safety/policy.py` `5274867ef38fd4e701aadac29adef0b7580dea803009d31f398895fdc80cfa85`,
+`bridge/tools.py` `2268132e827dd46463855f0d55b52fbb5ede7bb77efb37d45aaf77df06a586b0`.
+The harness lived in `.test-storage` and was deleted after the run. The `Full` mutant
+returns 200 `{"queued": true}`, so test 2 fails with `KeyError: 'detail'` (the 500 body
+is what carries `detail`).
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| `remember_fact` rule at `Tier.T0` | `test_remember_fact_tier` | killed |
+| `text_params` dropped from the rule | `test_text_arguments_are_short_plain_text` | killed |
+| handler catches `Full` and returns `{"queued": True}` | `test_2_remember_fact_full_is_a_failure` | killed |
+| handler connects as `"review"` | `test_3_every_tool_leaves_facts_empty` | killed |
+| `commit` removed | `test_1_remember_fact_queues_the_text` | killed |
+
+Files changed: `safety/policy.py`, `bridge/tools.py`, `core/specs.py`,
+`evals/commands.yaml`, `tests/test_policy.py`, `tests/test_tools.py`,
+`tests/test_eval_set.py`, `docs/PLAN.md` (the P1.2 count line only), this file.
+Next step: the reviewer re-runs the suite and these 5 mutants. E2 is not started.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E1: pre-edit summary reviewed, go)
 

@@ -21,7 +21,7 @@ import tomllib
 from typing import Any
 
 from memory.search import search
-from memory.store import connect
+from memory.store import connect, propose
 from safety.policy import MAX_TEXT
 
 MAX_ENTRIES = 200  # list_dir: entries returned; `total` still counts all
@@ -346,7 +346,18 @@ def memory_tools(db, embedder, roots) -> dict[str, Any]:
         finally:
             conn.close()
 
-    return {"recall_memory": recall_memory}
+    def remember_fact(args: dict[str, Any]) -> dict[str, Any]:
+        conn = connect(db, "bridge")
+        try:
+            # count and insert in one write transaction, so the cap holds
+            conn.execute("BEGIN IMMEDIATE")
+            propose(conn, args["text"])
+            conn.commit()
+            return {"queued": True}
+        finally:
+            conn.close()  # an uncommitted Full rolls back on close
+
+    return {"recall_memory": recall_memory, "remember_fact": remember_fact}
 
 
 def _checked_command(config: Path, name: str, entry: object) -> list[str]:

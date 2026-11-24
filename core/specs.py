@@ -39,6 +39,10 @@ SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         "Bring an already open window to the front.",
         _obj({"title": {"type": "string", "description": "App or window name, e.g. Notepad."}}),
     ),
+    "remember_fact": (
+        "Save something the user asks you to remember. It is kept only after the user approves it.",
+        _obj({"text": {"type": "string"}}),
+    ),
     "create_folder": ("Create a new folder.", _obj({"path": _PATH})),
     "move_file": (
         "Move a file into another folder.",

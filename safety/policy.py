@@ -72,6 +72,7 @@ TOOLS: dict[str, Rule] = {
     "open_app": Rule(Tier.T1, choices=(("app", "apps"),)),
     "open_in_app": Rule(Tier.T1, ("path",), choices=(("app", "apps"),), opens=True),
     "focus_window": Rule(Tier.T1, text_params=("title",)),
+    "remember_fact": Rule(Tier.T1, text_params=("text",)),
     "create_folder": Rule(Tier.T1, ("path",)),
     "move_file": Rule(Tier.T1, ("source", "destination"), into=("destination",)),
     "move_files": Rule(Tier.T1, ("destination",), into=("destination",), list_params=("sources",)),

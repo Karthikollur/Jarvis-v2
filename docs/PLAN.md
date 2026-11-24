@@ -130,6 +130,7 @@ localhost server, with Wi-Fi off.
       Use stub tools. (41 since P3.2 F1: case t24 for `move_files`, decided by Karthik.)
       (42 since P3.4: case t25 for `open_in_app`.)
       (43 since P3.5b: case t26 for the sort chain.)
+      (44 since P4.4: case t27 for remember_fact.)
 - [x] P1.3 `evals/run.py`: reports tool-selection accuracy, argument accuracy, refusal correctness,
       median latency.
 - [x] P1.4 Use Ollama structured output (JSON schema) for tool calls where OpenJarvis allows it.

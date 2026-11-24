@@ -25,8 +25,8 @@ from bridge.app import create_app, load_token
 from core.router import APP_ALIASES
 from evals.stub_tools import APPS, SCRIPTS
 from memory.embed import Embedder
-from memory.store import connect
-from safety.policy import load_names
+from memory.store import connect, propose
+from safety.policy import TOOLS, load_names
 from safety.undo import UndoLog
 
 REPO = Path(__file__).resolve().parents[1]
@@ -1963,3 +1963,133 @@ def test_7_recall_bad_memory_toml(folders, monkeypatch):
     monkeypatch.setattr(bridge_app, "CONFIG", config)
     with pytest.raises(ValueError):
         create_app(storage, roots=[root], protected=[], hotkey=None)
+
+
+# --- remember_fact (P4.4 E1) --------------------------------------------------
+
+
+def _remember_bridge(folders):
+    root, _outside = folders
+    storage = root.parent / "storage"
+    storage.mkdir()
+    db = storage / "memory.db"
+    app = create_app(
+        storage, roots=[root], handlers=tools.memory_tools(db, _Embedder(), [root]),
+        hotkey=None, protected=[],
+    )
+    headers = {"x-jarvis-token": load_token(storage)}
+    return storage, db, app, headers
+
+
+def _finish(client, root, name, args):
+    """One fresh task. A 202 is approved and must end done; anything else must be 200."""
+    response = call(client, fresh_task(client), name, **args)
+    if response.status_code == 202:
+        pending = response.json()["pending_id"]
+        approved = client.post("/approve", json={"pending_id": pending}, headers=ui(root))
+        assert approved.status_code == 200, (name, approved.text)
+        outcome = client.post("/outcome", json={"pending_id": pending})
+        assert outcome.json()["status"] == "done", (name, outcome.text)
+        return
+    assert response.status_code == 200, (name, response.status_code, response.text)
+
+
+def test_1_remember_fact_queues_the_text(folders):
+    _storage, db, app, headers = _remember_bridge(folders)
+    text = "The project deadline is Friday."
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "remember_fact", text=text)
+        assert response.status_code == 200
+        assert response.json()["result"] == {"queued": True}
+        assert_plain(response.json()["result"])
+        conn = connect(db, "bridge")
+        try:
+            pending = [row[0] for row in conn.execute("SELECT text FROM pending_facts")]
+            facts = conn.execute("SELECT count(*) FROM facts").fetchone()[0]
+        finally:
+            conn.close()
+        assert pending == [text] and facts == 0
+        before = _counts(db)
+        refused = call(client, fresh_task(client), "remember_fact", text="x" * 201)
+    assert (refused.status_code, refused.json()["detail"]) == (403, "text: must be short plain text")
+    assert _counts(db) == before
+
+
+def test_2_remember_fact_full_is_a_failure(folders):
+    storage, db, app, headers = _remember_bridge(folders)
+    conn = connect(db, "bridge")
+    try:
+        for number in range(50):
+            propose(conn, f"already {number}")
+        conn.commit()
+    finally:
+        conn.close()
+    with TestClient(app, base_url=BASE, client=LOOPBACK, headers=headers) as client:
+        response = call(client, fresh_task(client), "remember_fact", text="one more")
+    assert (response.status_code, response.json()["detail"]) == (500, "Tool failed")
+    assert _counts(db)["pending_facts"] == 50 and _counts(db)["facts"] == 0
+    lines = [
+        json.loads(line)
+        for line in (storage / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    [logged] = [line for line in lines if line["event"] == "result"]
+    assert logged["status"] == "failed"
+
+
+def test_3_every_tool_leaves_facts_empty(bridge, desktop, monkeypatch):
+    """Phase key test. desktop for the whole test; the process fake only around launches."""
+    client, root = bridge
+    roles = []
+    real_connect = tools.connect
+
+    def record(path, role):
+        roles.append(role)
+        return real_connect(path, role)
+
+    monkeypatch.setattr(tools, "connect", record)
+    (root / "note.txt").write_text("hi")
+    (root / "box").mkdir()
+    (root / "box" / "a.txt").write_text("a")
+    (root / "box" / "b.txt").write_text("b")
+    (root / "box" / "c.txt").write_text("c")
+    (root / "dest").mkdir()
+    (root / "dest2").mkdir()
+    (root / "old.txt").write_text("old")
+    (root / "gone.txt").write_text("gone")
+    calls = {
+        "get_time": {},
+        "list_windows": {},
+        "system_stats": {},
+        "list_dir": {"path": str(root)},
+        "read_text_file": {"path": str(root / "note.txt")},
+        "recall_memory": {"query": "deadlines"},
+        "open_app": {"app": "notepad"},
+        "open_in_app": {"app": "vscode", "path": str(root)},
+        "focus_window": {"title": "Notepad"},
+        "remember_fact": {"text": "The project deadline is Friday."},
+        "create_folder": {"path": str(root / "made")},
+        "move_file": {
+            "source": str(root / "box" / "a.txt"),
+            "destination": str(root / "dest"),
+        },
+        "move_files": {
+            "sources": [str(root / "box" / "b.txt"), str(root / "box" / "c.txt")],
+            "destination": str(root / "dest2"),
+        },
+        "rename_file": {"path": str(root / "old.txt"), "new_name": "new.txt"},
+        "delete_file": {"path": str(root / "gone.txt")},
+        "run_named_script": {"name": "run_tests"},
+    }
+    assert set(calls) == set(TOOLS)
+    for name, args in calls.items():
+        if name in {"open_app", "open_in_app"}:
+            with monkeypatch.context() as m:
+                m.setattr(tools, "subprocess", types.SimpleNamespace(
+                    Popen=FakePopen, DEVNULL=subprocess.DEVNULL, run=subprocess.run,
+                ))
+                _finish(client, root, name, args)
+        else:
+            _finish(client, root, name, args)
+    counts = _counts(root.parent / "storage" / "memory.db")
+    assert counts["facts"] == 0 and counts["pending_facts"] == 1
+    assert roles and set(roles) == {"bridge"}

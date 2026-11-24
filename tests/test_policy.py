@@ -851,7 +851,7 @@ def test_no_allowlist_means_nothing_runs(dirs, clock):
 def test_text_arguments_are_short_plain_text(policy):
     from safety.policy import MAX_TEXT
 
-    for tool, param in [("focus_window", "title"), ("recall_memory", "query")]:
+    for tool, param in [("focus_window", "title"), ("recall_memory", "query"), ("remember_fact", "text")]:
         assert policy.check(policy.new_task(), tool, {param: "x" * MAX_TEXT}).action == "allow"
         for value in [
             "", "x" * (MAX_TEXT + 1), "a\nb", "a\x00", "a\x7f", "a\u202eb", None, 5, ["Notepad"],
@@ -859,6 +859,15 @@ def test_text_arguments_are_short_plain_text(policy):
             decision = policy.check(policy.new_task(), tool, {param: value})
             assert (decision.action, decision.reason) == (
                 "deny", f"{param}: must be short plain text"), repr(value)
+
+
+def test_remember_fact_tier(policy):
+    assert policy.check(policy.new_task(), "remember_fact", {"text": "hello"}).action == "allow"
+    tainted = policy.check(policy.new_task(tainted=True), "remember_fact", {"text": "hello"})
+    assert (tainted.action, tainted.reason) == ("confirm", "tainted T1")
+    assert policy.check(policy.new_task(), "remember_fact", {}).action == "deny"
+    extra = policy.check(policy.new_task(), "remember_fact", {"text": "hello", "extra": "no"})
+    assert (extra.action, extra.reason) == ("deny", "unknown argument")
 
 
 def test_load_names(dirs):
