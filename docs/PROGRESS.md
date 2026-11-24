@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: Section I APPROVED** by Karthik ("Approve it"); `docs/plans/P4.md`
+  section I marks it. PLAN.md: P4.7 line adds "sources shown by code" and points at
+  sections H and I; P4 "Done when" defines correct citation (the first source shown from
+  the recall result is the answer's file; a not-found answer follows a search). Next:
+  Cursor runs I1's verify list on this commit and posts the I1 pre-edit summary; no
+  edit before Karthik's go.
+
 - **2026-11-24: Section I (sources by code) drafted, DRAFT** (Claude Code), from
   Karthik's three decisions: sources shown beside the reply; all distinct, best first,
   the eval checks the first; not-found passes after a successful recall, plus "n't have
@@ -1816,6 +1823,14 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (section I approved)
+
+Karthik approved section I ("Approve it"); `docs/plans/P4.md` marks it APPROVED. PLAN.md
+changed as section I says on approval: the P4.7 line and the P4 "Done when" citation
+definition. Files changed: `docs/plans/P4.md`, `docs/PLAN.md`, this file. Next step:
+Cursor runs I1's "Verify before executing", posts the pre-edit summary for
+`P4.7: sources by code`, and waits for Karthik's go.
 
 ### 2026-11-24 — Agent: Claude Code (section I drafted: sources by code)
 
