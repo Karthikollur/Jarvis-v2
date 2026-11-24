@@ -223,7 +223,7 @@ after P3 closes.
       (for example the Obsidian vault, once Karthik adds it to allowed roots as read-only).
 - [x] P4.3 Retrieval tool returning answers with citations (file + chunk).
 - [x] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.
-- [ ] P4.5 Ingested text marked untrusted (taint applies).
+- [x] P4.5 Ingested text marked untrusted (taint applies).
 - [ ] P4.6 Doc eval: 20 questions over test documents.
 
 **Done when:** at least 80% correct answers with correct citation; nothing enters `facts` without

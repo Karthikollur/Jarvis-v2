@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.5: ingested text is untrusted` ACCEPTED; PLAN.md P4.5 ticked**
+  (Claude Code review of `f0c3480`). The two files are exactly F's list; no change to
+  `pyproject.toml`, `uv.lock`, `config/` or `safety/`. Both go notes are in. Suite 773
+  passed, 4 skipped, 1 warning, 232.65s. All 4 mutants killed by their named tests; the
+  three files restored to the sha256 Cursor logged. No findings. Next: P4.6 (doc eval,
+  section G): Claude Code writes the step-level pass.
+
 - **2026-11-24: `P4.5: ingested text is untrusted` done.** F on the go in `90d0531`.
   Tests only. `started(core, text, fresh=True)` passes `fresh` to `core.handle`. All
   three test 3 requests run through `started` and `_settle`; the third's "no pending
@@ -1557,6 +1564,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.5 review: accepted; P4.5 ticked)
+
+Reviewed `f0c3480` on `main` (parent `90d0531`). Review check 1: `git show --stat` lists
+`tests/test_core.py` (+193 -4) and this file, F's list exactly; no file to keep, split or
+justify. Review check 2: no change to `pyproject.toml`, `uv.lock`, `config/` or
+`safety/`. `numpy` and `memory.store.connect` are existing project code, not new
+dependencies. Added lines hold no hidden characters (one em dash, in a log heading).
+
+The diff follows the go: `live_bridge` is `yield from _serve(folders)`; `recall_bridge`
+patches `memory.embed.load` with a `query()`-only fake and a `docs` sibling of the root;
+`started(core, text, fresh=True)` passes `fresh` on; all three test 3 requests run
+through `started` and `_settle` and assert exact `(tool, reason)` lists, the third
+`[]`; test 4 records the `pending_facts` count inside `decide` and asserts
+`counts == [0]` after the run. `_prepare` folds the shared scenario setup (a.txt, dest,
+planted chunk) into one helper, inside F's scope.
+
+Suite through `cmd /c`: 773 passed, 4 skipped, 1 warning, 232.65s. Mutants re-run by a
+reviewer script (each applied by exact-match replace, count 1; bytes saved first and
+written back in `finally`; `PYTHONDONTWRITEBYTECODE=1`; the four new tests run per
+mutant; killed only on exit 1 with the named test failing):
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| `recall_memory` rule without `taints=True` | test 1 (named), tests 3, 4 | killed |
+| `execute()` no longer sets `context_tainted = True` | test 3 | killed |
+| `BridgeTool.call` 200 branch returns `str(body["result"])` | test 2 | killed |
+| `remember_fact` rule at `Tier.T0` | test 4 | killed |
+
+sha256 before and after match Cursor's for `safety/policy.py`, `bridge/app.py` and
+`core/tools.py`; `git status` clean afterwards.
+
+Known limit, not a finding (it is the plan's choice): test 2 reads the audit log as
+ASCII, so it would fail if the repo moved to a path with non-ASCII characters (the
+`folders` root sits under the repo's `.test-storage`). Files changed: `docs/PLAN.md`
+(P4.5 ticked), this file. Next: P4.6 step-level pass (section G).
 
 ### 2026-11-24 — Agent: Cursor (P4.5 ingested text is untrusted)
 
