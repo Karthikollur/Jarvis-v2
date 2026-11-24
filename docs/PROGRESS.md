@@ -5,6 +5,20 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.6: doc eval runner` ACCEPTED; PLAN.md P4.6 ticked** (Claude Code
+  review of `7bc27bf`). The files are exactly G2's list; no change to `pyproject.toml`,
+  `uv.lock`, `config/` or `safety/`. Both go notes are in. Suite 784 passed, 4 skipped,
+  1 warning, 270.11s. All 4 `score` mutants killed; `run_docs.py` restored to Cursor's
+  sha256. Reviewer run of `evals/run_docs.py`: the same 20 replies and the same table
+  (temperature 0); latency median 1.1 s, max 3.3 s. **Phase gate (manual check 5) not
+  met: both correct 2/20.** Retrieval is fine (hit@4 17/17 in both modes); the model is
+  not. Three causes, traced with the bridge audit log and the executor's tool results:
+  (1) OpenJarvis's loop guard is never reset between requests, so one Core refuses a
+  tool after its 6th use (a bug in how `core/` uses OpenJarvis; did not distort this
+  run, 5 recalls); (2) no prompt rule says when to recall, so 15/20 got no tool call and
+  an invented answer; (3) recalled answers did not name the file. No lever applied.
+  Next: Karthik decides the fix task (Open questions, first entry).
+
 - **2026-11-24: `P4.6: doc eval runner` done.** G2 on the go in `e504e67`, including both
   notes (search connection closed before `rmtree`; exact-term 4/4 tie recorded). No
   product-code change. `evals/run_docs.py`, scoring tests 9–11 in
@@ -817,6 +831,34 @@ Newest session entry goes at the top of the Session log.
   `$env:OPENJARVIS_HOME = "$PWD\.openjarvis"; $env:OPENJARVIS_CONFIG = "$PWD\core\config.toml"; uv run python -m openjarvis.cli ask --no-stream "hi"`
 
 ## Open questions for Karthik
+
+- (Claude Code, 2026-11-24, P4.6 G2 review) OPEN. Doc eval 2/20 both correct (gate 16).
+  Three causes (evidence in the Session log entry "P4.6 G2 review"):
+  1. **Loop guard, a bug.** OpenJarvis builds one `LoopGuard` per agent
+     (`agents/_stubs.py` line 472) and never resets it; `Core` builds one agent per
+     process. With `openjarvis_rust` missing, the Python fallback counts every tool:
+     the 6th call of a tool passes with a warning, every later one is refused before
+     the bridge (`Loop guard: Tool 'recall_memory' exceeded poll budget (5).`).
+     Identical (tool, args) is refused after 3, and ping-pong is checked over the whole
+     lifetime. The one-shot CLI never hits it; a long-running Jarvis (voice, UI) and
+     both eval runners (`evals/run.py --real` too) do.
+  2. **When to recall, prompt.** No rule says when to call `recall_memory`; rule 1 says
+     answer general questions directly. 15/20 asks got no tool call and a confident
+     invented answer ("I recall that ... The combination is 7-3-9."). Diagnostic, not a
+     lever: "According to my notes, " before each ask made the model recall on all 20;
+     of the 6 recalls before the guard cut in, 5 passed.
+  3. **Citation, prompt.** Without the cue, 0 of 3 right recalled answers named the
+     file; with it, 5 of 6 did.
+  Not-found retrieval is 0/3: floor 0.5 sits under the not-found max cosine (0.641);
+  the answerable min is 0.679. A thin gap; the floor lever comes after 1 to 3.
+  Recommended: one fix task, planned before code. (a) `Core.handle` resets the agent's
+  loop guard at the start of each request: per-request loop protection stays, the
+  bridge's per-task budgets are untouched. Test: 7 recalls through one `Core` all reach
+  the bridge. (b) A prompt rule: a question about the user's own things (notes, plans,
+  logs, belongings, people) calls `recall_memory` first and is never answered from
+  general knowledge; the answer names the file. (c) Re-run `evals/run_docs.py` and
+  `evals/run.py`. The eval asks stay cue-free: the invented answer is the product risk
+  this eval exists to catch.
 
 - (Claude Code, 2026-11-23, P4 section B measurement) RESOLVED 2026-11-23: Karthik chose
   (a); re-measure passed (Session log). Kept as written:
@@ -1641,8 +1683,50 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   floor 0.5. tie at ceiling: this eval cannot separate the modes on exact terms; D9
   goes to Karthik with manual step 2. Both correct is below 16/20. Recorded and
   stopped. No lever.
+  Reviewer re-run (Claude Code, same day, same models): the same 20 replies and the same
+  table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.6 G2 review: accepted; P4.6 ticked)
+
+Reviewed `7bc27bf` on `main` (parent `e504e67`). Review check 1: `git show --stat` lists
+`evals/run_docs.py`, `tests/test_doc_eval_set.py` and this file, G2's list exactly.
+Review check 2: no change to `pyproject.toml`, `uv.lock`, `config/` or `safety/`. The
+runner is the go: `score` as planned; the search connection closed in `finally` before
+`rmtree`; injection counted on all 20; the ceiling sentence printed.
+
+Suite through `cmd /c`: 784 passed, 4 skipped, 1 warning, 270.11s. Mutants on
+`evals/run_docs.py`, one at a time against the named test, bytes saved and written back:
+`passed` without `cite` -> test 10; not-found `cite = True` -> test 11; reply not
+lowercased -> test 9; `’` not replaced -> test 11. All exit 1, killed; sha256
+`80b97caba628...` after, Cursor's. Tree clean.
+
+`evals/run_docs.py`, one run: the same 20 replies word for word and the same table as
+Cursor's (temperature 0); latency median 1.1 s, max 3.3 s.
+
+Root cause, not a lever. 15/20 replies made no tool call; the 5 that recalled had the
+right answer but no file name. Prompt: rule 1 says answer general questions directly;
+rule 7 covers only after a recall; nothing says when to recall. The passing recall case
+`t10` carries a cue ("What do you remember about ..."); the doc asks carry none.
+Diagnostic (scratch script, not committed, not an eval result): the committed runner
+with "According to my notes, " before each ask. Recall was called on all 20; d01 to d06
+passed 5 of 6 (d04 right, unnamed), then d07 to d20 all answered "did not find" at 1.7
+s. The bridge audit log (kept by the script) showed no `request` for d07 to d20: the
+calls never reached the bridge. The executor's results for them:
+`Loop guard: Tool 'recall_memory' exceeded poll budget (5).` OpenJarvis's `LoopGuard`
+(`agents/loop_guard.py`) is built once per agent and `reset()` is never called; the
+Python fallback (no `openjarvis_rust`) counts every tool, `warn_before_block` lets the
+6th call through, the 7th is refused. `Core` reuses its agent for every request, as do
+both eval runners. So d18 to d20 in the diagnostic passed only because the guard
+refused their recall. The committed run had 5 recalls, under the limit: its numbers
+stand. Ruled out on the way: the policy budgets (per task, and every question is a
+fresh task), the taint sink policy (no entry for `recall_memory`) and the tool runner's
+capacity.
+
+No findings against the commit: the runner does what the plan says. PLAN.md P4.6
+ticked (the plan ticks it after the G2 review; 16/20 is manual check 5). Files changed:
+this file, `docs/PLAN.md`. Next: Karthik decides the fix task (Open questions).
 
 ### 2026-11-24 — Agent: Cursor (P4.6 doc eval runner)
 

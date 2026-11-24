@@ -224,7 +224,7 @@ after P3 closes.
 - [x] P4.3 Retrieval tool returning answers with citations (file + chunk).
 - [x] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.
 - [x] P4.5 Ingested text marked untrusted (taint applies).
-- [ ] P4.6 Doc eval: 20 questions over test documents.
+- [x] P4.6 Doc eval: 20 questions over test documents.
 
 **Done when:** at least 80% correct answers with correct citation; nothing enters `facts` without
 approval.
