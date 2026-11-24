@@ -1433,7 +1433,10 @@ table tests fail. So `test_built_core_offers_recall_memory` is what catches a re
 revert.
 
 Not run in D2, as planned: `evals/run.py --real` (t10 should pass again now that
-`recall_memory` is offered). That belongs to D3's eval loop. Files changed: this file.
+`recall_memory` is offered). Corrected 2026-11-24: an earlier version of this entry said
+it belonged to D3's eval loop. It does not. D3's loop is the stub evals
+(`uv run python evals/run.py`); `--real` needs a running bridge and Karthik's approvals,
+so it stays with the phase gate's manual check. Files changed: this file.
 Next step: Cursor posts the D3 pre-edit summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.3 recall_memory handler)
