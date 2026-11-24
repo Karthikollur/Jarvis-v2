@@ -112,7 +112,7 @@ def ingest(
 
 
 def reset_documents(db: Path) -> None:
-    """Delete every document and the embedding-model key. Exact yes only.
+    """Delete every document. Keep the model key while any fact exists. Exact yes only.
 
     A missing database is left missing. Facts are not this role's rows.
     """
@@ -121,16 +121,22 @@ def reset_documents(db: Path) -> None:
     if input("Type yes to delete document chunks: ") != "yes":
         return
     conn = connect(db, "ingest")
+    kept = 0
     try:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("DELETE FROM documents")
-        conn.execute("DELETE FROM meta WHERE key = ?", (_MODEL_KEY,))
+        count = conn.execute("SELECT count(*) FROM facts").fetchone()[0]
+        if count == 0:
+            conn.execute("DELETE FROM meta WHERE key = ?", (_MODEL_KEY,))
         conn.commit()
+        kept = count
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+    if kept:
+        print(f"keeping the embedding model: {kept} facts use it")
 
 
 def main(

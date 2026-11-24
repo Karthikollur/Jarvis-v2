@@ -516,9 +516,41 @@ def test_reset_documents_needs_exact_yes(tmp_path: Path, monkeypatch: pytest.Mon
     main(["reset-documents"], db=db)
     assert not _match(db, "keepword")
     assert _paths(db) == []
-    assert _meta(db, "embedding_model") is None
+    assert _meta(db, "embedding_model") == "nomic-embed-text"
     assert _facts(db) == ["keptfact"]
     assert prompts == ["Type yes to delete document chunks: "] * 6
+
+
+def test_reset_documents_keeps_the_model_while_facts_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """One fact keeps the model key and still drops the documents. No fact deletes the key."""
+    root, db = _root(tmp_path), tmp_path / "memory.db"
+    (root / "a.md").write_text("keepword\n", encoding="utf-8")
+    _run(root, db, Fake())
+    review = connect(db, "review")
+    review.execute(
+        "INSERT INTO facts (text, embedding, approved) VALUES ('keptfact', X'00', 't')"
+    )
+    review.commit()
+    review.close()
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+    capsys.readouterr()
+    main(["reset-documents"], db=db)
+    assert _paths(db) == []
+    assert not _match(db, "keepword")
+    assert _meta(db, "embedding_model") == "nomic-embed-text"
+    assert _facts(db) == ["keptfact"]
+    assert capsys.readouterr().out == "keeping the embedding model: 1 facts use it\n"
+
+    review = connect(db, "review")
+    review.execute("DELETE FROM facts")
+    review.commit()
+    review.close()
+    main(["reset-documents"], db=db)
+    assert _meta(db, "embedding_model") is None
+    assert _facts(db) == []
+    assert capsys.readouterr().out == ""
 
 
 def test_embed_holds_no_write_lock(tmp_path: Path) -> None:

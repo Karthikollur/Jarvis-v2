@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: review cli` done.** E3 on the go in `d2a591e`. Test 12's post-`yes`
+  key assertion is `_meta(db, "embedding_model") == "nomic-embed-text"`. The approve
+  mismatch does not append `_RESET`. Suite through `cmd /c`: 769 passed, 4 skipped,
+  1 warning, 251.33s. 6 mutants killed (Session log). PLAN.md P4.4 is not ticked.
+  Next: the reviewer re-runs the suite and these 6 mutants, then ticks PLAN.md P4.4.
+
 - **2026-11-24: P4.4 E3 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
   and send"). Cursor's summary (on `d6e0da3`; verify list holds) stands as written, with
   one test change: in test 12 (`test_reset_documents_needs_exact_yes`) the post-`yes`
@@ -1509,6 +1515,58 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.4 review cli)
+
+E3 from the step-level pass, on the go in `d2a591e`. In test 12
+(`test_reset_documents_needs_exact_yes`) only the post-`yes` key assertion changed, to
+`_meta(db, "embedding_model") == "nomic-embed-text"`. The five refusals before `yes`
+are unchanged.
+
+Wordings, as the go recorded them: `no embedding model yet. Run python -m memory ingest
+first`; `embedding model is {stored!r}, not {embedder.model!r}` with no `_RESET` suffix
+(with facts present, `reset-documents` keeps the key, so that advice would loop);
+`Type yes to delete this fact: `; `keeping the embedding model: {n} facts use it`;
+`usage: python -m memory review | facts | forget <id>`.
+
+`review` prints each pending row in id order, then approves, edits, deletes, or skips.
+Approve calls `embedder.documents` first. Then one `BEGIN IMMEDIATE` requires
+`meta.embedding_model` to exist and equal `embedder.model`, inserts the fact (text,
+float32 vector, UTC ISO time, `pending_id`), deletes the pending row, and commits. A
+miss rolls back and raises `ModelMismatch`. `facts` and `forget` print with `!r`.
+`forget` deletes only when the typed answer is `yes`, inside `BEGIN IMMEDIATE`. A
+missing database prints `no pending facts`, `no facts`, or `no fact N` and is not
+created. `memory/__main__.py` sends `review`, `facts`, and `forget` to `memory.review.main`
+and everything else to `memory.ingest.main`. The existing `ModelMismatch` catch covers
+both. `reset_documents` still deletes the documents, and deletes the model key only when
+`SELECT count(*) FROM facts` is 0; otherwise it prints the keep line and leaves the key.
+`memory/store.py` is unchanged.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 769 passed, 4 skipped, 1 warning,
+251.33s. Parent `d2a591e` was 759. The difference is the nine review tests and
+`test_reset_documents_keeps_the_model_while_facts_exist`.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. Each file's bytes were saved before its first mutant and
+written back after each (not `git checkout`). No write-back raised. A mutant is killed
+only on exit code 1 with the named test among the failures. sha256 before and after:
+`memory/review.py` `6cedfc162f72554ac65c003f54ceda9d05361f727dd624567e3e6c68e2b7218d`,
+`memory/ingest.py` `0977114adc405965ed8537734ffba73d66f60b483636dc5b64b6fbf9252a708f`.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| approve leaves the pending row | `test_approve_stores_the_vector_and_drops_the_pending_row` | killed |
+| model check removed | `test_model_mismatch_leaves_the_pending_row` | killed |
+| `!r` removed from the pending line | `test_pending_line_escapes_control_characters` | killed |
+| unknown choice approves | `test_skip_and_unknown_leave_the_row_pending` | killed |
+| `forget` without the `yes` check | `test_facts_escape_and_forget_needs_exact_yes` | killed |
+| `reset-documents` deletes the key while facts exist | `test_reset_documents_keeps_the_model_while_facts_exist` | killed |
+
+Files changed: `memory/review.py`, `memory/__main__.py`, `memory/ingest.py` (the reset
+guard only), `tests/test_memory_review.py`, `tests/test_memory_ingest.py`, this file.
+`memory/store.py`, `safety/`, `bridge/`, `config/`, `pyproject.toml`, `uv.lock`, and
+PLAN.md untouched. PLAN.md P4.4 is not ticked.
+Next step: the reviewer re-runs the suite and these 6 mutants.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E3: pre-edit summary reviewed, go)
 
