@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: remember prompt` ACCEPTED** (Claude Code review of `42db5a7`). The
+  diff is `core/config.toml` (two lines, rule 8) and this file only; parsed with
+  `tomllib`, rule 8 is the plan's sentence and rules 1 to 7 are unchanged. Suite 759
+  passed, 4 skipped, 1 warning, 315.12s. Stub evals re-run twice: 44/44 both times, t10
+  and t27 ok. No findings. PLAN.md P4.4 stays unticked until E3's review. Next: E3 `P4.4:
+  review cli`: Cursor runs the verify list and posts the E3 pre-edit summary; no edit
+  before Karthik's go.
+
 - **2026-11-24: `P4.4: remember prompt` done.** Variant 1 of rule 8, the plan's sentence,
   after rule 7, in rule 7's wrap. The parsed line is "Call remember_fact only when the
   user asks you to remember something. It is saved only after the user approves it."
@@ -1482,8 +1490,29 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   (100%), arguments 27/27 (100%) — refusals 10/10, clarify 5/5, all 44/44 — 5/44 fast
   path. Run 1 median 1.7 s, max 8.7 s. Run 2 median 1.7 s, max 8.6 s. t10 and t27 ok
   both times.
+- 2026-11-24 — qwen3.5:4b, stub tools, fast path (P4.4 E2 review, reviewer re-run on
+  `42db5a7`). Two runs: tool selection 29/29 (100%), arguments 27/27 (100%) — refusals
+  10/10, clarify 5/5, all 44/44 — 5/44 fast path. Run 1 median 1.5 s, max 7.4 s. Run 2
+  median 1.4 s, max 7.6 s (both while the full suite ran alongside). Same scores as
+  Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E2 review: accepted)
+
+Reviewed `42db5a7` on `main` (parent `5a75298`). Files: `core/config.toml` (+2 lines) and
+this file. Rule 8 follows rule 7 in the same ` \` wrap; `tomllib` parses it to exactly
+"8. Call remember_fact only when the user asks you to remember something. It is saved
+only after the user approves it." The prompt has rules 1 to 8 and nothing else changed.
+Suite: 759 passed, 4 skipped, 1 warning, 315.12s. Stub evals (`uv run python
+evals/run.py`) twice: 44/44 both, refusals 10/10, clarify 5/5, t10 and t27 ok (numbers
+under Eval results). No mutants (prompt text), no `--real` (phase gate). No findings.
+
+Environment note (reviewer's shell, not the repo): this session's Bash runs commands
+through the `rtk` output proxy, and `uv run python -m pytest` through it failed at
+collection with `No module named 'safety'` (the same symptom Cursor's terminal showed in
+P4.2). `rtk proxy uv run python -m pytest` ran normally. Files changed: this file.
+Next: E3 verify list and pre-edit summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.4 remember prompt)
 
