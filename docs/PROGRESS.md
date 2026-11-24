@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.7: sources by code` ACCEPTED, no findings** (Claude Code review of
+  `220369c`). Files are I1's list exactly; no change to `pyproject.toml`, `uv.lock`,
+  `config/` or `safety/`. Code matches section I; the three go conditions are met. Suite
+  through `cmd /c`: 789 passed, 4 skipped. All six mutants re-run by the reviewer: each
+  killed on an assert in its named test; restored hashes match Cursor's. P4.7 stays
+  unticked until I2's review. Next: Cursor runs I2's "Verify first" on `220369c`'s code
+  (stub `evals/run.py` and `evals/run_docs.py`, today's prompt) and posts the baseline
+  and the I2 pre-edit summary; no `core/config.toml` edit before Karthik's go.
+
 - **2026-11-24: `P4.7: sources by code` done.** I1 on the go in `5b8458e`.
   `sources()` lists the files from each successful `recall_memory` result (a fact is
   `fact <id>`, the first copy of a repeated source is kept). The CLI prints
@@ -1844,6 +1853,28 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 I1 review: accepted)
+
+Reviewed `220369c` on `main` (parent `5b8458e`). Review check 1: `git show --stat`
+lists `core/__main__.py`, `core/agent.py`, `docs/PROGRESS.md`, `evals/run_docs.py`,
+`tests/test_core.py`, `tests/test_doc_eval_set.py`: I1's six files, nothing else. Review
+check 2: no change to `pyproject.toml`, `uv.lock`, `config/` or `safety/`. Diff read
+against section I: `sources()` is the plan's text; the CLI changes only the successful
+`recall_memory` line; `score`, `recalled`, `NOT_FOUND` and the removal of `stems` as
+planned. Go conditions: (1) tests 9–11 carry the plan's names; (2) `sources=` is on the
+row printed for every question; (3) test 1's fact hit is `{"kind": "fact", "source": 7}`
+with an int, documents use `"kind": "document"`. Suite through `cmd /c`: 789 passed, 4
+skipped, 1 warning, 230 s (786 + the three new tests). Mutants re-run by the reviewer
+(scratch script outside the repo: exact-anchor replace, named test through `cmd /c`,
+bytes written back, sha256 checked): all six killed with exit 1 on an assert in the
+named test (dedup and fact label: test 1's list equality; CLI: test 3's stdout equality;
+cite anywhere: test 10 `assert True is False`; not-found `cite = True`: test 11
+`assert True is False`; phrase removed: test 11 `assert False is True`). Restored hashes
+equal Cursor's logged sha256 for all three files; `git status` clean afterwards. No
+findings. Not covered by unit tests: `sources(core.results)` on a live recall; I2's
+"Verify first" `evals/run_docs.py` run exercises it. Files changed: this file. Next
+step: Cursor runs I2's "Verify first" and posts the I2 pre-edit summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.7 sources by code)
 
