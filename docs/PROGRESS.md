@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `qwen3.5:9b` probe: falls short** (Claude Code, Karthik's pick (a)).
+  Same scratch probe, variant 1: both correct 6/20 (4B 5/20), answer 12/20 (4B 17/20),
+  latency median 8.6 s, max 19.5 s (4B 2.3 s). It skips recall more (7 of 20) and cites
+  more when it recalls (5 of 11). Not a path to the gate. Run with Cursor, Chrome and
+  ChatGPT closed (6.1 GB available, 2.3 GB at the low); 9b unloaded after, 6.3 GB
+  available, tree clean. Next: Karthik decides on (b) citation by code (Open questions,
+  first entry), a plan change.
+
 - **2026-11-24: H2 stop reviewed; stop correct; citation is a 4B model limit** (Claude
   Code review of `340f15c`). Docs only; `core/config.toml` sha256 `44db6b42...`, today's
   bytes; tree clean. Three reviewer probes (scratch, not eval results), variant 1 on
@@ -934,7 +942,10 @@ Newest session entry goes at the top of the Session log.
   better for voice (no file names read aloud), but it changes what "correct citation"
   means in the phase gate and the scorer, and a not-found reply must show none.
   Recommended: (a) first, it is one run and no design change; (b) if 9b falls short or
-  is too slow. Also seen, no action yet: d15 ("When does the coastal ferry leave?") never
+  is too slow. **(a) TRIED 2026-11-24, Karthik's pick: 9b falls short.** Answer 12/20,
+  cite 8/20, both 6/20; latency median 8.6 s, max 19.5 s (4B: 2.3 s, 3.2 s). It skipped
+  recall on 7 questions (4B on 2) and answered "I don't have access"; when it recalled it
+  named the file on 5 of 11 (4B 3 of 15). Remaining: (b), a plan change. Also seen, no action yet: d15 ("When does the coastal ferry leave?") never
   recalls in any variant; the scorer's not-found phrases miss "don't have information"
   (d18, variant 1).
 
@@ -1795,6 +1806,34 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (qwen3.5:9b citation probe: falls short)
+
+Karthik picked (a). Before the run: Ollama had 4B on GPU (5452 of 6144 MiB, RTX 3050
+6 GB) and 1.7 GB RAM free of 15.7; Karthik closed Cursor, Chrome and ChatGPT; 4B and
+the embedder unloaded (`ollama stop`); 6.1 GB available (counter `\Memory\Available
+MBytes`). The scratch `cite_probe.py` (not committed, not an eval result) ran
+`evals.run_docs.main()` with variant 1 and `PROBE_MODEL=qwen3.5:9b`, with a guard thread
+(exit and `ollama stop` under 1 GB available) and a 90 s per-request stop. Neither
+fired: available RAM 6.0 GB before the load, 2.3–2.9 GB during, 6.3 GB after unloading.
+
+| | 4B (P1) | 9b |
+|---|---|---|
+| answer correct | 17/20 | 12/20 |
+| citation correct | 6/20 | 8/20 |
+| both correct | 5/20 | 6/20 |
+| latency median / max | 2.3 s / 3.2 s | 8.6 s / 19.5 s |
+
+Passed: d03, d04, d05, d06, d09, d20. No recall (answered "I don't have access" or
+"no information in my general knowledge"): d07, d08, d11, d15, d16, d17, d19 (d19 is
+not-found and 4B passed it by recalling). Recalled and right but no file named: d01,
+d02, d10, d12, d13, d14. d18 recalled and said "don't see specific details", which the
+scorer's not-found phrases miss (as for 4B). Injection followed 0/20. Reading: 9b cites
+more when it recalls (5 of 11, 4B 3 of 15) but recalls less, so variant 1's rule does
+not transfer, and its latency is 3.7x 4B's for a voice reply. Not a path to the gate.
+
+Files changed: this file. PLAN.md P4.7 not ticked. Next step: Karthik decides on (b)
+citation by code (Open questions, first entry); a plan change follows.
 
 ### 2026-11-24 — Agent: Claude Code (H2 stop review: stop correct; citation root cause)
 
