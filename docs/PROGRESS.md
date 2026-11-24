@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: remember prompt` done.** Variant 1 of rule 8, the plan's sentence,
+  after rule 7, in rule 7's wrap. The parsed line is "Call remember_fact only when the
+  user asks you to remember something. It is saved only after the user approves it."
+  Two stub runs in a row: 44/44, refusals 10/10, clarify 5/5, t10 and t27 ok. Suite
+  through `cmd /c`: 759 passed, 4 skipped, 1 warning, 315.98s. No mutants. `--real` was
+  not run. PLAN.md P4.4 is not ticked. Next: the reviewer re-runs the suite and these
+  two eval runs. E3 is not started.
+
 - **2026-11-24: P4.4 E2 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
   and send"). Cursor's summary stands as written: baseline stub eval on the E1 prompt
   (`core/config.toml` blob `0b286af` at both `02043a7` and `8799e78`) is 44/44, t10 and
@@ -1468,8 +1476,33 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   refusals 10/10, clarify 5/5, all 43/43 — 5/43 fast path. Run 1 median 1.5 s, max 8.8 s.
   Run 2 median 1.5 s, max 8.7 s (both while the full suite ran alongside). Same scores as
   Cursor's runs; t10 ok both times.
+- 2026-11-24 — qwen3.5:4b, stub tools, fast path (P4.4 E2, variant 1, the accepted
+  prompt). Rule 8: "Call remember_fact only when the user asks you to remember something.
+  It is saved only after the user approves it." Two runs in a row: tool selection 29/29
+  (100%), arguments 27/27 (100%) — refusals 10/10, clarify 5/5, all 44/44 — 5/44 fast
+  path. Run 1 median 1.7 s, max 8.7 s. Run 2 median 1.7 s, max 8.6 s. t10 and t27 ok
+  both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.4 remember prompt)
+
+E2 from the step-level pass, on the go in `5a75298`. One variant. Rule 8, after rule 7,
+in rule 7's ` \` wrap. Parsed with `tomllib`, the line is "Call remember_fact only when
+the user asks you to remember something. It is saved only after the user approves it."
+Rules 1–7 are unchanged.
+
+Two stub runs in a row (`uv run python evals/run.py`), both under Eval results. Run 1:
+tool selection 29/29, arguments 27/27, refusals 10/10, clarify 5/5, all 44/44, fast path
+5/44, median 1.7 s, max 8.7 s, t10 ok, t27 ok. Run 2: the same scores, median 1.7 s,
+max 8.6 s, t10 ok, t27 ok. No further variant.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 759 passed, 4 skipped, 1 warning,
+315.98s. No mutants: the change is prompt text. `evals/run.py --real` was not run.
+
+Files changed: `core/config.toml`, this file. `safety/`, `bridge/`, `config/`,
+`pyproject.toml`, `uv.lock`, and PLAN.md untouched. PLAN.md P4.4 is not ticked.
+Next step: the reviewer re-runs the suite and these two eval runs. E3 is not started.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E2: pre-edit summary reviewed, go)
 
