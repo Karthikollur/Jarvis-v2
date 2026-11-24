@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: I1 pre-edit summary reviewed; GO given** by Karthik ("Go, with
+  conditions"). Cursor's verify on `30fe214` passed, and the reviewer re-checked all three
+  points in the code; suite 786 passed, 4 skipped. The summary matches section I (files,
+  `sources()`, CLI lines, `score`, `recalled`, tests, six mutants). Go conditions: (1)
+  tests 9–11 use the plan's names (`test_right_answer_and_first_source_pass`,
+  `test_answer_and_first_source_both_needed`, `test_not_found_needs_a_search`); (2)
+  `sources=` prints for every question, not only inside `if show:`; (3) test 1's hits use
+  the bridge's wire shape: the fact is `{"kind": "fact", "source": 7}` (int), documents
+  `"kind": "document"`. Next: Cursor implements I1, runs the suite through `cmd /c` and
+  the six mutants, Session log, commit `P4.7: sources by code`, push. I2 stays unstarted.
+
 - **2026-11-24: Section I APPROVED** by Karthik ("Approve it"); `docs/plans/P4.md`
   section I marks it. PLAN.md: P4.7 line adds "sources shown by code" and points at
   sections H and I; P4 "Done when" defines correct citation (the first source shown from
@@ -1823,6 +1834,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 I1: pre-edit summary reviewed, go)
+
+Cursor ran I1's "Verify before executing" on `30fe214` and posted the I1 pre-edit
+summary. Reviewer re-checked each verify point: `ToolResult` (`types.py` line 125); a
+successful recall is `json.dumps(body["result"])` (`core/tools.py` lines 47–49); the
+handler returns `{"results": search(...)}`; `_hit` has `kind` and `source`, a fact's
+source is the int `fact_id` (`memory/search.py` lines 92–109). `stems` is read only by
+`score` (`evals/run_docs.py` line 183); `Core.handle` resets `results` at line 41 and sets
+it at line 60; `tests/test_doc_eval_set.py` is the only other `score` caller. `evals/run.py`
+reads the reply only for clarify asks. Extra check: the OpenJarvis executor fences tool
+output with an `[UNTRUSTED EXTERNAL CONTENT ...]` banner only for non-local tools
+(`tools/_stubs.py` around line 499); `BridgeTool` keeps `is_local = True`, so recall
+content reaches `sources()` as plain JSON. Suite through `cmd /c`: 786 passed, 4 skipped.
+No findings. Go given by Karthik ("Go, with conditions") with the three conditions in
+Current state. Note, no action: `test_stems_appear_nowhere_else` guarded the old
+substring citation; it stays (still passes, not in I1's files). Files changed: this file.
+Next step: Cursor implements I1.
 
 ### 2026-11-24 — Agent: Claude Code (section I approved)
 
