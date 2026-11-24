@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: H1 stopped at its verify list; H1 tests amended, DRAFT** (Claude Code).
+  Cursor's run on `bbd0da9`: test 1 as written passes on today's code, because the
+  pinned guard never blocks identical calls (the reason string carries the count, so
+  `warn_before_block` warns on every repeat). A reviewer probe agrees: identical calls
+  1–9 all run; 7 calls of one tool with different arguments: 6th warned, 7th refused.
+  The `reset()` fix stands (the P4.6 harm was the per-tool budget spanning requests).
+  `docs/plans/P4.md` section H: item 1 corrected; tests 1 and 2 use `list_dir` on 7
+  distinct folders (test 1 fails at request 7 on today's code; test 2 expects
+  `[True] * 6 + [False]`); verify list updated. Fix, files and mutants unchanged. Next:
+  Karthik approves the amendment; then Cursor re-runs the verify list and posts the H1
+  pre-edit summary.
+
 - **2026-11-24: P4.7 step-level pass APPROVED** by Karthik (plan mode),
   `docs/plans/P4.md` section H; PLAN.md P4.7 added. Two commits. H1 `P4.7: loop guard
   per request`: `Core.handle` resets the agent's loop guard before each `run`, plus two
@@ -1700,6 +1712,36 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (H1 verify: plan premise wrong; H1 tests amended, DRAFT)
+
+Cursor stopped H1 at "Verify before executing" on `bbd0da9` (no edit; probe removed).
+Holds: `core._agent._loop_guard` is a `LoopGuard`, `_rust_impl is None`, `reset()`
+callable; `route("list the sandbox folder")` is `None`. Does not hold: test 1 as written
+(7 requests, identical `list_dir` of `root`) passed on today's code in 3.78 s; all 7
+reached the bridge.
+
+Root cause, read in `OpenJarvis/src/openjarvis/agents/loop_guard.py` (pinned `e6b7137`)
+and reproduced by a reviewer probe (scratch script, the guard alone, default config, not
+committed). `check_call` keys `warn_before_block` on `verdict.reason`; the identical-call
+reason includes the count, so each repeat is a new key and is warned, never blocked.
+Probe A, 9 identical calls on one guard: 1–3 run, 4–9 warned and run. Probe B, 7
+`list_dir` calls with different arguments: 1–5 run, 6 warned and runs, 7 refused (`Tool
+'list_dir' exceeded poll budget (5).`, a stable reason). Probe C, B with `reset()` before
+each call: all 7 run. The identical-call early return also skips the per-tool count and
+the ping-pong window, so an identical-call loop is bounded only by the bridge's per-task
+`MAX_CALLS` and `max_turns`. That is upstream behaviour; no change (no clone or
+`LoopGuardConfig` change in P4.7). The P4.6 diagnostic's refusals were the per-tool
+budget across requests, which `reset()` per request removes; the fix stands.
+
+Plan change, `docs/plans/P4.md` section H, marked DRAFT: item 1 corrected; tests 1 and 2
+make `root / "d1"` to `"d7"` and list one folder per call (test 1: on today's code request
+7 is refused; test 2: one request, 7 calls, `[True] * 6 + [False]`, 6 audit requests; 8
+turns fit `max_turns` 9, 6 bridge calls fit `MAX_CALLS` 8); verify list says request 7
+and the poll-budget reason. Fix, file list and mutant table unchanged; both mutants still
+killed by the same tests. Files changed: `docs/plans/P4.md`, this file. Next: Karthik
+approves or changes the amendment; then Cursor re-runs the verify list and posts the H1
+pre-edit summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 step-level pass: approved)
 
