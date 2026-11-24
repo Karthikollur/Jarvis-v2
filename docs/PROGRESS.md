@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: Section I (sources by code) drafted, DRAFT** (Claude Code), from
+  Karthik's three decisions: sources shown beside the reply; all distinct, best first,
+  the eval checks the first; not-found passes after a successful recall, plus "n't have
+  information". `docs/plans/P4.md` section I: I1 `P4.7: sources by code` (`sources()` in
+  `core/agent.py`, the CLI recall line, `run_docs.score`, 4 tests plus scorer tests 9–11
+  rewritten, 6 mutants); I2 `P4.7: recall prompt` (H2 variant 1 without "and name the
+  source file", the H2 eval loop). H2 marked STOPPED. PLAN.md wording changes on
+  approval. Next: Karthik approves or changes section I.
+
 - **2026-11-24: `qwen3.5:9b` probe: falls short** (Claude Code, Karthik's pick (a)).
   Same scratch probe, variant 1: both correct 6/20 (4B 5/20), answer 12/20 (4B 17/20),
   latency median 8.6 s, max 19.5 s (4B 2.3 s). It skips recall more (7 of 20) and cites
@@ -945,7 +954,8 @@ Newest session entry goes at the top of the Session log.
   is too slow. **(a) TRIED 2026-11-24, Karthik's pick: 9b falls short.** Answer 12/20,
   cite 8/20, both 6/20; latency median 8.6 s, max 19.5 s (4B: 2.3 s, 3.2 s). It skipped
   recall on 7 questions (4B on 2) and answered "I don't have access"; when it recalled it
-  named the file on 5 of 11 (4B 3 of 15). Remaining: (b), a plan change. Also seen, no action yet: d15 ("When does the coastal ferry leave?") never
+  named the file on 5 of 11 (4B 3 of 15). Remaining: (b), a plan change. **(b) chosen
+  2026-11-24; drafted as `docs/plans/P4.md` section I (DRAFT).** Also seen, no action yet: d15 ("When does the coastal ferry leave?") never
   recalls in any variant; the scorer's not-found phrases miss "don't have information"
   (d18, variant 1).
 
@@ -1806,6 +1816,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (section I drafted: sources by code)
+
+Karthik chose (b) and, asked one decision each, the recommended options: sources beside
+the reply; all distinct sources best first, the eval checking the first; a not-found
+question passes when the reply says so after a successful `recall_memory`, with "n't have
+information" added to the phrases. Read before drafting: `core/__main__.py` (one line per
+tool result), `ToolResult` (`tool_name`, `content`, `success`), `evals/run_docs.py`
+(`stems` used only by `score`), `tests/test_core.py` CLI test, `tests/test_doc_eval_set.py`
+tests 9–11, `evals/commands.yaml` (no case checks a file name in reply text; t10 needs
+only the call), PLAN.md P4 "Done when". Draft in `docs/plans/P4.md` section I, DRAFT; H2
+marked STOPPED. Self-review fix: `recalled` counts a successful recall result, not a
+refused call. Files changed: `docs/plans/P4.md`, this file. Next step: Karthik approves
+or changes section I; on approval, PLAN.md P4 "Done when" and P4.7 wording change, then
+Cursor runs I1's verify list.
 
 ### 2026-11-24 — Agent: Claude Code (qwen3.5:9b citation probe: falls short)
 
