@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.7: loop guard per request` ACCEPTED, one finding against the plan**
+  (Claude Code review of `948e135`). Files are H1's list exactly; no change to
+  `pyproject.toml`, `uv.lock`, `config/`, `safety/`, `bridge/`, `memory/` or the clone.
+  Code and tests are section H as amended. Suite through `cmd /c`: 786 passed, 4 skipped, 1 warning, 213.11s. Finding
+  (plan error, Claude Code's): mutant 2 as planned is not a kill. `OrchestratorAgent`
+  does not take `loop_guard_config`, so the agent is never built and both tests fail with
+  `TypeError`. Replaced in the plan by `self._agent._loop_guard = None` after the build:
+  test 2 kills it, test 1 survives. Mutant 1: test 1 kills it, test 2 survives. No change
+  to the commit. PLAN.md P4.7 stays unticked until H2's review. Next: Cursor runs H2's
+  "Verify first" on `948e135` (one stub `evals/run.py`, one `evals/run_docs.py`), then
+  posts the H2 pre-edit summary.
+
 - **2026-11-24: `P4.7: loop guard per request` done.** H1 on the go in `3aa0e86`.
   `Core.handle` resets the agent's loop guard immediately before `run`. Suite through
   `cmd /c`: 786 passed, 4 skipped, 1 warning, 289.34s. Both mutants killed, exit 1
@@ -1735,6 +1747,39 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 H1 review: accepted, one plan finding)
+
+Reviewed `948e135` on `main` (parent `3aa0e86`). Review check 1: `git show --stat`
+lists `core/agent.py`, `tests/test_core.py` and this file, H1's list exactly. Review
+check 2: nothing under `pyproject.toml`, `uv.lock`, `config/`, `safety/`, `bridge/`,
+`memory/`, `OpenJarvis/` or `docs/PLAN.md`. The three lines sit right before
+`self._agent.run`, after the fast path's return; tests 1 and 2 match section H as
+amended. `core/agent.py` sha256 `ad746e40...`, Cursor's.
+
+Suite through `cmd /c`: 786 passed, 4 skipped, 1 warning, 213.11s.
+
+Mutants (reviewer script, not committed), each against both tests, bytes saved and
+written back:
+
+| Mutant | Test 1 | Test 2 |
+|---|---|---|
+| M1 the `guard.reset()` lines deleted | killed, exit 1 (`False is True` on request 7) | survives |
+| M2 as planned, `loop_guard_config={"enabled": False}` | exit 1, `TypeError` | exit 1, `TypeError` |
+| M2b `self._agent._loop_guard = None` after the build | survives | killed, exit 1 (`[True] * 7`) |
+
+sha256 `ad746e40...` after; tree clean. Finding, against the plan, not the commit: M2's
+"kill" is the agent failing to build. `OrchestratorAgent.__init__`
+(`agents/orchestrator.py` lines 52-87) has no `loop_guard_config` parameter and does
+not forward one to `ToolUsingAgent`; the planner read `_stubs.py` only. Every test that
+builds a Core fails under M2, so it pins nothing. M2b is the guard switched off, the
+alternative the fix rejects; only test 2 kills it, and only test 1 kills M1, so each
+test pins one behaviour. `docs/plans/P4.md` H1 mutant table corrected to M2b with a
+note. No change to the commit. Cursor's record of the `TypeError` was accurate.
+
+Files changed: `docs/plans/P4.md`, this file. PLAN.md P4.7 not ticked (after H2's
+review). Next: Cursor runs H2's "Verify first" on `948e135` and posts the H2 pre-edit
+summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.7 loop guard per request)
 
