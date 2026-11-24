@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.6: doc eval set` done.** G1 on the go in `e7c9167`. No product-code
+  change. The posted set stands, with the two data changes (alternate `any_of` forms,
+  current phrase first; d06 ask is the odometer wording). Eight fictional documents in
+  `evals/docs/`, `evals/doc_questions.yaml` (d01–d20), `tests/test_doc_eval_set.py`
+  (tests 1–8). Suite through `cmd /c`: 781 passed, 4 skipped, 1 warning, 270.70s.
+  4 data mutants killed (Session log). PLAN.md P4.6 is not ticked. Next: the reviewer
+  re-runs the suite and these 4 mutants.
+
 - **2026-11-24: P4.6 G1 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
   and send"). Cursor's summary (on `242b2d7`; verify list holds, no product-code change)
   stands as posted (8 documents, 20 questions), with two data changes:
@@ -1589,6 +1597,46 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.6 doc eval set)
+
+G1 from the step-level pass, on the go in `e7c9167`. No product-code change. The posted
+set stands, with the two data changes: alternate `any_of` forms, current phrase first,
+and the d06 ask "At what odometer reading was the Quinceware filter last fitted on the
+parcel van?"
+
+Eight fictional documents in `evals/docs/`. Four near-topic pairs, one `.pdf`, one
+`.txt`, six `.md`. Ingested text is 1034 to 2100 characters, 2 or 3 chunks. The pdf is
+one content-stream line with `T*` between text lines. Each text line ends with a space,
+because pypdf joins those lines with nothing between them. A CRLF copy still yields
+`Quinceware`, `48210`, and `53210`. `evals/doc_questions.yaml` is d01–d20: 15
+answerable, 2 injected (`brindlewick.md`, `yarrowfen.md`), 3 not found, 4 exact.
+`tests/test_doc_eval_set.py` is tests 1–8. Test 8 dry-runs ingest into a missing
+database under `.test-storage` with `protected=[]`.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 781 passed, 4 skipped, 1 warning,
+270.70s. The previous suite was 773. The difference is the eight new tests.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. Each file's bytes were saved before the mutant and written
+back after (not `git checkout`). No write-back raised. A mutant is killed only on exit
+code 1 with the named test failing. sha256 before and after:
+`evals/docs/quornhaven.md` `2e1ad82647f360f997d275890262e0c564424df7b986983cca6dc89c15356d2a`,
+`evals/doc_questions.yaml` `ddfb9e33d88eb48e8917b64bc6cafa02cee48a4c7f52468479f04f385a1d5be9`,
+`evals/docs/zelthrop.pdf` `5508f4594a35343d0158ff63dbade1c88bac086635c074ba7cc454900089a1d2`.
+
+| Mutant | Failing test | Result |
+|---|---|---|
+| one `exact` term appended to a second document | `test_exact_terms_sit_in_one_document` | killed |
+| one stem word written into another document | `test_stems_appear_nowhere_else` | killed |
+| one `ask` replaced by `what time is it` | `test_asks_are_not_fast_pathed` | killed |
+| the pdf's bytes replaced by `not a pdf` | `test_every_document_ingests` | killed |
+
+Files changed: `evals/docs/` (8 documents), `evals/doc_questions.yaml`,
+`tests/test_doc_eval_set.py`, this file. `memory/`, `bridge/`, `core/`, `safety/`,
+`config/`, `pyproject.toml`, `uv.lock`, and PLAN.md untouched. PLAN.md P4.6 is not
+ticked.
+Next step: the reviewer re-runs the suite and these 4 mutants.
 
 ### 2026-11-24 — Agent: Claude Code (P4.6 G1: pre-edit summary reviewed, go)
 

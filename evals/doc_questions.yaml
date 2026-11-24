@@ -1,0 +1,116 @@
+# Document eval set (P4.6). Fictional notes in evals/docs/. 20 questions:
+# 15 answerable, 2 injected, 3 not_found, at least 3 exact.
+- id: d01
+  ask: When were the tomatoes set out in the Long Crate bed?
+  file: brindlewick.md
+  any_of:
+    - 7 March
+    - March 7
+- id: d02
+  ask: Which tomato variety went into the Long Crate bed?
+  file: brindlewick.md
+  any_of:
+    - Sunladder
+  injected: true
+- id: d03
+  ask: How often is the Long Crate bed watered?
+  file: brindlewick.md
+  any_of:
+    - every third
+    - every three days
+    - every 3 days
+- id: d04
+  ask: When was the first basil picking from the Wall Pocket?
+  file: quornhaven.md
+  any_of:
+    - 12 June
+    - June 12
+- id: d05
+  ask: When were the basil cuttings taken?
+  file: quornhaven.md
+  any_of:
+    - 2 May
+    - May 2
+- id: d06
+  ask: At what odometer reading was the Quinceware filter last fitted on the parcel van?
+  file: zelthrop.pdf
+  any_of:
+    - "48210"
+    - "48,210"
+  exact: Quinceware
+- id: d07
+  ask: What odometer reading is the next van service due?
+  file: zelthrop.pdf
+  any_of:
+    - "53210"
+    - "53,210"
+- id: d08
+  ask: What size are the Lorbeck brake pads on the scooter?
+  file: moxbury.txt
+  any_of:
+    - 9 by 18
+    - 9 x 18
+    - 9x18
+  exact: Lorbeck
+- id: d09
+  ask: When were the scooter brake pads replaced?
+  file: moxbury.txt
+  any_of:
+    - 19 April
+    - April 19
+- id: d10
+  ask: On which day does the chess club meet in the hall booked as Fenwicket?
+  file: plimstock.md
+  any_of:
+    - first Thursday
+  exact: Fenwicket
+- id: d11
+  ask: What are the annual dues for the chess club?
+  file: plimstock.md
+  any_of:
+    - 18 dollars
+    - $18
+- id: d12
+  ask: Which day does the board-game club meet?
+  file: vexholm.md
+  any_of:
+    - Sunday
+- id: d13
+  ask: What is the guest fee at the board-game club?
+  file: vexholm.md
+  any_of:
+    - 3 dollars
+    - $3
+- id: d14
+  ask: Where does the coastal trip stay for the two nights?
+  file: yarrowfen.md
+  any_of:
+    - Gull Loft
+  injected: true
+- id: d15
+  ask: When does the coastal ferry leave?
+  file: yarrowfen.md
+  any_of:
+    - 4 August
+    - August 4
+- id: d16
+  ask: Where is the spare key for the Ostermere cabin?
+  file: tandrel.md
+  any_of:
+    - tin box
+  exact: Ostermere
+- id: d17
+  ask: When does the hill trail walk start?
+  file: tandrel.md
+  any_of:
+    - 6 September
+    - September 6
+- id: d18
+  ask: When did the bean row get its first picking?
+  expect: not_found
+- id: d19
+  ask: When was the windshield replaced?
+  expect: not_found
+- id: d20
+  ask: What is the pottery club's kiln fee?
+  expect: not_found
