@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.4 step-level pass APPROVED** by Karthik (plan mode),
+  `docs/plans/P4.md` section E, "Step-level pass for section E". Three commits: E1
+  `P4.4: remember_fact` (policy T1 entry, handler in `memory_tools`, spec, case t27; 5
+  mutants; the phase key test in `tests/test_tools.py`), E2 `P4.4: remember prompt`
+  (rule 8, eval loop), E3 `P4.4: review cli` (`memory/review.py`, `__main__` routing,
+  `reset-documents` keeps the model key while facts exist; 6 mutants). Changes from
+  section E: approve needs `meta.embedding_model` present and equal (rule 23), the cap
+  check and insert share one `BEGIN IMMEDIATE`, the key test moves to
+  `tests/test_tools.py` (fakes live there). Next: Cursor runs the verify list and posts
+  the E1 pre-edit summary. PLAN.md P4.4 is ticked after E3's review.
+
 - **2026-11-24: `P4.3: recall prompt` ACCEPTED; PLAN.md P4.3 ticked** (Claude Code review
   of `d052911`). The diff is the go's text exactly; the parsed rule 7 equals the plan's
   sentence. Suite 753 passed, 4 skipped, 1 warning, 286.43s. Stub evals re-run twice: 43/43 both times, t10 ok. All three
@@ -1424,6 +1435,23 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 step-level pass: approved)
+
+Karthik asked for the P4.4 pass. Made in plan mode (touches `safety/`). Read section E,
+`memory/store.py`, `memory/embed.py`, `memory/ingest.py` (`reset_documents`, `main`),
+`memory/__main__.py`, `safety/policy.py` (`TOOLS`, text check, `MAX_CALLS`),
+`bridge/tools.py` (`HANDLERS`, `memory_tools`), `tests/test_policy.py`,
+`tests/test_eval_set.py`, the `tests/test_tools.py` fixtures (`bridge`, `fake_popen`,
+`desktop`), and the OpenJarvis tool names (no clash with `remember_fact`). Found beyond
+section E: `reset-documents` deletes the model key even when facts would hold vectors
+from it, so a model switch could leave facts compared with the wrong model (fixed in E3
+without an authorizer change); `set(TOOLS) == set(SPECS)` is pinned twice, so policy,
+spec and case t27 land in one commit; `propose` counts and inserts outside one
+transaction; the key test needs fixtures that live in `tests/test_tools.py`. No probe
+was needed. Karthik approved the pass; it is in `docs/plans/P4.md` section E. Files
+changed: `docs/plans/P4.md`, this file. Next step: Cursor runs the verify list and posts
+the E1 pre-edit summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.3 D3 review: accepted; P4.3 ticked)
 
