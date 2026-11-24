@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.4 E1 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
+  and send"). Cursor's summary (on `5f7b4df`, 753 passed, 4 skipped; verify list holds)
+  stands as written except the key test (test_tools 3): `system_stats` and
+  `run_named_script` cannot succeed under the whole-test `fake_popen`. Change, written
+  into `docs/plans/P4.md` E1: `desktop` stays for the whole test; the `fake_popen`
+  stand-in is set with `monkeypatch.context()` around `open_app` and `open_in_app` only;
+  the other two run the real `subprocess`, as their own bridge tests do; the per-tool
+  arguments dict's keys equal `set(TOOLS)`. Next: Cursor implements E1 (suite, five
+  mutants, commit `P4.4: remember_fact`, push); then Claude Code reviews.
+
 - **2026-11-24: P4.4 step-level pass APPROVED** by Karthik (plan mode),
   `docs/plans/P4.md` section E, "Step-level pass for section E". Three commits: E1
   `P4.4: remember_fact` (policy T1 entry, handler in `memory_tools`, spec, case t27; 5
@@ -1435,6 +1445,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E1: pre-edit summary reviewed, go)
+
+Start of session on `5f7b4df`: clean tree, suite 753 passed, 4 skipped, 1 warning, 217s.
+Cursor's E1 pre-edit summary matches the step-level pass (files, policy entry, handler,
+spec, t27, counts, policy tests, tool tests 1 and 2, mutants), and it stopped on the key
+test as the plan says. Its diagnosis checks out against `bridge/tools.py`: `_gpu` reads
+`subprocess.SubprocessError` and `CREATE_NO_WINDOW`; `run_named_script` reads `STDOUT`,
+`CREATE_NO_WINDOW`, `CREATE_NEW_PROCESS_GROUP`, then needs `process._handle` for
+`AssignProcessToJobObject` and `process.wait`. The `fake_popen` stand-in has none of
+these. Decision: scope the stand-in to `open_app` and `open_in_app` with
+`monkeypatch.context()` and run the other two for real, as
+`test_system_stats_does_not_taint` and `test_run_named_script_through_the_bridge_taints`
+already do through the same fixture. Not chosen: widening the stand-in (it would also need
+a fake `kernel32` for the job object) and dropping the two tools (the key test must cover
+every tool). Scratch probe (scratchpad, not committed) on `5f7b4df` with `desktop` active
+all through: `system_stats` 200; `run_named_script` 202, approved, exit code 0;
+`open_app` 200, pid 4321, under the scoped stand-in, `tools.subprocess` restored after;
+`focus_window` 200 (`FakeClock` cap not hit). Files changed: `docs/plans/P4.md` (E1 key
+test text), `docs/PROGRESS.md`. Next: Cursor implements E1.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 step-level pass: approved)
 
