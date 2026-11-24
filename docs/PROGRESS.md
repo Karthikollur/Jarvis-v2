@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.3 D2 pre-edit summary reviewed; GO given** by Karthik ("Approve, send
+  the go"). Cursor's summary (on `8a7c5de`, 747 passed, 4 skipped; verify list holds)
+  stands as written, with one plan change: `core/agent.py` joins D2 (drop `HIDDEN` from
+  the import, compare with `set(TOOLS)` on lines 80 and 82; no new test or mutant).
+  Accepted from the summary: `set()` key union in the handler-table test, the comment as
+  one line (no line-length limit), a stored chunk in tests 3 and 4, `hotkey=None` in test
+  6. Next: Cursor implements D2 in one commit; then Claude Code reviews.
+
 - **2026-11-23: D1 finding folded into D2** (Karthik: "Yes, fold into D2"). The D2 file
   list in `docs/plans/P4.md` now includes `memory/search.py`, for one `# ponytail:`
   comment about the missing vector cache (exact text in the plan) and nothing else. The
@@ -1363,6 +1371,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.3 D2: pre-edit summary reviewed, go)
+
+Cursor's D2 pre-edit summary matches the D2 section. It found one file the pass missed:
+`core/agent.py` imports `HIDDEN` and `_guard` subtracts it (lines 16, 80, 82); a repo-wide
+`git grep HIDDEN` confirms those are the only uses outside `core/tools.py` and
+`tests/test_core.py`. Deleting `HIDDEN` without it breaks the import. Added to D2 in
+`docs/plans/P4.md` as a three-line change, guard as strict as before. Also accepted from
+the summary: the plan's dict union in the handler-table test is fixed to key sets (plan
+text corrected); the comment stays one line (`pyproject.toml` sets no line length); tests
+3 and 4 store a chunk, because an empty memory returns `[]` before Ollama or `MATCH` is
+reached; test 6 passes `hotkey=None` (no `hotkey.toml` in the empty config folder; a
+missing `apps.toml` or `scripts.toml` allows nothing and does not stop the start).
+Karthik gave the go. Files changed: `docs/plans/P4.md`, this file. Next step: Cursor's
+D2 commit, then review.
 
 ### 2026-11-23 — Agent: Claude Code (D1 finding folded into D2)
 
