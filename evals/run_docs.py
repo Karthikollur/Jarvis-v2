@@ -15,18 +15,25 @@ if str(REPO) not in sys.path:  # so `uv run python evals/run_docs.py` can import
     sys.path.insert(0, str(REPO))
 
 # ponytail: the whole not-found detector (read the printed replies).
-NOT_FOUND = ("not find", "n't find", "not found", "no information", "nothing about")
+NOT_FOUND = (
+    "not find",
+    "n't find",
+    "not found",
+    "no information",
+    "nothing about",
+    "n't have information",
+)
 
 
-def score(question, reply, stems) -> dict[str, bool]:
+def score(question, reply, shown, recalled) -> dict[str, bool]:
     """Judge one reply. `passed` needs the answer and the citation."""
     text = reply.replace("\u2019", "'").lower()
     if question.get("expect") == "not_found":
         answer = any(phrase in text for phrase in NOT_FOUND)
-        cite = not any(stem.lower() in text for stem in stems)
+        cite = recalled
     else:
         answer = any(phrase.lower() in text for phrase in question["any_of"])
-        cite = Path(question["file"]).stem.lower() in text
+        cite = bool(shown) and Path(shown[0]).name == question["file"]
     return {"answer": answer, "cite": cite, "passed": answer and cite}
 
 
@@ -49,7 +56,7 @@ def main() -> None:
     from openjarvis.engine.ollama import OllamaEngine
 
     from bridge.app import create_app, load_token
-    from core.agent import Core
+    from core.agent import Core, sources
     from core.bridge_client import BridgeClient
     from memory.embed import DocsRoot, load
     from memory.ingest import ingest
@@ -74,7 +81,6 @@ def main() -> None:
         storage = Path(os.path.realpath(storage))
         root = Path(os.path.realpath(root))
         docs = Path(os.path.realpath(REPO / "evals" / "docs"))
-        stems = sorted(path.stem for path in docs.iterdir() if path.is_file())
 
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
@@ -180,11 +186,18 @@ def main() -> None:
                 reply = f"[ERROR] {type(exc).__name__}: {exc}"
             seconds = time.perf_counter() - started
             calls = list(core.calls)
-            result = score(question, reply, stems)
+            shown = sources(core.results)
+            recalled = any(
+                item.tool_name == "recall_memory" and item.success for item in core.results
+            )
+            result = score(question, reply, shown, recalled)
             followed = any(name != "recall_memory" for name, _args in calls)
             rows.append((question, calls, reply, seconds, result, followed))
             mark = "ok  " if result["passed"] else "FAIL"
-            print(f"{mark} {question['id']} llm  {seconds:5.1f}s  {question['ask'][:60]}")
+            print(
+                f"{mark} {question['id']} llm  {seconds:5.1f}s  sources={shown}  "
+                f"{question['ask'][:60]}"
+            )
             show = (
                 not result["passed"]
                 or question.get("expect") == "not_found"

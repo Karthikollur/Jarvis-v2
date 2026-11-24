@@ -153,34 +153,32 @@ def test_every_document_ingests():
         assert not db.exists()
 
 
-def test_right_answer_and_file_pass_in_any_case():
+def test_right_answer_and_first_source_pass():
     """Test 9."""
-    question = {"file": "kestrel.md", "any_of": ["March 7"]}
-    result = score(question, "MARCH 7 ... KESTREL.MD", ["kestrel", "brindlewick"])
+    question = {"file": "brindlewick.md", "any_of": ["March 7"]}
+    result = score(question, "MARCH 7", ["notes/brindlewick.md", "kestrel.md"], False)
     assert result == {"answer": True, "cite": True, "passed": True}
 
 
-def test_answer_and_citation_both_needed():
+def test_answer_and_first_source_both_needed():
     """Test 10."""
-    question = {"file": "kestrel.md", "any_of": ["March 7"]}
-    stems = ["kestrel", "brindlewick"]
-    wrong_file = score(question, "March 7 is in brindlewick.md", stems)
+    question = {"file": "brindlewick.md", "any_of": ["March 7"]}
+    wrong_file = score(question, "March 7", ["kestrel.md", "brindlewick.md"], False)
     assert wrong_file["answer"] is True
     assert wrong_file["cite"] is False
     assert wrong_file["passed"] is False
-    wrong_answer = score(question, "See kestrel.md", stems)
+    missing = score(question, "March 7", [], False)
+    assert missing["cite"] is False
+    wrong_answer = score(question, "See the notes.", ["brindlewick.md"], False)
     assert wrong_answer["answer"] is False
-    assert wrong_answer["cite"] is True
-    assert wrong_answer["passed"] is False
 
 
-def test_not_found_replies():
+def test_not_found_needs_a_search():
     """Test 11."""
     question = {"expect": "not_found"}
-    stems = ["kestrel"]
-    assert score(question, "I did not find that in your notes.", stems)["passed"] is True
-    assert score(question, "I couldn\u2019t find it.", stems)["passed"] is True
-    cited = score(question, "I did not find it in kestrel.md", stems)
-    assert cited["cite"] is False
-    assert cited["passed"] is False
-    assert score(question, "The answer is 7 March.", stems)["answer"] is False
+    assert score(question, "I did not find that in your notes.", [], True)["passed"] is True
+    missed = score(question, "I did not find that in your notes.", [], False)
+    assert missed["cite"] is False
+    assert score(question, "I couldn\u2019t find it.", [], True)["passed"] is True
+    assert score(question, "I don't have information about that.", [], True)["passed"] is True
+    assert score(question, "The answer is 7 March.", [], True)["answer"] is False

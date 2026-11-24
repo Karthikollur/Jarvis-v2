@@ -19,7 +19,7 @@ import uvicorn
 
 import core.openjarvis_env  # noqa: F401  before openjarvis
 from bridge.app import create_app, load_token
-from core.agent import Core, GuardError, build
+from core.agent import Core, GuardError, build, sources
 from core.bridge_client import BridgeClient, BridgeError
 from core.specs import SPECS
 from core.tools import BridgeTool, bridge_tools
@@ -684,6 +684,40 @@ def test_cli_says_when_the_bridge_is_down(monkeypatch, capsys):
     assert capsys.readouterr().out == "bridge is not running\n"
 
 
+def test_sources_lists_recall_files_best_first():
+    results = [
+        ToolResult("list_dir", "listed", True),
+        ToolResult(
+            "recall_memory",
+            json.dumps({
+                "results": [
+                    {"kind": "document", "source": "b.md"},
+                    {"kind": "document", "source": "a.md"},
+                    {"kind": "document", "source": "b.md"},
+                ]
+            }),
+            True,
+        ),
+        ToolResult("recall_memory", "refused: ...", False),
+        ToolResult(
+            "recall_memory",
+            json.dumps({
+                "results": [
+                    {"kind": "fact", "source": 7},
+                    {"kind": "document", "source": "c.md"},
+                ]
+            }),
+            True,
+        ),
+    ]
+    assert sources(results) == ["b.md", "a.md", "fact 7", "c.md"]
+
+
+def test_sources_empty_without_recall():
+    assert sources([]) == []
+    assert sources([ToolResult("get_time", "12:00", True)]) == []
+
+
 def test_cli_prints_ok_and_expired(monkeypatch, capsys):
     import core.__main__ as cli
 
@@ -703,6 +737,41 @@ def test_cli_prints_ok_and_expired(monkeypatch, capsys):
         "I created it\n"
         "  get_time: ok\n"
         "  create_folder: expired\n"
+    )
+
+
+def test_cli_prints_recall_sources(monkeypatch, capsys):
+    import core.__main__ as cli
+
+    class Stub:
+        def __init__(self):
+            self.results = [
+                ToolResult(
+                    "recall_memory",
+                    json.dumps({
+                        "results": [
+                            {"kind": "document", "source": "b.md"},
+                            {"kind": "document", "source": "a.md"},
+                        ]
+                    }),
+                    True,
+                ),
+                ToolResult(
+                    "recall_memory",
+                    json.dumps({"results": []}),
+                    True,
+                ),
+            ]
+
+        def handle(self, _text):
+            return "The answer"
+
+    monkeypatch.setattr(cli, "build", lambda **_kwargs: Stub())
+    cli.main(["what do my notes say"])
+    assert capsys.readouterr().out == (
+        "The answer\n"
+        "  recall_memory: ok: b.md, a.md\n"
+        "  recall_memory: ok: no hits\n"
     )
 
 

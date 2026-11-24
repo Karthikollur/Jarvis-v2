@@ -6,7 +6,7 @@ import sys
 import threading
 import urllib.error
 
-from core.agent import build
+from core.agent import build, sources
 from core.bridge_client import BridgeError
 
 
@@ -45,7 +45,11 @@ def main(argv=None) -> None:
         core = build(on_pending=_say)
         print(_handle(core, " ".join(argv)))
         for result in core.results:
-            line = "ok" if result.success else result.content
+            if result.tool_name == "recall_memory" and result.success:
+                shown = sources([result])
+                line = "ok: " + (", ".join(shown) if shown else "no hits")
+            else:
+                line = "ok" if result.success else result.content
             print(f"  {result.tool_name}: {line}")
     except KeyboardInterrupt:
         print("cancelled")

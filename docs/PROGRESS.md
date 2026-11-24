@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.7: sources by code` done.** I1 on the go in `5b8458e`.
+  `sources()` lists the files from each successful `recall_memory` result (a fact is
+  `fact <id>`, the first copy of a repeated source is kept). The CLI prints
+  `recall_memory: ok: a.md, b.md` or `ok: no hits`. `score(question, reply, shown, recalled)`
+  cites the first shown file; a not-found cite is a successful recall, and `NOT_FOUND`
+  includes `"n't have information"`. `sources=` prints on every question row. Suite
+  through `cmd /c`: 789 passed, 4 skipped, 1 warning, 268.32s. Six mutants killed on
+  asserts in the named tests (Session log). PLAN.md P4.7 is not ticked. I2 is not
+  started. Next: Claude Code reviews I1.
+
 - **2026-11-24: I1 pre-edit summary reviewed; GO given** by Karthik ("Go, with
   conditions"). Cursor's verify on `30fe214` passed, and the reviewer re-checked all three
   points in the code; suite 786 passed, 4 skipped. The summary matches section I (files,
@@ -1834,6 +1844,54 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.7 sources by code)
+
+I1 on the go in `5b8458e`. `sources()` in `core/agent.py` walks tool results in order
+and reads a hit only when `tool_name == "recall_memory"` and `success` is true. A fact
+is labeled `fact <id>` (the hit's `source` stays the integer the bridge sends). A
+document keeps `source`. The first copy of a repeated source is kept. The CLI prints a
+successful recall as `  recall_memory: ok: a.md, b.md`, or `  recall_memory: ok: no hits`
+when that result's source list is empty. Every other tool line is unchanged.
+
+`evals/run_docs.py` `score(question, reply, shown, recalled)`. `stems` is gone.
+`NOT_FOUND` gains `"n't have information"`. For an answerable question, `cite` is true
+only when `shown` is non-empty and `Path(shown[0]).name` is `question["file"]`. For
+`expect == "not_found"`, `cite` is `recalled`. `recalled` is true only when
+`core.results` has a `recall_memory` result with `success` true. Every question row
+prints `sources=`, including a passing row.
+
+Tests: `test_sources_lists_recall_files_best_first` (fact hit
+`{"kind": "fact", "source": 7}`, documents `"kind": "document"`, each recall body
+`json.dumps({"results": [...]})`), `test_sources_empty_without_recall`,
+`test_cli_prints_recall_sources`. `test_cli_prints_ok_and_expired` is unchanged. Scorer
+tests are `test_right_answer_and_first_source_pass`,
+`test_answer_and_first_source_both_needed`, `test_not_found_needs_a_search`.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 789 passed, 4 skipped, 1 warning,
+268.32s. The previous suite on `30fe214` was 786. The difference is these three tests.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. Each file's bytes were saved before its mutants and written
+back after (not `git checkout`). No write-back failed. A mutant is killed only on exit
+code 1 with an assert in the named test. sha256 before and after:
+
+- `core/agent.py` `4e17bc04d5434892f3652555b031f9cb6ce73770341c81b0d5230e64ce173be0`
+- `core/__main__.py` `dd3a9990850cda29bf0b35aa0e01fc58c0d92a6aa924458ac7482f50212946e2`
+- `evals/run_docs.py` `fb267158e21846971261320014c3c60137ee08be868f82d704a1da6f3073ca86`
+
+| Mutant | Failing test | Result |
+|---|---|---|
+| `if name not in shown` removed | `test_sources_lists_recall_files_best_first` | killed, exit 1. `AssertionError` at `tests/test_core.py:713`: index 2 `'b.md' != 'fact 7'`, and the left list has one more item. |
+| fact label removed (`name = hit["source"]`) | `test_sources_lists_recall_files_best_first` | killed, exit 1. `AssertionError` at `tests/test_core.py:713`: index 2 `7 != 'fact 7'`. |
+| CLI prints `ok` for a recall | `test_cli_prints_recall_sources` | killed, exit 1. `AssertionError` at `tests/test_core.py:771`: both lines are `  recall_memory: ok`. |
+| `cite` is the file anywhere in `shown` | `test_answer_and_first_source_both_needed` | killed, exit 1. `assert wrong_file["cite"] is False` at `tests/test_doc_eval_set.py:168` (`assert True is False`). |
+| not-found `cite = True` | `test_not_found_needs_a_search` | killed, exit 1. `assert missed["cite"] is False` at `tests/test_doc_eval_set.py:181` (`assert True is False`). |
+| `"n't have information"` removed from `NOT_FOUND` | `test_not_found_needs_a_search` | killed, exit 1. The "I don't have information about that." assert at `tests/test_doc_eval_set.py:183` (`assert False is True`). |
+
+PLAN.md P4.7 is not ticked. I2 is not started. Files changed: `core/agent.py`,
+`core/__main__.py`, `evals/run_docs.py`, `tests/test_core.py`,
+`tests/test_doc_eval_set.py`, this file. Next: Claude Code reviews I1.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 I1: pre-edit summary reviewed, go)
 

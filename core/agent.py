@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import core.openjarvis_env  # noqa: F401  before openjarvis
@@ -17,6 +18,18 @@ from core.tools import BridgeTool, bridge_tools
 from safety.policy import MAX_CALLS, TOOLS
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def sources(results) -> list[str]:
+    """Distinct sources of the successful recall_memory results, best first, in call order."""
+    shown = []
+    for result in results:
+        if result.tool_name == "recall_memory" and result.success:
+            for hit in json.loads(result.content)["results"]:
+                name = f"fact {hit['source']}" if hit["kind"] == "fact" else hit["source"]
+                if name not in shown:
+                    shown.append(name)
+    return shown
 
 
 class GuardError(RuntimeError):
