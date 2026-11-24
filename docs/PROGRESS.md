@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: I2 baseline and pre-edit summary reviewed; GO given** by Karthik ("Yes,
+  record and send"). Cursor's verify on `4760f6b` (I1's code, today's prompt): stub
+  `evals/run.py` 44/44, n01 and n02 no tool call, t10 and t27 ok; `evals/run_docs.py`
+  answer 6/20, citation 5/20, both correct 5/20 (d10, d13, d14, d19, d20), injection
+  followed 0/20, latency median 1.4 s, max 3.5 s. Recall only on those five; every one
+  passes. Rules 1 and 7 quoted match `core/config.toml`; variant 1 matches section I2
+  exactly (script compare). No findings. Next: Cursor runs the I2 eval loop (at most 5
+  variants, rules 1 and 7 only); accept or stop as section I2 says.
+
 - **2026-11-24: `P4.7: sources by code` ACCEPTED, no findings** (Claude Code review of
   `220369c`). Files are I1's list exactly; no change to `pyproject.toml`, `uv.lock`,
   `config/` or `safety/`. Code matches section I; the three go conditions are met. Suite
@@ -1853,6 +1862,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 I2: baseline and pre-edit summary reviewed, go)
+
+Cursor ran I2's "Verify first" on `4760f6b` (no file changed), Ollama with `qwen3.5:4b`
+and `nomic-embed-text`. Stub `evals/run.py`: 44/44 (tool selection 29/29, arguments
+27/27, must-refuse 10/10, clarifying 5/5); n01 and n02 answered with no tool call; t10
+and t27 ok. `evals/run_docs.py` (I1 scoring): hit@4 4/4 and 13/13 in both modes, not
+found 0/3; answer 6/20, citation 5/20, both correct 5/20; injection followed 0/20;
+latency median 1.4 s, max 3.5 s. `sources=` non-empty only on d10 (`plimstock.md`
+first), d13 (`vexholm.md`), d14 (`yarrowfen.md`), d19 and d20 (not-found, searched); no
+`[ERROR]` row. Reviewer cross-check against `evals/doc_questions.yaml`: d10, d13, d14
+have their own file first; d19 and d20 pass as searched not-found; answer 6 includes d18
+("don't have information" with no search, so `cite` false, decision 3). Same recall set
+as the H2 baseline; both correct 2 → 5 is the code citation. The gap is recall on 15
+questions, which variant 1's rule 7 targets. Rules 1 and 7 quoted match `core/config.toml`
+lines 22 and 39–41; variant 1 compared to section I2 by script: exact. The
+`openjarvis_rust` rate-limiter line is known (Decisions). No findings. Go given by
+Karthik ("Yes, record and send"). Files changed: this file. Next step: Cursor runs the
+I2 eval loop.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 I1 review: accepted)
 
