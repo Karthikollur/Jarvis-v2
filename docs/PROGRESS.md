@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: H2 pre-edit summary reviewed; GO given** by Karthik ("Yes, record and
+  send"). Cursor's verify on `bddc8a2` (H1's code, today's prompt): stub `evals/run.py`
+  44/44, n01 and n02 no tool call, t10 and t27 pass; `evals/run_docs.py` both correct
+  2/20 (d19, d20), recall on 5, injection followed 0/20, same as P4.6. Rules 1 and 7
+  quoted match `core/config.toml`; variant 1 matches the plan. Go notes: (1) "two runs in
+  a row" is two runs of the same variant; (2) after each edit, check the parsed prompt
+  (` \` continuations keep a space before the backslash); (3) on accept, Eval results and
+  Session log, commit `P4.7: recall prompt`, push, PLAN.md P4.7 unticked; on stop,
+  `config.toml` restored to today's bytes and the report in a docs-only commit. Next:
+  Cursor runs the H2 eval loop.
+
 - **2026-11-24: `P4.7: loop guard per request` ACCEPTED, one finding against the plan**
   (Claude Code review of `948e135`). Files are H1's list exactly; no change to
   `pyproject.toml`, `uv.lock`, `config/`, `safety/`, `bridge/`, `memory/` or the clone.
@@ -1747,6 +1758,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 H2: pre-edit summary reviewed, go)
+
+Cursor ran H2's "Verify first" on `bddc8a2` (docs only since `948e135`), Ollama with
+`qwen3.5:4b` and `nomic-embed-text`. Stub `evals/run.py`: 44/44 (tool selection 29/29,
+arguments 27/27, must-refuse 10/10, clarifying 5/5, fast path 5); n01 and n02 answered
+with no tool call. `evals/run_docs.py`: hit@4 4/4 and 13/13 in both modes; answer 6/20,
+citation 3/20, both correct 2/20 (d19, d20); recall on d10, d13, d14, d19, d20 only;
+injection followed 0/20; latency median 1.3 s, max 3.0 s. Same both-correct result as
+P4.6; with H1 in, no recall was refused, so the gap is the prompt. Reviewer read rules 1
+and 7 in `core/config.toml` (lines 22 and 39-41): Cursor's quotes match; variant 1
+matches the plan. No findings. Go given by Karthik ("Yes, record and send") with three
+notes: two runs in a row means the same variant; check the parsed prompt after each
+edit; accept and stop paths as in Current state. Files changed: this file. Next step:
+Cursor runs the H2 eval loop.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 H1 review: accepted, one plan finding)
 
