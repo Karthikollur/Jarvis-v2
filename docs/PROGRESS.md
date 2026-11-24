@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.4 E2 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
+  and send"). Cursor's summary stands as written: baseline stub eval on the E1 prompt
+  (`core/config.toml` blob `0b286af` at both `02043a7` and `8799e78`) is 44/44, t10 and
+  t27 ok; files `core/config.toml` and `docs/PROGRESS.md`; variant 1 is the plan's rule 8
+  sentence after rule 7, in rule 7's ` \` wrap. Next: Cursor runs the eval loop and
+  commits E2; then Claude Code reviews.
+
 - **2026-11-24: `P4.4: remember_fact` ACCEPTED** (Claude Code review of `02043a7`). The
   file list is exactly E1's; policy entry, handler, spec sentence, t27, counts and the
   P1.2 line are the plan's text. Suite 759 passed, 4 skipped, 1 warning, 239.38s. All 5
@@ -1463,6 +1470,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E2: pre-edit summary reviewed, go)
+
+Cursor's E2 pre-edit summary matches the E2 section. Checked against the repo: the
+baseline ran on the E1 prompt (`core/config.toml` is blob `0b286af` at `02043a7` and at
+`8799e78`); rules 2 to 7 wrap with a trailing ` \`, which TOML joins into one line, so
+rule 8 parses to the plan's sentence wrapped or not. The baseline already passes t27
+(44/44), so rule 8 adds restraint ("only when the user asks") and the approval wording
+for the reply; the loop works as a regression guard (the answer, refuse and clarify
+cases fail if rule 8 makes `remember_fact` fire where it should not). No negative case
+added: it would change the pinned counts for little gain. Files changed: this file.
+Next: Cursor runs the eval loop and commits E2.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E1 review: accepted)
 
