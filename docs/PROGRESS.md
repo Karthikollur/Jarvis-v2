@@ -5,6 +5,20 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.5 F pre-edit summary reviewed; GO given** by Karthik ("Yes, record
+  and send"). Cursor's summary (on `c071d0b`; verify list holds, no product-code change)
+  stands as written, with two test notes, both inside `tests/test_core.py`:
+  (1) `started(core, text, fresh=True)` passes `fresh` on to `core.handle`; existing
+  callers unchanged. All three test 3 requests run through `started` and `_settle`, so the
+  third's "no pending action" is `seen == []`, not a hang. (2) Exact lists of actions
+  seen: test 4 asserts `[(a["tool"], a["reason"]) for a in seen] ==
+  [("remember_fact", "tainted T1")]`, and `decide` appends the `pending_facts` count to a
+  list asserted afterwards as `counts == [0]` (under the T0 mutant `decide` never runs and
+  the after-counts still pass); test 3's second request asserts
+  `[("create_folder", "tainted T1")]`. Next: Cursor implements F (suite through `cmd /c`,
+  four mutants, commit `P4.5: ingested text is untrusted`, push); then Claude Code
+  reviews and ticks PLAN.md P4.5.
+
 - **2026-11-24: P4.5 step-level pass APPROVED** by Karthik (plan mode),
   `docs/plans/P4.md` section F, "Step-level pass for section F". One commit, tests only:
   `P4.5: ingested text is untrusted` touches `tests/test_core.py` and this file; no
@@ -1533,6 +1547,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.5 F: pre-edit summary reviewed, go)
+
+Start of session: tree clean on `c071d0b`, suite 769 passed, 4 skipped, 1 warning
+(412.56s). Cursor's F pre-edit summary matches section F. Checked against `c071d0b`:
+`create_app` imports `load` inside the function (`bridge/app.py` line 234);
+`DocsRoot` is `(path, exclude)`; `MAX_TEXT` is 200 and `INJECTION` is 108 characters on
+every run (the `folders` root is under the repo's `.test-storage`, so the length is fixed
+by the repo path); `route()` of the request text is `None`; `AuditLog.write` stores a
+dict result as a JSON string, so the decode-twice assertion is right, and the ASCII read
+follows `tests/test_bridge.py` line 1940; `/approve` and `/deny` take the action off the
+queue before answering, so `_settle` cannot post twice; the test 2 mutant hits the 200
+branch (`core/tools.py` line 49), which a T0 recall takes; `handle()` defaults to
+`fresh=True`, so tests 2 and 4 start clean although the bridge starts tainted.
+
+Gaps found, both test wording: `started()` hard-codes `core.handle(text)`, so test 3's
+`fresh=False` request had no way to run on a thread; and under the `remember_fact` T0
+mutant test 4's after-counts (`pending_facts` 1, `facts` 0) still hold, so only an exact
+actions-seen list and a recorded `decide` count kill it. Both notes are in the go (Current
+state). Files changed: this file. Next: Cursor implements F.
 
 ### 2026-11-24 — Agent: Claude Code (P4.5 step-level pass: approved)
 
