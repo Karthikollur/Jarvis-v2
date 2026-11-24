@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: remember_fact` ACCEPTED** (Claude Code review of `02043a7`). The
+  file list is exactly E1's; policy entry, handler, spec sentence, t27, counts and the
+  P1.2 line are the plan's text. Suite 759 passed, 4 skipped, 1 warning, 239.38s. All 5
+  mutants killed by their named tests (exit code 1); files restored to the sha256 Cursor
+  logged. No findings. PLAN.md P4.4 stays unticked until E3's review. Next: E2 `P4.4:
+  remember prompt`: Cursor runs the baseline stub eval on `02043a7` (44 cases, unchanged
+  prompt) and posts the pre-edit summary; no edit before Karthik's go.
+
 - **2026-11-24: `P4.4: remember_fact` done.** Policy entry is T1 with `text_params=("text",)`,
   after `focus_window`. The handler in `memory_tools` connects as `bridge`, runs
   `BEGIN IMMEDIATE`, `propose`, and commit, and closes in `finally`. `Full` propagates.
@@ -1455,6 +1463,37 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E1 review: accepted)
+
+Reviewed `02043a7` on `main` (parent `a17f946`). The nine files are exactly E1's list.
+`safety/policy.py` gains only the one rule line. The handler matches the plan: `connect(db,
+"bridge")`, `BEGIN IMMEDIATE`, `propose`, `commit`, close in `finally`. Python's sqlite3
+does not open its own transaction once one is open, and `propose` never commits, so the
+count and the insert share the one write transaction, and an uncommitted `Full` rolls
+back on close. `_obj` marks `text` required. The key test asserts `set(calls) ==
+set(TOOLS)`, scopes the process stand-in to the two launch calls, and requires `roles`
+non-empty and all `"bridge"`.
+
+Suite (PowerShell, `uv run python -m pytest`): 759 passed, 4 skipped, 1 warning,
+239.38s. Mutants: scratch harness outside the repo, one at a time, bytes written back
+in `finally`, `PYTHONDONTWRITEBYTECODE=1`, all five E1 tests run per mutant, killed only
+on exit code 1 with the named test failing. Afterwards `safety/policy.py` `5274867ef38f…`
+and `bridge/tools.py` `2268132e827d…`, equal to Cursor's logged sha256; tree clean.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| rule at `Tier.T0` | `test_remember_fact_tier` | killed |
+| `text_params` dropped | all five (the policy then refuses `text` as an unknown argument) | killed |
+| handler catches `Full` | `test_2_remember_fact_full_is_a_failure` | killed |
+| connects as `"review"` | `test_3_every_tool_leaves_facts_empty` only | killed |
+| `commit` removed | `test_1_remember_fact_queues_the_text`, `test_3_…` | killed |
+
+The `review` mutant fails only the key test, as planned: the authorizer lets `review`
+write `pending_facts`, so the role check is the one guard. Dropping `text_params` closes
+the tool rather than opening it, since undeclared arguments are refused. No findings.
+Files changed: this file. Next: E2 verify (baseline stub run on `02043a7`) and pre-edit
+summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.4 remember_fact)
 
