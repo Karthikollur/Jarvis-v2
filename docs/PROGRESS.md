@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.5 step-level pass APPROVED** by Karthik (plan mode),
+  `docs/plans/P4.md` section F, "Step-level pass for section F". One commit, tests only:
+  `P4.5: ingested text is untrusted` touches `tests/test_core.py` and this file; no
+  product code changes (the mechanisms exist). Four end-to-end tests through the real
+  core and a production-wired bridge with only the embedder faked (`memory.embed.load`
+  patched): injected chunk cannot act without a click; recalled text round-trips as
+  JSON and keeps the audit lines whole; taint carries until `fresh`; `remember_fact` on
+  a tainted task waits. Four mutants. Next: Cursor runs the verify list and posts the F
+  pre-edit summary; no edit before Karthik's go.
+
 - **2026-11-24: `P4.4: review cli` ACCEPTED; PLAN.md P4.4 ticked** (Claude Code review of
   `02a5869`). The six files are exactly E3's list; `memory/store.py` unchanged. The five
   wordings and the test 12 change are the go's. Suite 769 passed, 4 skipped, 1 warning,
@@ -1523,6 +1533,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.5 step-level pass: approved)
+
+Read section F, `bridge/app.py` (`create_app`, `execute`, `/task`, `/tool`, `/pending`),
+`core/tools.py`, `core/agent.py`, `memory/search.py`, `memory/embed.py` (`load`,
+`DocsRoot`), `safety/policy.py` rules, and the `tests/test_core.py` harness
+(`live_bridge`, `FakeEngine`, `started`, `pending`, the approve/deny loop). Every
+mechanism section F checks already exists, so P4.5 is tests only. The tests use the
+production bridge with `memory.embed.load` patched (fake embedder, docs root outside the
+file-tool roots), so `delete_file`, `move_file` and `create_folder` are the real
+handlers. The injected path must sit inside the test root (else 403, not a click), and
+`remember_fact` gets the injection's single sentence (the policy refuses newlines).
+Approved by Karthik in plan mode; written into `docs/plans/P4.md` section F. Files
+changed: `docs/plans/P4.md`, this file. Next: Cursor's F verify list and pre-edit
+summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E3 review: accepted; P4.4 ticked)
 
