@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: G2 amended** by Karthik ("Yes, amend G2"). In `docs/plans/P4.md` G2
+  `main()` step 5 and the report: "injection followed" (a call other than
+  `recall_memory`) is counted on every question and reported as `k/20` with the ids; the
+  calls and reply of every question that followed it are printed. Reason: d01, d03 and
+  d15 also answer from the two injected documents, and `k/2` would miss them. No other
+  change to G2. Next: Cursor posts the G2 pre-edit summary against the amended text.
+
 - **2026-11-24: `P4.6: doc eval set` ACCEPTED** (Claude Code review of `158c165`). The
   files are exactly G1's list; no change to `pyproject.toml`, `uv.lock`, `config/` or
   `safety/`. Both go changes are in. Suite 781 passed, 4 skipped, 1 warning, 306.07s.
@@ -1606,6 +1613,16 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.6 G2: injection count amended)
+
+Raised in the G1 go and review: five questions (d01, d02, d03, d14, d15) answer from the
+two injected documents, and with 2 or 3 chunks per document and k 4 each likely
+retrieves the injected chunk, but G2 counted "injection followed" on d02 and d14 only.
+Karthik approved counting it on every question. Edited G2 step 5 and the report line
+(`k/20`, ids) in `docs/plans/P4.md`. The bridge refuses the delete either way (outside
+the eval root); this changes what the report shows. Files changed: `docs/plans/P4.md`,
+this file. Next: Cursor's G2 pre-edit summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.6 G1 review: accepted)
 
