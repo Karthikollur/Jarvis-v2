@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.5: ingested text is untrusted` done.** F on the go in `90d0531`.
+  Tests only. `started(core, text, fresh=True)` passes `fresh` to `core.handle`. All
+  three test 3 requests run through `started` and `_settle`; the third's "no pending
+  action" is `seen == []`. Test 4 asserts `[("remember_fact", "tainted T1")]` and, after
+  the run, `counts == [0]` (appended inside `decide`, not asserted there). Test 3's
+  second request asserts `[("create_folder", "tainted T1")]`. Suite through `cmd /c`:
+  773 passed, 4 skipped, 1 warning, 269.06s. 4 mutants killed (Session log). PLAN.md
+  P4.5 is not ticked. Next: the reviewer re-runs the suite and these 4 mutants, then
+  ticks PLAN.md P4.5.
+
 - **2026-11-24: P4.5 F pre-edit summary reviewed; GO given** by Karthik ("Yes, record
   and send"). Cursor's summary (on `c071d0b`; verify list holds, no product-code change)
   stands as written, with two test notes, both inside `tests/test_core.py`:
@@ -1547,6 +1557,50 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.5 ingested text is untrusted)
+
+F from the step-level pass, on the go in `90d0531`. Tests only: `tests/test_core.py`.
+No product-code change. `live_bridge`'s body is `_serve`; `live_bridge` yields from it.
+`recall_bridge` patches `memory.embed.load` (fake embedder, `DocsRoot` sibling of the
+file-tool root) and yields from `_serve`. `_plant` writes one document and one chunk as
+role `ingest`. `_settle` posts `decide(action)` for each pending action until the core
+thread ends.
+
+`started(core, text, fresh=True)` passes `fresh` to `core.handle(text, fresh)`. Existing
+callers are unchanged. The three requests in `test_taint_carries_until_fresh` each run
+through `started` and `_settle`. The third request's "no pending action" is
+`seen == []`. The second request asserts
+`[("create_folder", "tainted T1")]`. `test_remember_fact_on_a_tainted_task_waits`
+asserts `[("remember_fact", "tainted T1")]`. `decide` appends the `pending_facts` count;
+after the run, `counts == [0]`. That count is not asserted inside `decide`. Afterwards
+`pending_facts` is 1 and `facts` is 0.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 773 passed, 4 skipped, 1 warning,
+269.06s. Parent `90d0531` was 769. The difference is the four new tests.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. Each file's bytes were saved before its first mutant and
+written back after each (not `git checkout`). No write-back raised. A mutant is killed
+only on exit code 1 with the named test failing. sha256 before and after:
+`safety/policy.py` `5274867ef38fd4e701aadac29adef0b7580dea803009d31f398895fdc80cfa85`,
+`bridge/app.py` `93c183f726757748c3d42018e733c502b2f6b08e09cd991ffb99529b481afcd0`,
+`core/tools.py` `2537025bf28508fa2be18e11ce5ca7d51dc0c67a003732321840d4f21043c044`.
+
+| Mutant | Failing test | Result |
+|---|---|---|
+| `recall_memory` rule without `taints=True` | `test_injected_chunk_cannot_act_without_a_click` | killed |
+| `execute()` no longer sets `context_tainted = True` | `test_taint_carries_until_fresh` | killed |
+| `BridgeTool.call` 200 branch returns `str(body["result"])` | `test_recalled_text_round_trips_as_json` | killed |
+| `remember_fact` rule at `Tier.T0` | `test_remember_fact_on_a_tainted_task_waits` | killed |
+
+The T0 failure is the actions-seen list (`seen == []`, because `decide` never ran).
+The after-counts (`pending_facts` 1, `facts` 0) are not what killed it.
+
+Files changed: `tests/test_core.py`, this file. `safety/`, `bridge/`, `core/`,
+`memory/`, `config/`, `pyproject.toml`, `uv.lock`, and PLAN.md untouched. PLAN.md
+P4.5 is not ticked.
+Next step: the reviewer re-runs the suite and these 4 mutants, then ticks PLAN.md P4.5.
 
 ### 2026-11-24 — Agent: Claude Code (P4.5 F: pre-edit summary reviewed, go)
 
