@@ -222,7 +222,7 @@ after P3 closes.
 - [x] P4.2 Local embedding pipeline; ingest PDF/MD/TXT from a read-only docs root
       (for example the Obsidian vault, once Karthik adds it to allowed roots as read-only).
 - [x] P4.3 Retrieval tool returning answers with citations (file + chunk).
-- [ ] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.
+- [x] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.
 - [ ] P4.5 Ingested text marked untrusted (taint applies).
 - [ ] P4.6 Doc eval: 20 questions over test documents.
 

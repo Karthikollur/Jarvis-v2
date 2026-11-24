@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.4: review cli` ACCEPTED; PLAN.md P4.4 ticked** (Claude Code review of
+  `02a5869`). The six files are exactly E3's list; `memory/store.py` unchanged. The five
+  wordings and the test 12 change are the go's. Suite 769 passed, 4 skipped, 1 warning,
+  267.53s. All 6 mutants killed by their named tests; files restored to the sha256
+  Cursor logged. No findings. All three P4.4 commits (E1 `02043a7`, E2 `42db5a7`, E3
+  `02a5869`) are reviewed and accepted. Next: P4.5 (ingested text marked untrusted):
+  Claude Code writes the step-level pass.
+
 - **2026-11-24: `P4.4: review cli` done.** E3 on the go in `d2a591e`. Test 12's post-`yes`
   key assertion is `_meta(db, "embedding_model") == "nomic-embed-text"`. The approve
   mismatch does not append `_RESET`. Suite through `cmd /c`: 769 passed, 4 skipped,
@@ -1515,6 +1523,41 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E3 review: accepted; P4.4 ticked)
+
+Reviewed `02a5869` on `main` (parent `d2a591e`). Files: new `memory/review.py`,
+`memory/__main__.py`, `memory/ingest.py` (reset guard and docstring only), new
+`tests/test_memory_review.py`, `tests/test_memory_ingest.py`, this file. Every
+`memory/review.py` connection is role `review`. Approve embeds before `BEGIN IMMEDIATE`,
+checks `meta.embedding_model` inside it, inserts the fact and deletes the pending row in
+the same transaction, and rolls back on any error. `facts.pending_id` has no foreign key,
+so the pending delete cannot cascade into the new fact. The approve mismatch carries no
+`_RESET` text (test 6 asserts it). `reset_documents` counts facts after deleting the
+documents in the same transaction and deletes the key only at 0. Test 12's only change
+is the key assertion; the new ingest test covers both halves of the guard.
+
+Suite (Bash, `rtk proxy uv run python -m pytest`): 769 passed, 4 skipped, 1 warning,
+267.53s. Mutants: scratch harness outside the repo, run after the suite finished, one at
+a time, bytes written back in `finally`, `PYTHONDONTWRITEBYTECODE=1`, all of
+`tests/test_memory_review.py` plus ingest tests 12 and the new guard test per mutant,
+killed only on exit code 1 with the named test failing. Afterwards
+`memory/review.py` `6cedfc162f72…` and `memory/ingest.py` `0977114adc40…`, equal to
+Cursor's logged sha256; tree clean.
+
+| Mutant | Failing tests | Result |
+|---|---|---|
+| approve leaves the pending row | review 1, review 2 | killed |
+| model check removed | review 6 | killed |
+| `!r` removed from the pending line | review 7 | killed |
+| unknown choice approves | review 4, review 7 (no pinned key there) | killed |
+| `forget` without the `yes` check | review 8 | killed |
+| `reset-documents` deletes the key while facts exist | the new ingest test, test 12 | killed |
+
+No findings. Two observations, both within the plan, no change asked: `review` on an
+existing database with no pending rows prints nothing; an approve with Ollama down ends
+with a `URLError` traceback (nothing written; the plan says "raises"). PLAN.md P4.4
+ticked. Files changed: `docs/PLAN.md` (P4.4 box), this file. Next: P4.5 step-level pass.
 
 ### 2026-11-24 — Agent: Cursor (P4.4 review cli)
 
