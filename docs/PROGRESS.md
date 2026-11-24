@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: H2 stop reviewed; stop correct; citation is a 4B model limit** (Claude
+  Code review of `340f15c`). Docs only; `core/config.toml` sha256 `44db6b42...`, today's
+  bytes; tree clean. Three reviewer probes (scratch, not eval results), variant 1 on
+  `qwen3.5:4b`: (1) sources printed, 17/6/5 answer/cite/both, Cursor's numbers; in all 12
+  answerable failures with a recall, the expected file is the **top hit**; (2) source put
+  inside each passage's text: both 4/20; (3) rule 6's "one short sentence suitable for
+  speaking aloud" removed: both 7/20. Retrieval levers (floor, `k`, chunking) are ruled
+  out: the right file reaches the model every time. Two real options, Karthik's call
+  (Open questions, first entry): a `qwen3.5:9b` probe (local, no download; RAM risk on 16
+  GB), or citation by code instead of by the model (changes what the gate measures).
+  PLAN.md P4.7 unticked. Next: Karthik decides.
+
 - **2026-11-24: H2 stopped. No prompt commit.** Five variants, only rules 1 and 7.
   Every stub run was 44/44, with n01 and n02 answered with no tool call and t10 and t27
   passing. Doc both-correct was 5/20, 4/20, 3/20, 2/20, 3/20. None reached 16/20, so
@@ -910,6 +922,22 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
+- (Claude Code, 2026-11-24, H2 stop review) **Citation: which lever?** On `qwen3.5:4b`
+  answers are right 17–19/20 but name the file 3–7/20 across Cursor's 5 variants and 3
+  reviewer probes; the expected file is the top recall hit in every failure (Session log,
+  "H2 stop review"). Floor, `k` and chunking change retrieval, which is not the fault.
+  (a) **Probe `qwen3.5:9b`**: the same scratch probe, variant 1, one run. Already pulled;
+  6.6 GB on a 16 GB laptop (the 2026-11-12 hang was RAM at 90%), so close Cursor and
+  other agent sessions first. If both correct reaches 16/20 with acceptable latency, the
+  plan change is the default model (a stack change). (b) **Citation by code**: the model
+  speaks the answer; Core or the UI shows the recall results' sources. Robust on 4B and
+  better for voice (no file names read aloud), but it changes what "correct citation"
+  means in the phase gate and the scorer, and a not-found reply must show none.
+  Recommended: (a) first, it is one run and no design change; (b) if 9b falls short or
+  is too slow. Also seen, no action yet: d15 ("When does the coastal ferry leave?") never
+  recalls in any variant; the scorer's not-found phrases miss "don't have information"
+  (d18, variant 1).
+
 - (Claude Code, 2026-11-24, P4.6 G2 review) RESOLVED 2026-11-24: Karthik approved the
   recommended fix as P4.7 (`docs/plans/P4.md` section H). Kept as written:
   Doc eval 2/20 both correct (gate 16).
@@ -1767,6 +1795,45 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (H2 stop review: stop correct; citation root cause)
+
+Reviewed `340f15c` (parent `389d60a`): `docs/PROGRESS.md` only. `core/config.toml`
+sha256 `44db6b42c51524dc86454d316231b2f1dc59e1d9d2bfd571086a4d72986fbd25`, Cursor's and
+today's; tree clean. Cursor applied the stop rule as written: 5 variants, none at 16/20,
+no second runs needed, no prompt commit.
+
+Root cause, by reading and three diagnostics. Read: `bridge/tools.py` `recall_memory`
+returns `json.dumps({"results": search(...)})`; each hit is `{"kind", "source", "chunk",
+"text", "score"}` (`memory/search.py` `_hit`), source before text, nothing truncated on
+the way (`core/tools.py` `BridgeTool.call`, OpenJarvis orchestrator). `run_docs.score`
+counts a citation when the file's stem is in the reply; the stems are non-words
+(`brindlewick`, `zelthrop`, `quornhaven`...). Diagnostics: a scratch script
+(`cite_probe.py`, not committed, not an eval result) runs `evals.run_docs.main()` with
+the prompt patched in memory (rules 1 and 7 to variant 1) and `Core.handle` printing each
+recall result's sources. No repo file edited; tree clean after each run.
+
+| Probe (qwen3.5:4b, variant 1) | Answer | Cite | Both |
+|---|---|---|---|
+| P1 as Cursor's variant 1, sources printed | 17/20 | 6/20 | 5/20 |
+| P2 hit text prefixed `From <source>: ` | 17/20 | 5/20 | 4/20 |
+| P3 rule 6 without "in one short sentence suitable for speaking aloud" | 17/20 | 7/20 | 7/20 |
+
+P1 matches Cursor's variant 1 exactly. In all 12 answerable failures that called recall
+(d01, d02, d04, d06–d10, d12–d14, d16), the expected file is the first hit (for example
+d01 `brindlewick.md` 0.758, d14 `yarrowfen.md` 0.748). The model is given the right name
+and drops it. P2: the name next to the facts it copies does not help. P3: the
+short-spoken-sentence clause costs a little, not most (d18 then named the file it
+searched in a not-found reply, which the scorer counts as a wrong citation). With the
+P4.6 diagnostic (a user-side "According to my notes, " cue: 5 of 6 recalled answers
+named the file), the pattern is a 4B model that follows framing in the user turn but not
+a system rule for citation. Retrieval levers are ruled out by P1. Options and the
+recommendation are under Open questions (first entry). Other: d15 never recalls in any
+variant; d17 did not recall in variant 1 or P1–P3; the scorer's not-found phrases miss
+"don't have information" (d18, variant 1).
+
+Files changed: this file. PLAN.md P4.7 not ticked. Next step: Karthik picks (a) the
+`qwen3.5:9b` probe or (b) citation by code; either way a plan change follows.
 
 ### 2026-11-24 — Agent: Cursor (P4.7 H2 stopped)
 
