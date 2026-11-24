@@ -42,6 +42,16 @@ def _make(name: str, description: str, parameters: dict[str, Any]) -> type[BaseT
                     "total": 4,
                     "truncated": False,
                 })
+            elif name == "recall_memory":
+                content = json.dumps({
+                    "results": [{
+                        "kind": "document",
+                        "source": "notes\\deadlines.md",
+                        "chunk": 0,
+                        "text": "The project deadline is Friday.",
+                        "score": 1.0,
+                    }],
+                })
             else:
                 content = f"{name}: done (stub, nothing really happened)"
             return ToolResult(name, content, True)

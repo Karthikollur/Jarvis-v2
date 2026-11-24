@@ -73,7 +73,7 @@ SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         _obj({"name": {"type": "string", "enum": SCRIPTS}}),
     ),
     "recall_memory": (
-        "Search what the user previously asked Jarvis to remember.",
+        "Search the user's saved facts and local documents (notes, PDFs). Returns passages with their source file.",
         _obj({"query": {"type": "string"}}),
     ),
 }
