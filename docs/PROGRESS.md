@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.3 D3 pre-edit summary reviewed; GO given** by Karthik ("Send the
+  go"). Cursor's summary (on `7b07047`, 753 passed, 4 skipped; baseline stub eval on the
+  unchanged prompt 43/43, no failing case) stands as written. New description and rule 7
+  variant 1 are the plan's text word for word. The `recall_memory` stub returns one
+  document hit, `{"results": [{"kind": "document", "source": "notes\\deadlines.md",
+  "chunk": 0, "text": "The project deadline is Friday.", "score": 1.0}]}`. Only rule 7
+  changes between variants. Next: Cursor runs the eval loop and commits D3; then Claude
+  Code reviews.
+
 - **2026-11-24: `P4.3: recall_memory handler` ACCEPTED** (Claude Code review of
   `60d9cf6`). The file list is exactly D2's. `core/agent.py` has only the three approved
   lines and `memory/search.py` only the one approved comment line. Suite 753 passed, 4
@@ -1389,6 +1398,19 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.3 D3: pre-edit summary reviewed, go)
+
+Cursor's D3 pre-edit summary matches the D3 section. Checked against the repo:
+`BridgeTool.call` returns `json.dumps(body["result"])` (`core/tools.py:47`), so the stub's
+JSON is what a real call shows the model; rules 1 to 6 are wrapped with trailing `\` in
+the TOML string, so rule 7 can follow the same form; `evals/stub_tools.py` already
+imports `json`; no test pins the old description or prompt text. The baseline (43/43 on
+the unchanged prompt) equals the 2026-11-16 accepted run, so the acceptance bar is every
+current case, and any miss in the loop comes from rule 7 or the new stub. Nit, no change:
+the stub's `score` of 1.0 is above real matches (0.73 to 0.75 measured); scoring reads
+the tool name only. Karthik gave the go. Files changed: this file. Next step: Cursor's
+eval loop and the D3 commit, then review.
 
 ### 2026-11-24 — Agent: Claude Code (P4.3 D2 review: accepted)
 
