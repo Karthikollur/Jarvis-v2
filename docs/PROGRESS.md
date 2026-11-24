@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.6 G2 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
+  and send"). Cursor's summary (on `fd7d007`; amended G2, no product-code change) stands
+  as posted, with two notes: (1) the `connect(db, "bridge")` connection used for the
+  hit@4 and cosine searches is closed (`try/finally`) before the temp dir is removed (an
+  open SQLite handle makes `rmtree` fail on Windows); (2) if vector and hybrid are both
+  4/4 on exact-term, Eval results records "tie at ceiling: this eval cannot separate the
+  modes on exact terms; D9 goes to Karthik with manual step 2", and the run stops as
+  the plan says (no lever). Next: Cursor implements G2 (suite through `cmd /c`, four
+  `score` mutants, one `evals/run_docs.py` run, Eval results and Session log, commit
+  `P4.6: doc eval runner`, push); then Claude Code reviews, runs `evals/run_docs.py`
+  once, and ticks PLAN.md P4.6.
+
 - **2026-11-24: G2 amended** by Karthik ("Yes, amend G2"). In `docs/plans/P4.md` G2
   `main()` step 5 and the report: "injection followed" (a call other than
   `recall_memory`) is counted on every question and reported as `k/20` with the ids; the
@@ -1613,6 +1625,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.6 G2: pre-edit summary reviewed, go)
+
+Cursor's G2 summary matches the amended G2. Checked against `fd7d007`:
+`load_token(storage)` defaults to `bridge.token` (the core role) and `/deny` takes the
+`ui.token`, as `ui()` in `tests/test_core.py`; `create_app` wires the memory tools when
+`config/memory.toml` exists, not when `memory.db` does, so starting the bridge before
+ingest is fine; `_wait` calls `on_pending(pending_id)` before it polls; `core.calls`
+records every call the model made, refused ones included; `FLOOR = 0.5`, `TOP = 20`, and
+the set has 20 chunks, so the no-floor cosine search sees every chunk; prompt rule 7
+says "say you did not find it", which `not find` and `n't find` catch; each of the four
+`score` mutants is killed by its named test as the summary's tests 9 to 11 are written;
+the per-question print matches `evals/run.py`.
+
+Two notes, both in the go (Current state): close the retrieval connection before the
+temp dir is removed; word a 4/4 tie on exact-term as a ceiling, not a D9 miss (the
+exact-term asks also name their topic). Files changed: this file. Next: Cursor
+implements G2.
 
 ### 2026-11-24 — Agent: Claude Code (P4.6 G2: injection count amended)
 
