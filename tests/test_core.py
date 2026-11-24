@@ -1063,6 +1063,38 @@ def test_cancel_before_a_request_sends_nothing():
     assert client.ended == []
 
 
+def test_loop_guard_resets_per_request(live_bridge):
+    """Seven list_dir requests, each a different folder. Each one reaches the bridge."""
+    root, storage = live_bridge[1], live_bridge[2]
+    for i in range(1, 8):
+        (root / f"d{i}").mkdir()
+    scripts = []
+    for i in range(1, 8):
+        scripts.append(tool_call("list_dir", json.dumps({"path": str(root / f"d{i}")})))
+        scripts.append(answer("Listed."))
+    core, _engine, _client, _root, _storage, _base = make_core(live_bridge, scripts)
+    for _i in range(1, 8):
+        assert core.handle("list the sandbox folder") == "Listed."
+        assert len(core.results) == 1 and core.results[0].success is True
+    requests = [line for line in audit(storage) if line["event"] == "request" and line["tool"] == "list_dir"]
+    assert len(requests) == 7
+
+
+def test_loop_guard_still_stops_a_loop_in_one_request(live_bridge):
+    """Seven list_dir calls in one request. The 7th is refused; six reach the bridge."""
+    root, storage = live_bridge[1], live_bridge[2]
+    for i in range(1, 8):
+        (root / f"d{i}").mkdir()
+    scripts = [tool_call("list_dir", json.dumps({"path": str(root / f"d{i}")})) for i in range(1, 8)]
+    scripts.append(answer("Listed."))
+    core, _engine, _client, _root, _storage, _base = make_core(live_bridge, scripts)
+    core.handle("list the sandbox folder")
+    assert [r.success for r in core.results] == [True] * 6 + [False]
+    assert core.results[-1].content.startswith("Loop guard:")
+    requests = [line for line in audit(storage) if line["event"] == "request" and line["tool"] == "list_dir"]
+    assert len(requests) == 6
+
+
 def test_thread_urlerror_says_the_bridge_is_down(monkeypatch, capsys):
     import core.__main__ as cli
 

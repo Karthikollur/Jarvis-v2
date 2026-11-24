@@ -53,6 +53,9 @@ class Core:
                 result = self._tool(name).call(args)
                 self.results = [result]
                 return result.content if result.success else f"Could not {name}: {result.content}"
+            guard = self._agent._loop_guard  # upstream (pinned e6b7137) builds it once per agent, never resets it
+            if guard is not None:
+                guard.reset()  # one request is one run: the loop checks still apply inside it
             run = self._agent.run(text, self._context)
             self.results = run.tool_results
             answer = run.content

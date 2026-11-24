@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.7: loop guard per request` done.** H1 on the go in `3aa0e86`.
+  `Core.handle` resets the agent's loop guard immediately before `run`. Suite through
+  `cmd /c`: 786 passed, 4 skipped, 1 warning, 289.34s. Both mutants killed, exit 1
+  (Session log). The disable-guard mutant dies in `OrchestratorAgent.__init__` with
+  `TypeError` (`loop_guard_config` is not a parameter); `core/agent.py` restored,
+  sha256 `ad746e4005553c323482bbfac199511881e4ab8332e00da5aaa586e81b8ec708`. PLAN.md
+  P4.7 is not ticked. Next: Claude Code reviews H1. H2 waits.
+
 - **2026-11-24: H1 pre-edit summary reviewed; GO given** by Karthik ("Yes, record and
   send"). Cursor's verify run on `6c80129`: requests 1–5 ran, 6 warned and ran, 7
   refused with `Loop guard: Tool 'list_dir' exceeded poll budget (5).` and not in the
@@ -1727,6 +1735,40 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Cursor (P4.7 loop guard per request)
+
+H1 on the go in `3aa0e86`. In `Core.handle`, immediately before
+`run = self._agent.run(text, self._context)`:
+
+```python
+guard = self._agent._loop_guard  # upstream (pinned e6b7137) builds it once per agent, never resets it
+if guard is not None:
+    guard.reset()  # one request is one run: the loop checks still apply inside it
+```
+
+The fast path returns before that line. Tests in `tests/test_core.py`: both create
+`root / "d1"` through `root / "d7"` with `mkdir`. Request text `"list the sandbox folder"`.
+Scripted answer `"Listed."`. Test 1 is seven requests, one `list_dir` of `d{i}` each;
+after each, one result with `success` True; the audit has 7 `list_dir` requests. Test 2
+is one request, seven `list_dir` calls one per turn; successes `[True] * 6 + [False]`,
+the last content starts with `Loop guard:`, and the audit has 6 `list_dir` requests.
+
+Suite through `cmd /c` (`uv run python -m pytest`): 786 passed, 4 skipped, 1 warning,
+289.34s. The previous suite was 784. The difference is these two tests.
+
+Mutants one at a time, against the named test, through `cmd /c`, with
+`PYTHONDONTWRITEBYTECODE=1`. `core/agent.py` bytes were saved before each mutant and
+written back after (not `git checkout`). No write-back failed. A mutant is killed only
+on exit code 1 with the named test failing. sha256 before and after:
+`ad746e4005553c323482bbfac199511881e4ab8332e00da5aaa586e81b8ec708`.
+
+| Mutant | Failing test | Result |
+|---|---|---|
+| the `guard.reset()` lines deleted | `test_loop_guard_resets_per_request` | killed, exit 1. Request 7 `success` False, content `Loop guard: Tool 'list_dir' exceeded poll budget (5).` |
+| `Core.__init__` passes `loop_guard_config={"enabled": False}` | `test_loop_guard_still_stops_a_loop_in_one_request` | killed, exit 1. `TypeError: OrchestratorAgent.__init__() got an unexpected keyword argument 'loop_guard_config'`. The pinned orchestrator does not accept or forward that argument, so the agent is never built. |
+
+PLAN.md P4.7 is not ticked. H2 is not started. Next: Claude Code reviews H1.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 H1: pre-edit summary reviewed, go)
 
