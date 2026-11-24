@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: H1 pre-edit summary reviewed; GO given** by Karthik ("Yes, record and
+  send"). Cursor's verify run on `6c80129`: requests 1–5 ran, 6 warned and ran, 7
+  refused with `Loop guard: Tool 'list_dir' exceeded poll budget (5).` and not in the
+  audit (6 `list_dir` requests). The summary matches section H: the three-line reset in
+  `Core.handle`, tests 1 and 2 on `d1`–`d7`, request text `"list the sandbox folder"`,
+  both mutants. Next: Cursor implements H1 (suite through `cmd /c`, both mutants,
+  Session log, commit `P4.7: loop guard per request`, push; PLAN.md P4.7 stays
+  unticked until after H2's review); then Claude Code reviews.
+
 - **2026-11-24: H1 test amendment APPROVED** by Karthik ("Approve it");
   `docs/plans/P4.md` section H marks it APPROVED. Next: Cursor re-runs the H1 verify
   list against the amended text (test 1 written first must fail at request 7 with
@@ -1718,6 +1727,19 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 H1: pre-edit summary reviewed, go)
+
+Cursor re-ran the H1 verify list on `6c80129` (probe removed, tree clean, checked by the
+reviewer). The Core checks hold; `route("list the sandbox folder")` is `None`. Test 1, as
+amended, failed on today's code at request 7: request 6 `success` True (warned, ran),
+request 7 `success` False with `Loop guard: Tool 'list_dir' exceeded poll budget (5).`,
+audit still at 6 `list_dir` requests. This matches the reviewer probe (case B). The
+pre-edit summary matches section H word for word on the code, both tests and both
+mutants; files are H1's list. No findings. Karthik gave the go ("Yes, record and
+send"). Files changed: this file. Next step: Cursor implements and commits
+`P4.7: loop guard per request`; Claude Code reviews (suite, both mutants, review
+checks 1 and 2).
 
 ### 2026-11-24 — Agent: Claude Code (H1 test amendment approved)
 
