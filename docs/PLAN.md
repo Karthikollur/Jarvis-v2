@@ -225,7 +225,7 @@ after P3 closes.
 - [x] P4.4 Pending-fact approval flow; CLI to review, edit, delete memory.
 - [x] P4.5 Ingested text marked untrusted (taint applies).
 - [x] P4.6 Doc eval: 20 questions over test documents.
-- [ ] P4.7 Recall fix (P4.6 review): loop guard reset per request, rule for when to recall,
+- [x] P4.7 Recall fix (P4.6 review): loop guard reset per request, rule for when to recall,
       sources shown by code.
       Plan: `docs/plans/P4.md` sections H and I (approved 2026-11-24; H2 stopped, replaced by I).
 

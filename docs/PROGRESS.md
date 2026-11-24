@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.7: recall prompt` ACCEPTED, no findings; P4.7 ticked** (Claude Code
+  review of `8204c53`). Files are I2's list exactly; no change to `pyproject.toml`,
+  `uv.lock`, `config/` or `safety/`. Parsed prompt: rule 1 is section I2's text, rule 7
+  is section I2's text plus ", even if you think you know"; rules 2–6, 8 and the text
+  around them unchanged. Reviewer runs: suite 789 passed, 4 skipped; stub `evals/run.py`
+  44/44, n01 and n02 no tool call, t10 and t27 ok; `evals/run_docs.py` both correct
+  19/20 (d15 only, no recall, known miss), injection followed 0/20, latency median
+  3.1 s, max 4.1 s. All P4 tasks are ticked. Next: Karthik's P4 phase gate (manual check
+  in `docs/plans/P4.md`). In step 2, "the file named" is the CLI's `recall_memory: ok:
+  <files>` line (section I, decision 1), not the spoken reply.
+
 - **2026-11-24: `P4.7: recall prompt` done.** I2 on the go in `d160eef`. Variant 2
   accepted on two runs in a row. Rule 1 is the section I2 sentence (general-knowledge).
   Rule 7 is section I2's sentence plus ", even if you think you know". Rules 2–6 and 8
@@ -1878,6 +1889,32 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   both runs.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 I2 review: accepted, P4.7 ticked)
+
+Reviewed `8204c53` on `main` (parent `d160eef`). Review check 1: `git show --stat` lists
+`core/config.toml` and `docs/PROGRESS.md`: I2's two files. Review check 2: no change to
+`pyproject.toml`, `uv.lock`, `config/` or `safety/`. Prompt: parsed both `d160eef` and
+`8204c53` with `tomllib` and split the rules; rules 2–6 and 8 and the text before
+"Rules:" are identical; rule 1 equals section I2's text; rule 7 equals section I2's text
+with ", even if you think you know" after "before you answer"; no doubled spaces, no
+glued words. Variant 2 is within the loop's scope (rules 1 and 7 only). Cursor's log has
+the saved-bytes sha256, both variants' parsed text, scores and non-recalling ids.
+Reviewer runs, one after another on a clean tree (`qwen3.5:4b` on the GPU, nothing else
+loaded): suite through `cmd /c` 789 passed, 4 skipped, 1 warning, 226 s. Stub
+`evals/run.py`: tool selection 29/29, arguments 27/27, must-refuse 10/10, clarifying 5/5,
+44/44, fast path 5/44; n01 and n02 `calls=[]`; t10 and t27 ok; median 1.6 s, max 9.8 s.
+`evals/run_docs.py`: hit@4 4/4 and 13/13 both modes, not found 0/3; answer 19/20,
+citation 19/20, both correct 19/20; injection followed 0/20 (d02 and d14 recalled and
+answered the question); latency median 3.1 s, max 4.1 s. Every answerable question that
+passed shows its own file first in `sources=`; d18, d19, d20 searched and said not
+found; d15 made no call (known miss, section I). Same as Cursor's two runs. No findings.
+Notes, no action: (1) doc latency median went from 1.4 s to about 3–4 s because every
+document question now runs a recall and a second model turn; P4 has no latency bar, but
+P5 (voice) will feel it. (2) Rule 7's third line in `core/config.toml` is not wrapped
+like the others; the parsed text is right. PLAN.md: P4.7 ticked (section I
+Verification). Files changed: `docs/PLAN.md`, this file. Next step: Karthik's P4 phase
+gate.
 
 ### 2026-11-24 — Agent: Cursor (P4.7 recall prompt)
 
