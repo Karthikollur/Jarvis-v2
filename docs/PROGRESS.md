@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.7 step-level pass APPROVED** by Karthik (plan mode),
+  `docs/plans/P4.md` section H; PLAN.md P4.7 added. Two commits. H1 `P4.7: loop guard
+  per request`: `Core.handle` resets the agent's loop guard before each `run`, plus two
+  live-bridge tests (7 requests all reach the bridge; inside one request the 5th
+  identical call is still refused) and two mutants. H2 `P4.7: recall prompt`: rules 1
+  and 7 say when to recall and to name the file; an eval loop of at most 5 variants,
+  accepted on two runs in a row with stub `evals/run.py` not regressing and
+  `evals/run_docs.py` at least 16/20 with injection followed 0/20; otherwise stop and
+  report. Next: Cursor runs the verify list and posts the H1 pre-edit summary; no edit
+  before Karthik's go.
+
 - **2026-11-24: `P4.6: doc eval runner` ACCEPTED; PLAN.md P4.6 ticked** (Claude Code
   review of `7bc27bf`). The files are exactly G2's list; no change to `pyproject.toml`,
   `uv.lock`, `config/` or `safety/`. Both go notes are in. Suite 784 passed, 4 skipped,
@@ -832,7 +843,9 @@ Newest session entry goes at the top of the Session log.
 
 ## Open questions for Karthik
 
-- (Claude Code, 2026-11-24, P4.6 G2 review) OPEN. Doc eval 2/20 both correct (gate 16).
+- (Claude Code, 2026-11-24, P4.6 G2 review) RESOLVED 2026-11-24: Karthik approved the
+  recommended fix as P4.7 (`docs/plans/P4.md` section H). Kept as written:
+  Doc eval 2/20 both correct (gate 16).
   Three causes (evidence in the Session log entry "P4.6 G2 review"):
   1. **Loop guard, a bug.** OpenJarvis builds one `LoopGuard` per agent
      (`agents/_stubs.py` line 472) and never resets it; `Core` builds one agent per
@@ -1687,6 +1700,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.7 step-level pass: approved)
+
+Planned the fix for the P4.6 causes. Read `OpenJarvis/src/openjarvis/agents/_stubs.py`
+(guard built once in `__init__`), `agents/loop_guard.py` (Python fallback, `reset()`
+never called), `agents/orchestrator.py` (the check comes after `before_tool_call`, so a
+refused call is recorded but never reaches the bridge), `sdk._run_agent` (stub
+`evals/run.py` builds a fresh agent per case, so stub runs are unaffected),
+`safety/policy.py` budgets (per task, unchanged), `tests/test_core.py` helpers, and the
+D3 and E2 prompt passes as the eval-loop model. The fix is one reset per request in
+`core/agent.py`, not a guard switched off: test 2 and its mutant pin that the guard
+still stops a loop inside one request. The eval asks stay cue-free. Approved by Karthik
+in plan mode; written into `docs/plans/P4.md` section H. Files changed:
+`docs/plans/P4.md`, `docs/PLAN.md`, this file. Next: Cursor's verify list and H1
+pre-edit summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.6 G2 review: accepted; P4.6 ticked)
 
