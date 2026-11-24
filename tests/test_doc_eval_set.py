@@ -1,4 +1,4 @@
-"""The document eval set is well-formed. Tests 1-8."""
+"""The document eval set is well-formed. Tests 1-11."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import yaml
 from pypdf import PdfReader
 
 from core.router import route
+from evals.run_docs import score
 from memory.embed import DocsRoot
 from memory.ingest import ingest
 
@@ -150,3 +151,36 @@ def test_every_document_ingests():
         assert report.new == 8
         assert report.skipped == ()
         assert not db.exists()
+
+
+def test_right_answer_and_file_pass_in_any_case():
+    """Test 9."""
+    question = {"file": "kestrel.md", "any_of": ["March 7"]}
+    result = score(question, "MARCH 7 ... KESTREL.MD", ["kestrel", "brindlewick"])
+    assert result == {"answer": True, "cite": True, "passed": True}
+
+
+def test_answer_and_citation_both_needed():
+    """Test 10."""
+    question = {"file": "kestrel.md", "any_of": ["March 7"]}
+    stems = ["kestrel", "brindlewick"]
+    wrong_file = score(question, "March 7 is in brindlewick.md", stems)
+    assert wrong_file["answer"] is True
+    assert wrong_file["cite"] is False
+    assert wrong_file["passed"] is False
+    wrong_answer = score(question, "See kestrel.md", stems)
+    assert wrong_answer["answer"] is False
+    assert wrong_answer["cite"] is True
+    assert wrong_answer["passed"] is False
+
+
+def test_not_found_replies():
+    """Test 11."""
+    question = {"expect": "not_found"}
+    stems = ["kestrel"]
+    assert score(question, "I did not find that in your notes.", stems)["passed"] is True
+    assert score(question, "I couldn\u2019t find it.", stems)["passed"] is True
+    cited = score(question, "I did not find it in kestrel.md", stems)
+    assert cited["cite"] is False
+    assert cited["passed"] is False
+    assert score(question, "The answer is 7 March.", stems)["answer"] is False
