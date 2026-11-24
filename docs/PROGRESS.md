@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.4 E3 pre-edit summary reviewed; GO given** by Karthik ("Yes, record
+  and send"). Cursor's summary (on `d6e0da3`; verify list holds) stands as written, with
+  one test change: in test 12 (`test_reset_documents_needs_exact_yes`) the post-`yes`
+  assertion becomes `_meta(db, "embedding_model") == "nomic-embed-text"` (the test
+  plants a fact, so the new guard keeps the key). Wordings stand: `no embedding model
+  yet. Run python -m memory ingest first`; `embedding model is {stored!r}, not
+  {embedder.model!r}` (no `_RESET` suffix: with facts present, `reset-documents` keeps
+  the key); `Type yes to delete this fact: `; `keeping the embedding model: {n} facts use
+  it`; `usage: python -m memory review | facts | forget <id>`. Next: Cursor implements E3
+  (suite, six mutants, commit `P4.4: review cli`, push); then Claude Code reviews and
+  ticks PLAN.md P4.4.
+
 - **2026-11-24: `P4.4: remember prompt` ACCEPTED** (Claude Code review of `42db5a7`). The
   diff is `core/config.toml` (two lines, rule 8) and this file only; parsed with
   `tomllib`, rule 8 is the plan's sentence and rules 1 to 7 are unchanged. Suite 759
@@ -1497,6 +1509,27 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.4 E3: pre-edit summary reviewed, go)
+
+Cursor's E3 pre-edit summary matches the E3 section. Checked against `d6e0da3`: the
+`review` role may read every table (the authorizer allows `SQLITE_READ` for all roles),
+so the approve check can read `meta`; it may insert and delete `facts`,
+`pending_facts` and the `facts_fts` shadow tables, so `forget`'s `facts_ad` trigger
+works; it cannot write `meta`. `Embedder.documents` returns one normalized row per text,
+so `[0]` is the vector; test 5's `127.0.0.1:9` is refused at once and stays local.
+`reset_documents` today deletes the key with no facts check, and test 12 plants a fact
+before its final `yes`, so its `is None` assertion contradicts the planned guard;
+changing it to the key staying is in scope (`tests/test_memory_ingest.py` is on E3's
+list) and adds a second killer for the reset-guard mutant. The new strings follow the
+existing CLI style (`Type yes to delete document chunks: `, the ingest mismatch's first
+half, the ingest usage line). The approve mismatch must not carry `_RESET`, which would
+send the user to `reset-documents` in a loop once facts exist.
+
+Known limit (plan item 1, by design): with facts present, changing the embedding model
+needs the facts forgotten first or `memory.toml` set back; the ingest mismatch still
+suggests `reset-documents`, whose keep message then says why the key stays. Files
+changed: this file. Next: Cursor implements E3.
 
 ### 2026-11-24 — Agent: Claude Code (P4.4 E2 review: accepted)
 
