@@ -5,6 +5,12 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: H1 test amendment APPROVED** by Karthik ("Approve it");
+  `docs/plans/P4.md` section H marks it APPROVED. Next: Cursor re-runs the H1 verify
+  list against the amended text (test 1 written first must fail at request 7 with
+  `Loop guard: Tool 'list_dir' exceeded poll budget (5).`), posts the H1 pre-edit
+  summary, and waits for Karthik's go.
+
 - **2026-11-24: H1 stopped at its verify list; H1 tests amended, DRAFT** (Claude Code).
   Cursor's run on `bbd0da9`: test 1 as written passes on today's code, because the
   pinned guard never blocks identical calls (the reason string carries the count, so
@@ -1712,6 +1718,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   table; latency median 1.1 s, max 3.3 s. Causes under Open questions.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (H1 test amendment approved)
+
+Karthik approved the H1 test amendment ("Approve it"); `docs/plans/P4.md` section H marks
+it APPROVED. Files changed: `docs/plans/P4.md`, this file. Next step: Cursor re-runs the
+H1 "Verify before executing" list against the amended tests, posts the pre-edit summary
+for `P4.7: loop guard per request`, and waits for Karthik's go.
 
 ### 2026-11-24 — Agent: Claude Code (H1 verify: plan premise wrong; H1 tests amended, DRAFT)
 
