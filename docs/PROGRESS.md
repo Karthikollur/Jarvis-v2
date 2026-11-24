@@ -5,6 +5,13 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.3: recall prompt` ACCEPTED; PLAN.md P4.3 ticked** (Claude Code review
+  of `d052911`). The diff is the go's text exactly; the parsed rule 7 equals the plan's
+  sentence. Suite 753 passed, 4 skipped, 1 warning, 286.43s. Stub evals re-run twice: 43/43 both times, t10 ok. All three
+  P4.3 commits (D1 `059c987`, D2 `60d9cf6`, D3 `d052911`) are reviewed and accepted. The
+  phase gate's manual check (real ingest, real question, `--real`) stays with Karthik.
+  Next: P4.4 `remember_fact` (section E): Claude Code writes the step-level pass.
+
 - **2026-11-24: `P4.3: recall prompt` done.** Variant 1 of rule 7, the plan's starting text,
   accepted on two stub runs in a row: 43/43, refusals 10/10, clarify 5/5, t10 ok. The
   description and the one-hit document stub are the go text. Suite through `cmd /c`: 753
@@ -1410,8 +1417,36 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   tool selection 28/28 (100%), arguments 26/26 (100%) — refusals 10/10, clarify 5/5, all
   43/43 — 5/43 fast path. Run 1 median 1.8 s, max 10.5 s. Run 2 median 1.8 s, max 10.4 s.
   t10 ok both times. No case that passed on 2026-11-16 failed.
+- 2026-11-24 — qwen3.5:4b, stub tools, fast path (P4.3 D3 review re-run, Claude Code, on
+  `d052911`). Two runs in a row: tool selection 28/28 (100%), arguments 26/26 (100%) —
+  refusals 10/10, clarify 5/5, all 43/43 — 5/43 fast path. Run 1 median 1.5 s, max 8.8 s.
+  Run 2 median 1.5 s, max 8.7 s (both while the full suite ran alongside). Same scores as
+  Cursor's runs; t10 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.3 D3 review: accepted; P4.3 ticked)
+
+Reviewed `d052911` against `docs/plans/P4.md` D3 and the 2026-11-24 go. Review check 1:
+`git show --stat` lists `core/config.toml`, `core/specs.py`, `evals/stub_tools.py`,
+`docs/PROGRESS.md`, all named by D3. Review check 2: no change to `pyproject.toml`,
+`uv.lock`, `config/` or `safety/`. The description and the stub JSON are the go's text.
+`core/config.toml` was loaded with `tomllib`: the parsed rule 7 line equals the plan's
+sentence exactly (222 characters; the trailing `\` continuations leave single spaces),
+and the prompt still ends after it with one newline.
+
+Suite through `cmd /c` (`uv run python -m pytest -q -p no:cacheprovider`): 753 passed, 4 skipped, 1 warning, 286.43s.
+
+Stub evals (`uv run python evals/run.py`, through `cmd /c`) run twice in a row: 43/43
+both times, same breakdown as Cursor's (Eval results). `--only t10` once more: ok. The
+runner prints no reply for a passing tool case, so whether the answer names the source
+file is not checked by this eval; the section G doc eval is where that is scored. No
+mutants (prompt and stub text only, as planned).
+
+PLAN.md P4.3 ticked: D1, D2 and D3 are each reviewed and accepted. `--real` and the real
+ingest plus real question stay with the phase gate's manual check. Files changed:
+`docs/PLAN.md`, this file. Next step: the step-level pass for P4.4 (`remember_fact`,
+section E), written by Claude Code for Karthik's approval.
 
 ### 2026-11-24 — Agent: Cursor (P4.3 recall prompt)
 
