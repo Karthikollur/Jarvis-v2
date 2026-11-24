@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: P4.6 step-level pass APPROVED** by Karthik (plan mode),
+  `docs/plans/P4.md` section G, "Step-level pass for section G". Two commits, no product
+  code change. G1 `P4.6: doc eval set`: 8 fictional documents in `evals/docs/` (four
+  near-topic pairs, one PDF, made-up one-word stems), `evals/doc_questions.yaml` (20:
+  15 answerable with at least 3 `exact: <term>`, 2 injected, 3 not found),
+  `tests/test_doc_eval_set.py` (8 data tests, 4 data mutants). G2 `P4.6: doc eval
+  runner`: `evals/run_docs.py` (ingest into `.test-storage`, vector vs hybrid hit@4,
+  answers through the real core against an eval bridge, `on_pending` denies), 3 scoring
+  tests, 4 mutants, one run recorded under Eval results. Below 16/20 or a D9 miss: record
+  and stop; levers are a plan change. Next: Cursor runs the verify list and posts the G1
+  pre-edit summary with all 8 documents and 20 questions; no edit before Karthik's go.
+
 - **2026-11-24: `P4.5: ingested text is untrusted` ACCEPTED; PLAN.md P4.5 ticked**
   (Claude Code review of `f0c3480`). The two files are exactly F's list; no change to
   `pyproject.toml`, `uv.lock`, `config/` or `safety/`. Both go notes are in. Suite 773
@@ -1564,6 +1576,25 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.6 step-level pass: approved)
+
+Read section G, the manual check, `evals/run.py`, `tests/test_eval_scoring.py`,
+`memory/search.py`, `memory/ingest.py` (`ingest`, `_file`, `_pdf_text`, `_load_state`),
+`bridge/tools.py` `memory_tools`, `bridge/app.py` `create_app`, `core/agent.py`
+(`Core`, `build`), `core/tools.py` (`_wait`), `core/config.toml` rule 7 and
+`tests/fixtures/hello.pdf`. Everything section G needs exists: `search` takes `mode` and
+`floor`, `ingest` takes any root and database, `Core` takes any client. Two constraints
+shaped the pass. The eval documents sit in the repo, which `default_protected()`
+refuses, and copying them out would write outside the repo, so the runner ingests with
+`protected=[storage]`. `build()` hard-codes the production client, so the runner builds
+its `Core` from the same config reads. `exact: true` named no term; `exact` now holds
+the term, checked to be in the ask and in exactly one document. Citation is a stem
+substring, so stems are made-up words checked absent from every text, ask and answer
+phrase. Split into G1 (data and data tests, reviewed before writing) and G2 (runner,
+scoring tests, one run). Approved by Karthik in plan mode; written into
+`docs/plans/P4.md` section G. Files changed: `docs/plans/P4.md`, this file. Next:
+Cursor's verify list and G1 pre-edit summary.
 
 ### 2026-11-24 — Agent: Claude Code (P4.5 review: accepted; P4.5 ticked)
 
