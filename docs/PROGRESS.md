@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.3: recall_memory handler` ACCEPTED** (Claude Code review of
+  `60d9cf6`). The file list is exactly D2's. `core/agent.py` has only the three approved
+  lines and `memory/search.py` only the one approved comment line. Suite 753 passed, 4
+  skipped, 1 warning, 230.74s. All 3 planned mutants killed, plus a stricter fourth that
+  puts the hiding back in both `core/tools.py` and the guard. No findings. PLAN.md P4.3
+  stays unticked until D3's review. Next: Cursor posts the D3 pre-edit summary
+  (`P4.3: recall prompt`).
+
 - **2026-11-24: `P4.3: recall_memory handler` done.** `recall_memory` is registered only
   when `config/memory.toml` exists; a missing file leaves it unregistered and the bridge
   starts; a bad file stops the start. `HIDDEN` is gone, so the core offers every name in
@@ -1381,6 +1389,52 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   still scores there. No runner change. `--real` was not run.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.3 D2 review: accepted)
+
+Reviewed `60d9cf6` against `docs/plans/P4.md` D2 and the 2026-11-24 go.
+Review check 1: `git show --stat` lists `bridge/app.py`, `bridge/tools.py`,
+`core/agent.py`, `core/tools.py`, `memory/search.py`, `tests/test_bridge.py`,
+`tests/test_core.py`, `tests/test_tools.py`, `docs/PROGRESS.md`, all named by D2. Review
+check 2: no change to `pyproject.toml`, `uv.lock`, `config/` or `safety/`.
+`core/agent.py` is exactly the import and the two `set(TOOLS)` lines. `memory/search.py`
+is exactly the planned comment above `def _rows`. `memory_tools` does not connect; the
+handler connects as `bridge`, searches, and closes in `finally`. `create_app` adds it
+only when `memory.toml` exists, passing `[root.path for root in docs_roots]` from
+`embed.load` (the realpath'd roots, as the D1 review asked). Tests 1 to 7 and the
+`test_bridge.py` taint test match the go. Test 5 also asserts `memory.db` does not exist
+before the call, which pins the per-call connection.
+
+Note, no change: test 7's `memory.toml` (`unknown = 1`) also lacks every required key.
+`embed._exact` rejects both with one `set(table) != keys` check, so the test still proves
+a bad file stops the start.
+
+Suite through `cmd /c` (`uv run python -m pytest -q -p no:cacheprovider`): 753 passed,
+4 skipped, 1 warning, 230.74s.
+
+Mutants were re-run by the reviewer's own harness in `.test-storage\` (gitignored), which
+was deleted afterwards. It ran after the suite finished, because these mutants edit
+modules the suite loads. Each anchor was asserted to occur the expected number of times.
+Each mutant ran against its named test file with `PYTHONDONTWRITEBYTECODE=1` and was
+restored from saved bytes. The sha256 values of `bridge/app.py`, `core/tools.py` and
+`core/agent.py` were the same before and after.
+
+| Mutant | Test file | Failing tests | Result |
+|---|---|---|---|
+| `memory_tools` not added in `create_app` | `test_tools.py` | `test_5_recall_production_wiring` | killed |
+| `.exists()` check dropped (`if True:`) | `test_tools.py` | `test_6_recall_missing_memory_toml` | killed |
+| `bridge_tools` filters out `recall_memory` (Cursor's form) | `test_core.py` | 23, including `test_built_core_offers_recall_memory` | killed |
+| same, and the guard subtracts it again (full revert) | `test_core.py` | `test_built_core_offers_recall_memory`, `test_bridge_tools_match_the_table` | killed |
+
+The fourth row is the reviewer's addition. Cursor's form is killed mostly by the guard
+(every `handle` raises `GuardError`), so it does not show the named test is needed on
+its own. Under the full revert the guard agrees with the hidden table, and only the two
+table tests fail. So `test_built_core_offers_recall_memory` is what catches a real
+revert.
+
+Not run in D2, as planned: `evals/run.py --real` (t10 should pass again now that
+`recall_memory` is offered). That belongs to D3's eval loop. Files changed: this file.
+Next step: Cursor posts the D3 pre-edit summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.3 recall_memory handler)
 
