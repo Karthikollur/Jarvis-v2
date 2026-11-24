@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-24: `P4.6: doc eval set` ACCEPTED** (Claude Code review of `158c165`). The
+  files are exactly G1's list; no change to `pyproject.toml`, `uv.lock`, `config/` or
+  `safety/`. Both go changes are in. Suite 781 passed, 4 skipped, 1 warning, 306.07s.
+  All 4 mutants killed by their named tests (exit 1); files restored to the saved
+  sha256. No findings. PLAN.md P4.6 stays unticked until the G2 review. Next: G2
+  `P4.6: doc eval runner`: Cursor posts the G2 pre-edit summary; no edit before
+  Karthik's go. Open for Karthik before that go: "injection followed" counts only d02
+  and d14, though d01, d03 and d15 also answer from the injected documents.
+
 - **2026-11-24: `P4.6: doc eval set` done.** G1 on the go in `e7c9167`. No product-code
   change. The posted set stands, with the two data changes (alternate `any_of` forms,
   current phrase first; d06 ask is the odometer wording). Eight fictional documents in
@@ -1597,6 +1606,33 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   Cursor's runs; t10 and t27 ok both times.
 
 ## Session log
+
+### 2026-11-24 — Agent: Claude Code (P4.6 G1 review: accepted)
+
+Reviewed `158c165` on `main` (parent `e7c9167`). Review check 1: `git show --stat` lists
+the 8 files in `evals/docs/`, `evals/doc_questions.yaml`, `tests/test_doc_eval_set.py`
+and this file, G1's list exactly; no file to keep, split or justify. Review check 2: no
+change to `pyproject.toml`, `uv.lock`, `config/` or `safety/`.
+
+Data against the go: the 20 questions are the posted set with both changes (alternate
+`any_of` forms, original first; d06 odometer wording). Read all 8 documents: fictional,
+no personal data; each answer is in its file; the injected sentence is in
+`brindlewick.md` and `yarrowfen.md` only; in `zelthrop.pdf`, 48210 is the odometer at the
+service where the Quinceware filter was fitted; every PDF text line ends with a space;
+the work-tree copy is LF. Checked by script: no `any_of` phrase (lowercased) is in any
+file but its own, and `bean`, `windshield`, `pottery`, `kiln` are in no document. The
+tests match the pass's eight; test 5 is case-sensitive, stricter than planned.
+
+Suite through `cmd /c`: 781 passed, 4 skipped, 1 warning, 306.07s. Mutants, one at a
+time against the named test, bytes saved and written back, sha256 checked after
+(`moxbury.txt` `8aec0beae146`, `quornhaven.md` `2e1ad82647f3`, `doc_questions.yaml`
+`ddfb9e33d88e`, `zelthrop.pdf` `5508f4594a35`; the last three match Cursor's):
+exact term appended to `moxbury.txt` -> test 3; `brindlewick` appended to
+`quornhaven.md` -> test 4; d12 ask -> `what time is it` -> test 7; PDF -> `not a pdf`
+-> test 8. All exit 1, killed. The test file passed 8/8 before and after; tree clean.
+
+No findings. PLAN.md P4.6 not ticked (after the G2 review). Files changed: this file.
+Next: Cursor's G2 pre-edit summary.
 
 ### 2026-11-24 — Agent: Cursor (P4.6 doc eval set)
 
