@@ -5,6 +5,14 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 step 7 YES given** by Karthik ("Yes, step 7"): four downloads from
+  `huggingface.co` (and its storage host) into `spike\models`, 697,080,094 bytes by the
+  listings (base.en repo 147,772,310; small.en repo 486,101,605; lessac onnx 63,201,294;
+  json 4,885), run from `spike\.venv` with Cursor's step 7 commands; pass is each file
+  within 5% of 148 MB, 486 MB, 63 MB, 5 kB. Cursor stops after posting the per-file sizes.
+  Not given: step 8 onward. Step 8 needs Karthik's go, step 2 done and Chrome and ChatGPT
+  closed. Next: Cursor posts step 7; Claude Code reviews.
+
 - **2026-11-25: P5.0 step 6 PASSED, twelve of twelve, with `av` 16.0.1; waiting for
   Karthik's step 7 yes** (Claude Code review of Cursor's report, HEAD `0678577`). Karthik
   picked (a), older `av` builds; the first, 16.0.1 (spike venv only, one wheel), imports,
@@ -2063,6 +2071,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 step 7 yes recorded)
+
+Karthik answered "Yes, step 7" to the question asked after the step 6 review. Recorded the
+yes with its scope in Current state. Files changed: this file only. No code, config or
+install by this session. Next step: Cursor does step 7 only and posts the per-file sizes;
+Claude Code reviews them before the step 8 go.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 step 6 passed with av 16.0.1; step 7 ask prepared)
 
