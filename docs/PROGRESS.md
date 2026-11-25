@@ -5,6 +5,11 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: `docs/plans/P5.0.md` APPROVED** by Karthik ("Approve P5.0"); PLAN.md marks
+  it. Approves the plan, not the run. Next: Cursor runs "Verify before executing" and posts
+  the step 0 pre-edit summary (commands, URLs, sizes; how the spike venv sees `core/`);
+  Claude Code reviews that summary; no edit, install or download before Karthik's go.
+
 - **2026-11-25: P5 decisions D1–D10 DECIDED; P5.0 step plan drafted, DRAFT** (Claude Code).
   Karthik: "Accept all". Changes from the draft, all in `docs/plans/P5.md`: talk key
   `Ctrl+Alt+Home` (the draft's `Ctrl+Alt+Space` is held by another program, error 1409, and
@@ -1947,6 +1952,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 approved)
+
+Karthik approved `docs/plans/P5.0.md` ("Approve P5.0"). Status line in the plan and the
+PLAN.md pointer now say approved. No code, config or install. Next step: Cursor runs the
+plan's "Verify before executing" and posts the step 0 pre-edit summary; Claude Code reviews
+it; Karthik's go comes before step 1.
 
 ### 2026-11-25 — Agent: Claude Code (P5 decisions recorded; P5.0 step plan drafted)
 
