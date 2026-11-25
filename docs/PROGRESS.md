@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 GO given for steps 8 to 11 only** by Karthik ("Go, steps 8-11").
+  Preconditions Karthik confirms to Cursor first: step 2 done (`OLLAMA_KEEP_ALIVE` `5m` to
+  `1h`, `ollama ps` UNTIL about an hour ahead) and Chrome and ChatGPT closed (rule 6; under
+  1000 MB Available MBytes stops the step). Karthik at the laptop for steps 9 to 11. Step 8
+  records the actual error for a missing model folder (both slash forms) and both cold load
+  times; audio goes to `spike\audio` only. Then Cursor stops and posts every number and the
+  written answers (three for step 10, two for step 11). Not given: steps 12 and 13; Claude
+  Code reviews the STT and TTS numbers first. Next: Cursor posts steps 8 to 11.
+
 - **2026-11-25: P5.0 step 7 ACCEPTED; asking Karthik's go for steps 8 to 11** (Claude
   Code review of Cursor's report, HEAD `837fc1b`). Reviewer re-check by hash, not only
   size: all 14 files in `spike\models` (base.en and small.en whole repos, the lessac `.onnx`
@@ -2085,6 +2094,13 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 go recorded: steps 8 to 11)
+
+Karthik answered "Go, steps 8-11" to the question asked after the step 7 review. Recorded
+the go with its preconditions and limits in Current state. Files changed: this file only.
+No code, config or install by this session. Next step: Cursor does steps 8 to 11 and posts;
+Claude Code reviews the numbers before the steps 12 and 13 ask.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 step 7 reviewed: accepted)
 
