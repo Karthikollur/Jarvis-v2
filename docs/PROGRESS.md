@@ -5,6 +5,20 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 step 7 ACCEPTED; asking Karthik's go for steps 8 to 11** (Claude
+  Code review of Cursor's report, HEAD `837fc1b`). Reviewer re-check by hash, not only
+  size: all 14 files in `spike\models` (base.en and small.en whole repos, the lessac `.onnx`
+  and `.json`) equal Hugging Face's listing: sha256 for the three LFS files (`model.bin`
+  twice, the `.onnx`), git blob id for the rest; total 697,080,094 bytes. Files were
+  written 12:33 to 12:34 UTC, after the commit that recorded the yes (12:32:33 UTC);
+  "already on disk" in the report is a second, checking run. `spike/` is untracked, tree
+  clean. Proposed next go: steps 8 (offline proof), 9 (audio devices), 10 (STT takes) and
+  11 (TTS), then Cursor stops and posts all numbers before 12 and 13 (end to end, CPU and
+  RAM), which I review first. Needs from Karthik first: step 2 (`OLLAMA_KEEP_ALIVE`
+  `5m` to `1h`, restart Ollama) and Chrome and ChatGPT closed (plan rule 6); and Karthik
+  at the laptop for steps 9, 10 and 11 (beep, 3 s microphone take, the recorded takes,
+  listening to Piper).
+
 - **2026-11-25: P5.0 step 7 YES given** by Karthik ("Yes, step 7"): four downloads from
   `huggingface.co` (and its storage host) into `spike\models`, 697,080,094 bytes by the
   listings (base.en repo 147,772,310; small.en repo 486,101,605; lessac onnx 63,201,294;
@@ -2071,6 +2085,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 step 7 reviewed: accepted)
+
+Read Cursor's per-file sizes on `837fc1b` and verified them independently with a scratch
+script (outside the repo; stdlib, run by the main environment's python with `-I`): for each
+file in the three Hugging Face listings (read as text), size plus sha256 (LFS files) or git
+blob sha1 (the others) against the local copy: 14 of 14 OK, 0 problems. Timestamps
+checked against the yes commit (`git log -1 --format=%ct 837fc1b`): every file is later.
+`git ls-files spike` is empty; `du` shows 666 MiB. Cursor's `.cache` bookkeeping bytes (1,709;
+1,707; 427) are `huggingface_hub`'s, outside the totals. Files changed: this file. No code,
+config or install by this session. Next step: Karthik's go for steps 8 to 11; Cursor stops
+after 11 and posts; Claude Code reviews before steps 12 and 13.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 step 7 yes recorded)
 
