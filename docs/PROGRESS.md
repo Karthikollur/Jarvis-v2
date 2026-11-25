@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 verify stopped on one line; plan amended** (Claude Code, from
+  Cursor's report on `b5248a0`). Of the verify list, six lines held (tree, suite 789 passed
+  and 4 skipped, Smart App Control = 1, `spike/` absent, Ollama models and 127.0.0.1,
+  `Ctrl+Alt+Home` registers, disk 75.4 GiB). One was false and it was my error:
+  `OLLAMA_KEEP_ALIVE` is `5m` in the user environment (confirmed by Claude Code; machine
+  variable empty). `docs/plans/P5.0.md`: that line corrected, step 2 now changes `5m` to
+  `1h` (D8 unchanged), and a new rule 6 memory guard, because RAM is already 87% used
+  (2127 MB available of 15.7 GB) before any voice model loads and the 2026-11-12 hang was
+  at about 90%: Karthik closes Chrome and ChatGPT before steps 8, 12 and 13; stop under
+  1000 MB. Nothing edited, installed or downloaded. Next: Cursor posts the step 0 pre-edit
+  summary; Claude Code reviews; Karthik's go comes before step 1.
+
 - **2026-11-25: `docs/plans/P5.0.md` APPROVED** by Karthik ("Approve P5.0"); PLAN.md marks
   it. Approves the plan, not the run. Next: Cursor runs "Verify before executing" and posts
   the step 0 pre-edit summary (commands, URLs, sizes; how the spike venv sees `core/`);
@@ -1952,6 +1964,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 verify review: plan error fixed, memory guard added)
+
+Cursor ran the start-of-session protocol and P5.0's "Verify before executing" on
+`b5248a0`: suite 789 passed, 4 skipped, 1 warning, 278 s; Smart App Control 1; Ollama
+0.40.18 on 127.0.0.1 with `qwen3.5:4b` and `nomic-embed-text` (also `qwen3.5:9b` and
+`:2b`); `Ctrl+Alt+Home` `True 0`; 75.4 GiB free disk; 1.79 GiB RAM free. It stopped on
+`OLLAMA_KEEP_ALIVE`, which the plan called "not set yet": it is `5m`. Re-read by Claude
+Code (Bash, `GetEnvironmentVariable`): user `5m`, machine empty, user
+`OLLAMA_MAX_LOADED_MODELS` 2; Available MBytes 2127. The plan was wrong (written from
+PROGRESS.md's `-1` recommendation, without reading the variable); Cursor's reading of the
+rule was right. Fixed in `docs/plans/P5.0.md`; D8 stays `1h`. Added rule 6, because the
+verify run showed RAM at 87% before any model loads. Files changed: `docs/plans/P5.0.md`,
+this file. No code, config or install. Next step: Cursor posts the step 0 pre-edit summary;
+Claude Code reviews it; no edit before Karthik's go.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 approved)
 
