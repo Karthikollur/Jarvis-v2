@@ -235,8 +235,12 @@ from the recall result is the answer's file; a not-found answer follows a search
 
 ### P5 — Voice (~1 week)
 
-Phase design (draft, not approved): `docs/plans/P5.md`.
+Phase design (draft; decisions D1 to D10 decided 2026-11-25): `docs/plans/P5.md`.
+Step-level plan for P5.0 (draft, not approved): `docs/plans/P5.0.md`.
 
+- [ ] P5.0 Spike, scratch only: do the voice packages load under Smart App Control, and do
+  STT, TTS and the end-to-end path meet the targets on this laptop? Numbers recorded, no
+  product code.
 - [ ] P5.1 Push-to-talk hotkey -> STT (CPU) -> core -> Piper TTS (CPU).
 - [ ] P5.2 Streaming TTS: speak the first sentence while the rest generates.
 - [ ] P5.3 Barge-in: speaking or the hotkey interrupts TTS.

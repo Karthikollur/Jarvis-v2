@@ -5,6 +5,18 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5 decisions D1–D10 DECIDED; P5.0 step plan drafted, DRAFT** (Claude Code).
+  Karthik: "Accept all". Changes from the draft, all in `docs/plans/P5.md`: talk key
+  `Ctrl+Alt+Home` (the draft's `Ctrl+Alt+Space` is held by another program, error 1409, and
+  `Space` is not in `bridge/hotkey.py`'s `KEYS`); `OLLAMA_KEEP_ALIVE=1h`, not `-1`;
+  `max_record_seconds` and `max_spoken_chars` in `config/voice.toml`; section B test 3 now
+  sends a one-word "stop" (the 2-word filter would have dropped it; `core/router.py`
+  `_STOP`); section C is conditional (one-sentence replies gain nothing from sentence
+  streaming). Smart App Control read as enforced (value 1). `docs/plans/P5.0.md` is the
+  spike's step plan for Cursor; PLAN.md gains P5.0 (unticked). Nothing installed or run.
+  Tests: 789 passed, 4 skipped. Next: Karthik approves or changes `docs/plans/P5.0.md`;
+  then Cursor posts the P5.0 pre-edit summary and waits for Karthik's go.
+
 - **2026-11-25: P4 CLOSED.** Gate steps 1–5 passed (entry below). Karthik reviewed the
   P4 `safety/` and `bridge/` diff (`9d06b3a..bcf4993`: `bridge/app.py`, `bridge/tools.py`,
   `safety/policy.py`, `safety/undo.py`; commits `60d9cf6`, `02043a7`, `7f3311f`) with the
@@ -1309,6 +1321,15 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-25 — P5 D1 to D10 as recommended by Claude Code: spike installs of
+  `faster-whisper`, `piper-tts` and `sounddevice` in a scratch venv only (each install and
+  download still needs Karthik's yes), `openwakeword` deferred to P5.4; press-once talk
+  key `Ctrl+Alt+Home` plus `max_record_seconds` 15; wake-word requests open a tainted task
+  (bridge change in P5.4); barge-in by key only; sentence-level TTS only, conditional on
+  P5.0's numbers; latency clock from detected end of speech with the silence wait printed
+  beside it; 90 s conversation window; `OLLAMA_KEEP_ALIVE=1h`; spoken cap 400 characters
+  (`max_spoken_chars`); P5.0 added to PLAN.md. Reasons in `docs/plans/P5.md` — Karthik
+  ("Accept all").
 - 2026-11-23 — `OLLAMA_MAX_LOADED_MODELS=2` in Karthik's user environment (was 1), and
   embeddings run on CPU (`num_gpu 0`) — with 1, every embed unloaded `qwen3.5:4b` (6.5 s
   reload per recall); with 2 and CPU embeds both stay loaded and VRAM does not move
@@ -1926,6 +1947,26 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5 decisions recorded; P5.0 step plan drafted)
+
+Start-of-session protocol on `e1fa21f`: tree clean; suite through `uv run python -m pytest`
+789 passed, 4 skipped, 1 warning, 241 s. Read-only checks: Smart App Control
+`VerifiedAndReputablePolicyState` = 1 (enforced). `RegisterHotKey` from the python.org
+interpreter via `ctypes` (each combo unregistered at once): `Ctrl+Alt+Space` failed with
+1409 (held by a program not identified); `Ctrl+Alt+Home`, `Ctrl+Alt+J` and `Ctrl+Alt+F9`
+registered. `core/router.py:36` `_STOP` and `core/agent.py:56` show that a spoken "stop" is
+one word, which section B's 2-word filter would have dropped. `bridge/hotkey.py` `KEYS` has
+`HOME`, no `SPACE`. Karthik accepted the D1–D10 recommendations ("Accept all") and
+reminded that Claude Code plans and reviews while Cursor implements, so the spike is
+written as a plan for Cursor. Recorded the decisions and the three findings in
+`docs/plans/P5.md`; new `docs/plans/P5.0.md` (15 steps, each with a yes/no check, Karthik's
+hands in steps 2, 9, 10, 12; it includes a dry-run of the voice packages against the main
+environment, because `python -m voice` builds `Core` in-process and needs both sets in one
+environment). Files changed: `docs/plans/P5.md`, `docs/plans/P5.0.md`, `docs/PLAN.md`, this
+file. No code, no config, nothing installed. Next step: Karthik approves or changes
+`docs/plans/P5.0.md`; then Cursor runs its "Verify before executing" and posts the pre-edit
+summary; no edit before Karthik's go.
 
 ### 2026-11-25 — Agent: Claude Code (P4 closed)
 
