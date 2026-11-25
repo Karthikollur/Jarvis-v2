@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 step 5 YES given** by Karthik ("Yes, step 5"): install 29 wheels,
+  126,784,748 bytes, from PyPI only, into `spike/.venv`, pinned with
+  `-c spike\main-constraints.txt`, none built from source. Cursor then runs step 6 (twelve
+  imports, one process each) and stops. Not given: step 7 (about 700 MB of model downloads,
+  separate yes), step 2 (Karthik's, before step 8), steps 8 onward. Stops: uv would build
+  from source; a shared name differs between the spike and main freezes; Smart App Control
+  blocks an import (WinError 4551). Next: Cursor posts the three freezes, the
+  shared-versions result and the import table; Claude Code reviews.
+
 - **2026-11-25: P5.0 steps 1, 3, 4 ACCEPTED; step 5 plan changed (pinned, 29 wheels);
   waiting for Karthik's step 5 yes** (Claude Code review of `b7781d1`). Step 1 is
   `.gitignore` only (+3 lines), `spike/x` ignored, tree clean. Step 3: spike venv 3.12.10,
@@ -2006,6 +2015,14 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 step 5 yes recorded)
+
+Karthik answered "Yes, step 5" to the question asked after the steps 1, 3, 4 review.
+Recorded the yes with its scope and stops in Current state. Files changed: this file only.
+No code, config or install by this session. Next step: Cursor runs steps 5 and 6 and
+posts; Claude Code reviews the freezes, the shared-versions file and the import table
+before the step 7 ask.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 steps 1, 3, 4 reviewed: accepted; step 5 pinned)
 
