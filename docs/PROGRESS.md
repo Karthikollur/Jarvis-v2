@@ -5,6 +5,21 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 step 6 PASSED, twelve of twelve, with `av` 16.0.1; waiting for
+  Karthik's step 7 yes** (Claude Code review of Cursor's report, HEAD `0678577`). Karthik
+  picked (a), older `av` builds; the first, 16.0.1 (spike venv only, one wheel), imports,
+  and so does `faster_whisper`, so 15.1.0 and 14.2.0 were not tried. Reviewer re-checks:
+  spike freeze 30 lines with `av==16.0.1`, `faster-whisper==1.2.1`, `piper-tts==1.8.0`,
+  `sounddevice==0.5.6`; 18 names shared with the main freeze, 0 differ; the main
+  environment is unchanged. P5.1 must pin `av` (16.0.1 or `<17`, after a fresh import
+  check): Karthik's yes at P5.1's plan; recorded in Decisions and P5.md Risks. Step 7
+  ask: four files from `huggingface.co` (and the storage host it redirects to), 697,080,094
+  bytes by the listings: `Systran/faster-whisper-base.en` 147,772,310 and
+  `Systran/faster-whisper-small.en` 486,101,605 (both whole repos; `model.bin` is 145,216,508
+  and 483,545,366) and `en_US-lessac-medium.onnx` 63,201,294 plus its `.json` 4,885. Step 2
+  (`OLLAMA_KEEP_ALIVE` `5m` to `1h`) is still Karthik's, before step 8. Next: Karthik's
+  step 7 yes; Cursor downloads, checks sizes, and stops.
+
 - **2026-11-25: P5.0 STOPPED at step 6: Smart App Control blocks `av`; Karthik's decision
   needed** (Claude Code review of Cursor's steps 5 and 6, HEAD `5a721d0`). Step 5 is
   accepted: 29 wheels, pinned, three freezes, `shared-versions.txt` 18 names all SAME,
@@ -1416,6 +1431,12 @@ Newest session entry goes at the top of the Session log.
 
 Format: `YYYY-MM-DD — decision — reason — who`
 
+- 2026-11-25 — Voice stack pins `av` below 17 (spike: 16.0.1), not the resolver's 19.0.2 —
+  Smart App Control blocks 19.0.2's DLLs and `plane.pyd` (file reputation; unsigned wheels
+  such as `ctranslate2` and `tokenizers` load), `faster_whisper` imports `av` at the top of
+  `audio.py`, and 16.0.1 loads with `faster-whisper` 1.2.1 (`av>=11`). The spike venv only;
+  the `pyproject.toml` pin is proposed in P5.1's plan for Karthik's yes — Karthik chose
+  "try older av" over a stub; Claude Code found the cause.
 - 2026-11-25 — P5 D1 to D10 as recommended by Claude Code: spike installs of
   `faster-whisper`, `piper-tts` and `sounddevice` in a scratch venv only (each install and
   download still needs Karthik's yes), `openwakeword` deferred to P5.4; press-once talk
@@ -2042,6 +2063,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 step 6 passed with av 16.0.1; step 7 ask prepared)
+
+Cursor installed `av==16.0.1` into `spike\.venv` with `-c spike\main-constraints.txt` and
+re-ran the twelve imports, one process each: all ok. Reviewer: `uv pip freeze` of both
+environments (scratch files outside the repo), awk comparison: 18 shared names, 0 differ
+(an earlier `join` attempt failed on sort order and was discarded); main freeze equals
+`spike\main-constraints.txt`. Hugging Face file listings read as text by script (stdlib,
+generic user agent, nothing downloaded): sizes in Current state; they sit within 5% of
+the figures in the plan (148, 486, 63 MB). Files changed: `docs/plans/P5.0.md` (a result
+note under step 6), `docs/plans/P5.md` (Risks), this file. No code, config or install by
+this session. Next step: Karthik's step 7 yes; then Cursor does step 7 only and stops.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 steps 5 and 6 reviewed: av blocked by Smart App Control)
 
