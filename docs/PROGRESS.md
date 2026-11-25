@@ -5,6 +5,16 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 GO given for steps 1, 3 and 4 only** by Karthik ("Go, steps 1, 3, 4")
+  on the step 0 summary as reviewed (`aa42d03`). Cursor: step 1 (`.gitignore`, commit
+  `P5.0: ignore the spike folder`, push), step 3 (spike venv from the signed interpreter),
+  step 4 (dry run; every would-install, would-upgrade and would-downgrade line recorded,
+  plus each would-install wheel's filename and size from PyPI JSON for the step 5 ask).
+  Then stop and post. Not given: step 5 and step 7 (each needs Karthik's separate yes with
+  the wheel list and sizes in the ask), steps 2 and 8 onward. Step 2 (`OLLAMA_KEEP_ALIVE`
+  `5m` to `1h`) is Karthik's, any time before step 8. A step 4 upgrade or downgrade of an
+  installed package stops the spike. Next: Cursor posts steps 1, 3, 4; Claude Code reviews.
+
 - **2026-11-25: P5.0 step 0 pre-edit summary reviewed; no findings against the commands,
   conditions added; waiting for Karthik's go** (Claude Code, Cursor's summary on
   `c9651cc`). Step 4, 5 and 7 commands and URLs match the plan; step 12's two-line `.pth`
@@ -1978,6 +1988,14 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 go recorded: steps 1, 3, 4)
+
+Karthik answered "Go, steps 1, 3, 4" to the question asked after the step 0 review. Wrote
+the go into Current state with its limits (no step 5, 7, 2 or 8 onward). Files changed:
+this file only. No code, config or install by this session. Next step: Cursor does steps
+1, 3 and 4 and posts; Claude Code reviews the dry-run lines and the wheel sizes before the
+step 5 ask goes to Karthik.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 step 0 summary reviewed)
 
