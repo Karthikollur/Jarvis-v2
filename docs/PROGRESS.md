@@ -5,6 +5,15 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P4 CLOSED.** Gate steps 1–5 passed (entry below). Karthik reviewed the
+  P4 `safety/` and `bridge/` diff (`9d06b3a..bcf4993`: `bridge/app.py`, `bridge/tools.py`,
+  `safety/policy.py`, `safety/undo.py`; commits `60d9cf6`, `02043a7`, `7f3311f`) with the
+  reviewer's walkthrough and said "Yes, close P4". Every P4 task is ticked. Next: P5. Its
+  design `docs/plans/P5.md` is still DRAFT; Karthik decides D1–D10 (D1 now carries the
+  Piper GPL and wake-word CC BY-NC-SA facts), then Claude Code writes section A's
+  step-level plan (P5.0 spike). Karthik also confirms Smart App Control is still on.
+  Tests: 789 passed, 4 skipped.
+
 - **2026-11-25: P4 phase gate PASSED, steps 1–5** (Karthik, with another agent running
   steps 1–3 and 5; Session log). P4 "Done when" met: doc eval both correct 19/20 (gate 16);
   the one fact entered `facts` only through `memory review` (`pending_id` 1). Step 4 (Wi-Fi
@@ -1917,6 +1926,18 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P4 closed)
+
+Walked Karthik through `git diff 9d06b3a..HEAD -- safety bridge` (PLAN.md 4.3): memory
+tools wired at bridge start only when `config/memory.toml` exists (embedder refuses any
+host but `127.0.0.1`); `recall_memory` T0 and taints; `remember_fact` T1 (a click when
+tainted, `test_remember_fact_tier`), writes only `pending_facts` because the `bridge`
+DB role may insert nowhere else (`test_roles_cannot_write_each_others_tables`);
+`_rename` retries winerror 5 and 32 for at most about 0.45 s, then refuses as before
+(a real access-denied now refuses after that wait). No weakening found. Karthik: "Yes,
+close P4". Files changed: this file. Next step: Karthik's decisions D1–D10 in
+`docs/plans/P5.md`; then section A's step-level plan.
 
 ### 2026-11-25 — Agent: Claude Code (P4 phase gate: steps 1–5 passed)
 
