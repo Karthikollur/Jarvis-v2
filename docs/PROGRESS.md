@@ -5,6 +5,27 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 steps 8 to 11 NOT STARTED; Cursor stopped at the preconditions, and
+  stopped correctly** (Claude Code review of Cursor's report, HEAD `7b15d49`, tree clean).
+  Both preconditions in the go record below are still open, and both are Karthik's hands.
+  Reviewer re-check, 2026-11-25 6:18 pm: `ollama ps` has a header and no rows (no model
+  loaded, so no UNTIL); `OLLAMA_KEEP_ALIVE` is user `5m`, machine empty (and
+  `OLLAMA_MAX_LOADED_MODELS` user `2`); the running Ollama (`ollama` pid 26804, `ollama
+  app` pid 32732) started 11:27 today, before any change; `chrome` 10 processes, `ChatGPT`
+  11 processes; Available MBytes 3616 (Cursor read 5117; above the 1000 MB stop line either
+  way). `spike\` holds the step 4 to 7 records and `models\` only; no script was written,
+  nothing was loaded. Nothing for Claude Code to fix: plan step 2 says "If not: stop; it
+  is Karthik's machine setting", and rule 6 says Chrome and ChatGPT stay closed. Two
+  things for Karthik to know: (1) "background processes with no window" means the apps are
+  not quit (Chrome's background mode and ChatGPT's tray keep them alive), and they hold the
+  RAM that rule 6 is about, so closing the windows is not enough; (2) Ollama reads
+  `OLLAMA_KEEP_ALIVE` when it starts, so it must be quit and started again after the
+  variable changes, and started from something that sees the new value (the Start menu, not
+  a terminal opened before the change). The go for steps 8 to 11 stands; it was never
+  withdrawn, only conditional. Next: Karthik clears both, then relays one conditional
+  message to Cursor (re-check, then run steps 8 to 11 if it passes; stop and report if
+  not); no further go from Claude Code needed.
+
 - **2026-11-25: P5.0 GO given for steps 8 to 11 only** by Karthik ("Go, steps 8-11").
   Preconditions Karthik confirms to Cursor first: step 2 done (`OLLAMA_KEEP_ALIVE` `5m` to
   `1h`, `ollama ps` UNTIL about an hour ahead) and Chrome and ChatGPT closed (rule 6; under
@@ -2094,6 +2115,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 steps 8 to 11 held at the preconditions: reviewed)
+
+Cursor pulled `7b15d49`, ran the precondition checks before step 8, found step 2 undone and
+Chrome and ChatGPT still running, and stopped without loading a model or writing a script.
+Re-ran every check myself, read-only: `ollama ps` (empty), `OLLAMA_KEEP_ALIVE` at User,
+Machine and Process scope (`5m`, empty, `5m`), the Ollama processes' start times (11:27
+today), Chrome and ChatGPT process counts (10 and 11), Available MBytes (3616), `git status`
+(clean) and the `spike\` listing (records and models only). All match Cursor's report. The
+stop follows plan step 2 and rule 6, so no plan change. I did not change the environment
+variable, quit Ollama or close any app: those are Karthik's (plan step 2 and rule 6).
+Files changed: this file only. No code, config or install. Next step: Karthik clears both
+preconditions; Cursor re-checks and runs steps 8 to 11 under the existing go; Claude Code
+reviews the numbers before the steps 12 and 13 ask.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 go recorded: steps 8 to 11)
 
