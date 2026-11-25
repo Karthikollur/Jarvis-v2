@@ -5,6 +5,24 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 steps 1, 3, 4 ACCEPTED; step 5 plan changed (pinned, 29 wheels);
+  waiting for Karthik's step 5 yes** (Claude Code review of `b7781d1`). Step 1 is
+  `.gitignore` only (+3 lines), `spike/x` ignored, tree clean. Step 3: spike venv 3.12.10,
+  launches, empty. Step 4 re-run by the reviewer: same 12 would-installs, no upgrade or
+  downgrade, main freeze identical to Cursor's "before" file; Cursor's 12 wheel sizes match
+  PyPI JSON. Finding (plan gap, mine): the spike venv is empty, so step 5 installs 29
+  packages, not 12, and an unpinned install resolves to `huggingface-hub` 2.4.0, `numpy`
+  2.5.5 and `filelock` 4.3.1 against the main environment's 1.33.0, 2.3.5 and 3.32.7; at
+  step 12 the spike copy would win. Fix in `docs/plans/P5.0.md`: step 5 installs with
+  `-c spike\main-constraints.txt` (the main freeze minus the editable line); reviewer's
+  dry run with that file resolves cleanly, 29 wheels, 126,784,748 bytes (11 native
+  123,447,717; 18 pure Python 3,337,031), every shared name at the main version. Step 6
+  now imports twelve modules (adds `cffi`, `numpy`, `hf_xet`, `google.protobuf`, `yaml`).
+  Note: the step 4 dry run was not strictly metadata only; a later dry run reports 5 wheels
+  to download where the first reported 12, so uv's own cache already holds wheels
+  (zip files, nothing installed or run). Next: Karthik's yes for step 5; Cursor then runs
+  steps 5 and 6 and stops before step 7 (separate yes).
+
 - **2026-11-25: P5.0 GO given for steps 1, 3 and 4 only** by Karthik ("Go, steps 1, 3, 4")
   on the step 0 summary as reviewed (`aa42d03`). Cursor: step 1 (`.gitignore`, commit
   `P5.0: ignore the spike folder`, push), step 3 (spike venv from the signed interpreter),
@@ -1988,6 +2006,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 steps 1, 3, 4 reviewed: accepted; step 5 pinned)
+
+Reviewed Cursor's report on `b7781d1` (parent `0b94656`). Checked: `git show --stat`
+lists `.gitignore` only, +3 lines (blank, comment, `spike/`); `git check-ignore spike/x`
+prints it; `spike/` holds `dry-run.txt`, `freeze-main-before.txt`, `freeze-main-after.txt`;
+the spike venv runs 3.12.10 and its freeze is empty. Re-ran the main-environment dry run:
+identical 12 lines; main `uv pip freeze` (62 lines) equals `freeze-main-before.txt` after
+dropping the BOM. Re-ran against the empty spike venv: 29 packages, with differing shared
+versions (listed in Current state), so ran again with the main freeze minus its one
+editable line as a constraints file (scratch copy outside the repo): 29 packages, all
+shared names equal to main. Wheel sizes for all 29 from PyPI JSON by script (stdlib, best
+tag for this interpreter, text only, nothing downloaded): totals in Current state; the 12
+sizes in Cursor's table match. Every closure member has a wheel for cp312 win_amd64, none
+builds from source. Plan changes (`docs/plans/P5.0.md`): step 5 pinned and lists 29 wheels;
+step 6 twelve imports. Files changed: `docs/plans/P5.0.md`, this file. No code, config or
+install. Next step: Karthik's yes for step 5; Cursor runs steps 5 and 6, stops before
+step 7.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 go recorded: steps 1, 3, 4)
 
