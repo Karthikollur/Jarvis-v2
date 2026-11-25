@@ -5,6 +5,33 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 STOPPED at step 6: Smart App Control blocks `av`; Karthik's decision
+  needed** (Claude Code review of Cursor's steps 5 and 6, HEAD `5a721d0`). Step 5 is
+  accepted: 29 wheels, pinned, three freezes, `shared-versions.txt` 18 names all SAME,
+  voice packages 1.8.0, 0.5.6, 1.2.1. Step 6: 10 of 12 imports ok (`ctranslate2`,
+  `onnxruntime`, `tokenizers`, `piper`, `sounddevice`, `cffi`, `numpy`, `hf_xet`,
+  `google.protobuf`, `yaml`). `av` 19.0.2 is blocked (Code Integrity 3033/3077:
+  `av.libs\libsharpyuv-90c3...dll`, then `av\audio\plane.pyd`), and `faster_whisper` fails
+  only because its `audio.py` line 15 is `import av`. Cursor stopped and worked around
+  nothing (plan rule 4). Reviewer evidence, all read-only: (1) signing does not explain it:
+  the 23 `av.libs` DLLs and `plane.pyd` are NotSigned, but so are `ctranslate2`'s
+  `_ext.pyd`, `tokenizers.pyd`, `hf_xet.pyd` and the PortAudio DLLs, which loaded; only
+  `onnxruntime` (Microsoft), `libiomp5md` (Intel) and `cudnn` (NVIDIA) are signed, so the
+  verdict is file reputation. (2) `faster_whisper` uses `av` only in `decode_audio` and its
+  two helpers (`audio.py` lines 37 to 92, inside functions); the plan passes numpy arrays.
+  (3) `faster-whisper` 1.2.1 declares `av>=11`; PyPI has cp312 win_amd64 wheels for 12.0 to
+  16.1 (2024-03 to 2026-01) and abi3 for 17 to 19. `av` 19.0.2 was uploaded 2026-10-21.
+  Options for Karthik (none touches Smart App Control, which AGENTS.md forbids turning
+  off): (a) try an older, widely installed `av` build in the spike venv: 16.0.1 (2025-10-13,
+  32,296,912 bytes), then 15.1.0 (31,336,093), then 14.2.0 (30,857,257); each is one PyPI
+  download, at most 94,490,262 bytes, stop at the first that imports; if one works P5.1
+  pins it. A guess, not a fact: older builds have more reputation. (b) a stub `av` module
+  placed in `sys.modules` before `faster_whisper` is imported: nothing blocked ever loads,
+  works while we pass arrays, breaks if faster-whisper ever uses `av` at import time;
+  product code would carry a shim. (c) another STT library: new native wheels, the same
+  reputation lottery, and new code. Recommended: (a), then (b) if all three are blocked.
+  Step 7 (model downloads) not started. Next: Karthik chooses.
+
 - **2026-11-25: P5.0 step 5 YES given** by Karthik ("Yes, step 5"): install 29 wheels,
   126,784,748 bytes, from PyPI only, into `spike/.venv`, pinned with
   `-c spike\main-constraints.txt`, none built from source. Cursor then runs step 6 (twelve
@@ -2015,6 +2042,24 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 steps 5 and 6 reviewed: av blocked by Smart App Control)
+
+Read Cursor's report on `5a721d0`. Accepted without re-running: the three freezes
+(8, 11 and 30 lines) read consistently with the 29-wheel dry run; shared names equal. The
+block is real and matches the reviewer's own read of the Code Integrity log
+(`Microsoft-Windows-CodeIntegrity/Operational`, ids 3033 and 3077): `libsharpyuv-90c3...dll`
+at 17:48:12 and `plane.pyd` at 17:48:53, both under `spike\.venv\Lib\site-packages`. Read-only
+checks run by the reviewer (scratch scripts outside the repo, nothing imported from the
+spike venv): `Get-AuthenticodeSignature` over `av.libs`, `plane.pyd` and the modules that
+loaded (result in Current state: signing does not separate blocked from loaded); `grep` of
+`faster_whisper/*.py` for `av` (one top-level import, uses only inside functions);
+`METADATA` `Requires-Dist: av>=11`; PyPI JSON for `av` releases 11 and up with the best
+wheel for this interpreter (stdlib script, text only). Also seen, unrelated to P5: the same
+log shows `C:\Users\karth\.local\bin\rtk.exe` blocked repeatedly from 17:46 to 17:55, while
+this session's commands ran; the RTK output condensing named in `~/.claude/RTK.md` is the
+tool in question. No action taken. Files changed: this file. No code, config or install.
+Next step: Karthik picks (a), (b) or (c) in Current state; plan rule 4 holds until then.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 step 5 yes recorded)
 
