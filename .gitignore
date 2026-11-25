@@ -32,3 +32,6 @@ jarvis_p35b_report.txt
 
 # graphify knowledge graph output (regenerable)
 graphify-out/
+
+# P5.0 voice spike (scratch, models, recordings)
+spike/
