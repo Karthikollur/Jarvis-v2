@@ -5,6 +5,20 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5.0 step 0 pre-edit summary reviewed; no findings against the commands,
+  conditions added; waiting for Karthik's go** (Claude Code, Cursor's summary on
+  `c9651cc`). Step 4, 5 and 7 commands and URLs match the plan; step 12's two-line `.pth`
+  is correct and approved (checked: `_editable_impl_openjarvis.pth` is the only `.pth`
+  in the main `site-packages`; `core/` has no `__init__.py`; `core.agent` imports
+  `safety`). Added to `docs/plans/P5.0.md` (stop points and records only): the step 5 ask
+  lists every wheel with size and stops on any build from source; a shared-versions file,
+  because the main environment already holds `huggingface-hub` 1.33.0, `hf-xet` 1.8.0 and
+  `numpy` 2.3.5 and the spike venv's copy of a shared package wins at step 12; step 8
+  records the actual error for a missing model folder (expected: no "missing folder"
+  error, so P5.1's wrapper checks the folder itself); the guard also patches `connect_ex`;
+  Chrome and ChatGPT stay closed from step 8 to the end of step 13. Next: Karthik's go for
+  steps 1, 3 and 4; Cursor stops again before step 5 and step 7 for a yes.
+
 - **2026-11-25: P5.0 verify stopped on one line; plan amended** (Claude Code, from
   Cursor's report on `b5248a0`). Of the verify list, six lines held (tree, suite 789 passed
   and 4 skipped, Smart App Control = 1, `spike/` absent, Ollama models and 127.0.0.1,
@@ -1964,6 +1978,22 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5.0 step 0 summary reviewed)
+
+Reviewed Cursor's pre-edit summary on `c9651cc`. Read-only checks (Bash, repo root):
+`.venv/Lib/site-packages/*.pth` is `_editable_impl_openjarvis.pth` only (one line, the
+clone's `src`); `core/` has no `__init__.py`, `bridge/`, `safety/` and `memory/` do;
+`core/agent.py`, `core/bridge_client.py` and `core/tools.py` import `safety.policy`;
+`uv pip freeze` of the main environment lists `huggingface-hub==1.33.0`, `hf-xet==1.8.0`,
+`numpy==2.3.5`, `requests==2.34.2`, `httpx==0.28.1`, `pydantic==2.14.3`, `tqdm==4.70.1`
+and no `onnxruntime`, `ctranslate2`, `av`, `tokenizers`, `sounddevice`. Cursor's claims
+about step 12 are right. Gap found: `site.addsitedir` appends, so the spike venv's copy of
+a shared package wins over the main environment's; the plan now records a
+shared-versions file and prints provenance at step 12. Other plan changes are listed in
+Current state. `core/__main__.py` exists (a CLI), noted for P5.1. Files changed:
+`docs/plans/P5.0.md`, this file. No code, config or install. Next step: Karthik's go;
+then Cursor does steps 1, 3 and 4 and stops for the step 5 yes.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 verify review: plan error fixed, memory guard added)
 
