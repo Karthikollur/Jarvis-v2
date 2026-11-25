@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P5 draft library facts checked** (Claude Code; `docs/plans/P5.md` stays
+  DRAFT, nothing installed). New section "Library facts" cites the official pages. Holds:
+  faster-whisper CPU int8 and built-in VAD, model sizes, Piper on onnxruntime, a "hey jarvis"
+  model, the Windows mic icon, `WM_HOTKEY` on press only. Changed: faster-whisper needs
+  onnxruntime from P5.1 (Silero VAD); Piper moved to `OHF-Voice/piper1-gpl` and is
+  GPL-3.0-or-later; openWakeWord's pretrained models are CC BY-NC-SA 4.0, downloaded at
+  runtime unless pre-fetched, and need `inference_framework="onnx"` on Windows; no
+  openWakeWord release since 2024-02. D1, sections A, B, E and Risks updated in place. Suite
+  789 passed, 4 skipped. Next is unchanged: Karthik's P4 phase gate. Karthik also confirms
+  Smart App Control is still on (not readable from the session).
+
 - **2026-11-24: `P4.7: recall prompt` ACCEPTED, no findings; P4.7 ticked** (Claude Code
   review of `8204c53`). Files are I2's list exactly; no change to `pyproject.toml`,
   `uv.lock`, `config/` or `safety/`. Parsed prompt: rule 1 is section I2's text, rule 7
@@ -1889,6 +1900,21 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   both runs.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P5 draft: library facts checked)
+
+Start-of-session protocol on `c27477d`: tree clean; suite through `cmd /c` 789 passed,
+4 skipped, 1 warning, 271 s. Karthik asked to check the P5 draft's library claims while the
+P4 phase gate waits. Read-only research: official READMEs, PyPI pages and JSON, Hugging
+Face file lists, Microsoft Learn and support pages, Ollama FAQ, plus faster-whisper's
+`transcribe.py`/`requirements.txt`, Piper's `voice.py` and openWakeWord's
+`setup.py`/`model.py`. Nothing installed or downloaded. Re-ran P5's codebase verify list:
+all items hold; `bridge/hotkey.py` already sets `MOD_NOREPEAT`; Smart App Control not
+checked (registry read refused in session). Not verified: Piper's runtime dependencies,
+where openWakeWord loads its melspectrogram and embedding models; section A finds both out.
+Files changed: `docs/plans/P5.md` (new "Library facts" section; D1, sections A, B, E and
+Risks updated), this file. No code, no tests changed. Next step: Karthik's P4 phase gate;
+after it, the P5 decisions D1–D10 and section A's step-level plan.
 
 ### 2026-11-24 — Agent: Claude Code (P4.7 I2 review: accepted, P4.7 ticked)
 
