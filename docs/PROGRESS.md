@@ -5,6 +5,17 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-25: P4 phase gate PASSED, steps 1–5** (Karthik, with another agent running
+  steps 1–3 and 5; Session log). P4 "Done when" met: doc eval both correct 19/20 (gate 16);
+  the one fact entered `facts` only through `memory review` (`pending_id` 1). Step 4 (Wi-Fi
+  off) confirmed by Karthik. Not closed yet: PLAN.md 4.3 says Karthik reviews the
+  `safety/` and `bridge/` diffs before a phase closes (`git diff 9d06b3a..HEAD -- safety
+  bridge`: 4 files, +53 −6). Gate findings: (1) step 2's taint check was worded wrong,
+  corrected in `docs/plans/P4.md`; (2) "I've saved that" after `remember_fact` while the
+  fact was only queued: carried into `docs/plans/P5.md` section B test 9, since voice would
+  say it aloud; (3) the `openjarvis_rust` rate-limiter warning is harmless (below). Next:
+  Karthik's diff review, then P4 CLOSED, then the P5 decisions D1–D10.
+
 - **2026-11-25: P5 draft library facts checked** (Claude Code; `docs/plans/P5.md` stays
   DRAFT, nothing installed). New section "Library facts" cites the official pages. Holds:
   faster-whisper CPU int8 and built-in VAD, model sizes, Piper on onnxruntime, a "hey jarvis"
@@ -1898,8 +1909,42 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   answer 19/20, citation 19/20, both correct 19/20, injection followed 0/20. Run 1
   median 3.9 s, max 5.0 s. Run 2 median 3.8 s, max 5.0 s. Did not recall: d15 only,
   both runs.
+- 2026-11-25 — qwen3.5:4b, stub tools, fast path, nomic-embed-text (P4 phase gate step 5,
+  code as `8204c53`). Command eval 44/44 (100%), median 1.2 s. Doc eval: hit@4 4/4 exact
+  terms and 13/13 the rest; both correct 19/20 (gate 16); injection followed 0/20; median
+  2.5 s. Miss: d15, no recall (known). Numbers as reported by the agent that ran them for
+  Karthik; no result file is written, so the reviewer did not re-derive them. Same code
+  and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-25 — Agent: Claude Code (P4 phase gate: steps 1–5 passed)
+
+Karthik ran the gate with another agent's help and pasted its report; Karthik confirmed
+step 4 himself. Checked read-only against local state (`%LOCALAPPDATA%\Jarvis`):
+step 1, `memory.db` holds 3 documents, 88 chunks, all under the docs root
+`C:\Mainframe\Second_Brain\Learning`; no path contains `Jarvis_v2` or `.obsidian`.
+Step 2, audit 09:21 two `recall_memory` requests (`tainted: false`, as expected for a
+request line in a fresh context); 09:22:44 `recall_memory` then `get_time` with
+`tainted: true`. Step 3, `remember_fact` (T1) at 09:23:18; `facts` row 1 approved
+09:23:20 with `pending_id` 1; `pending_facts` empty; recall at 09:23:24. Step 4, recall at
+09:30:24; Karthik: answered with Wi-Fi off (screenshot shows the answer and
+`recall_memory: ok: AI-Native Business.md, Company Brain – Technical Roadmap.md`).
+Step 5, numbers under Eval results; `run_docs.py` builds its own DB under
+`.test-storage`, so the real ingest did not touch it.
+Notes from the report, traced: (1) taint wording, fixed in `docs/plans/P4.md` manual
+check step 2. (2) `bridge/tools.py` `remember_fact` returns `{"queued": True}`; prompt
+rule 8 and the spec already say "only after approval"; the 4B model still said "saved".
+Not a Done-when failure; carried to `docs/plans/P5.md` section B test 9. (3) "Failed to
+set up rate limiter: No module named 'openjarvis_rust'": OpenJarvis's own rate limiter
+(`security/__init__.py:100`, `rate_limit_enabled` defaults to true) needs its Rust
+extension, which this install does not build; on a non-shared, non-server profile it
+logs the warning and runs with no OpenJarvis limiter. Jarvis does not rely on it: every
+tool goes through the bridge and `safety/`. Harmless. It can be silenced with
+`[security] rate_limit_enabled = false` in `core/config.toml` (a config change: plan and
+go first) if Karthik wants. Files changed: `docs/plans/P4.md`, `docs/plans/P5.md`, this
+file. No code changed. Next step: Karthik reviews `git diff 9d06b3a..HEAD -- safety
+bridge`; then the reviewer marks P4 CLOSED.
 
 ### 2026-11-25 — Agent: Claude Code (P5 draft: library facts checked)
 
