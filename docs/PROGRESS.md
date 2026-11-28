@@ -5,6 +5,68 @@ Newest session entry goes at the top of the Session log.
 
 ## Current state
 
+- **2026-11-28: P5.0 steps 8 to 11 reviewed. Steps 8 and 11 ACCEPTED; step 9 accepted
+  pending Karthik's beep answer; step 10 NOT ACCEPTED, re-record needed** (Claude Code
+  review of the logs in `spike\logs`, HEAD `5d8b026`). Cursor ran all four steps on
+  2026-11-25 from 6:29 to 8:08 pm and ran out of session before posting, so these numbers
+  come from its log files, copied unrounded (rule 5). Its own report and Karthik's written
+  answers were never recorded.
+  - **Step 8 (offline proof): pass.** Backslash path to a missing folder: `ValueError:
+    Invalid model size '...does-not-exist', expected one of: tiny.en, ...`. Forward-slash
+    path: `huggingface_hub.errors.HFValidationError: Repo id must be in the form
+    'repo_name' or 'namespace/repo_name': '...'`. Guard fired in neither; both raised
+    inside the library before any connection. This confirms the plan's guess: P5.1's
+    wrapper must test the folder itself, because neither error names a missing folder.
+    Cold loads: base.en 0.7041115000029095 s (Available MBytes 2630 to 2557), small.en
+    1.6902771000168286 s (2672 to 2365).
+  - **Step 9 (audio): pass, pending one answer.** Default input `Microphone Array
+    (Realtek(R) Au` (index 1, 44100), default output `Headphones (Noise Airwave Max 4`
+    (index 4, 44100). Microphone peak 0.149810791015625. Needs Karthik: did he hear the
+    beep?
+  - **Step 11 (Piper): pass, pending two answers.** Load 0.6315897000022233 s (Available
+    MBytes 4592 to 4539). Cold run: first chunk 1.6294485999969766 s, audio
+    4.632380952380952 s, RTF 0.3517708963751207. Warm runs 2 to 5: first chunk 0.149 to
+    0.165 s, RTF 0.0338 to 0.0378. Path sentence: 0.1521229000063613 s, audio
+    4.806530612244898 s. Each sentence came as one chunk (`chunk_count=1`), so first chunk
+    equals total synthesis time: Piper gives no earlier start within a sentence, and P5.2's
+    gain can only come from splitting by sentence. Needs Karthik: understandable yes or no;
+    how `C:\JarvisSandbox\old.zip` was read aloud (D9).
+  - **Step 10 (STT): not accepted.** The takes do not hold what their labels say, so the
+    three questions cannot be answered from them. Loudness per 250 ms (reviewer's stdlib
+    script, read only): in every spoken take speech starts 1.0 to 3.25 s after
+    `RECORD_NOW`, and `jarvis-2`, `-4`, `-5`, `cancel` and `new-conversation` are still
+    loud in their last 250 ms, so they are cut off. The `silence` take holds speech (small.en
+    writes `' Stay silent do not speak, stay silent do not speak.'`, the instruction read
+    aloud). `typing` and `noise` are near-silent (RMS 0.0010; typing not audible). Likely
+    cause: the cue reached Karthik through Cursor's panel with a lag, and the unspoken
+    instructions looked like lines to read. Transcripts, for the record: "Jarvis" never
+    appears in any run; `stop` gives `" It's worklets and dogs folding."` (base.en),
+    `' at www.wakansan.com'` and `' Welcome to the channel.'` (small.en); `cancel` gives
+    `' I was watching this.'` in all four runs. The logs also show two earlier recording
+    runs that were not reported: run 1 stopped at `jarvis-4`; run 2's peaks were 3e-05 to
+    0.0103 (microphone muted or wrong device) and passed the script's `peak == 0.0` check.
+    Run 3 overwrote both.
+  - **Step 10 findings that stand anyway** (they do not depend on what was said): (1)
+    `cpu_threads` 12 is slower than 4 in 26 of 28 paired runs, including all 14 for small.en
+    (for example `cancel` 1.7139222999685444 s at 4, 1.9570982999866828 s at 12). The two
+    exceptions are base.en on near-silent audio: noise with VAD (2.999834199959878 s at 4,
+    2.284472099971026 s at 12) and typing without VAD (4.846392899984494 s, 4.795878900040407
+    s). (2) small.en writes
+    `' Thank you.'` on typing and noise even with `vad_filter=True`; base.en writes `''`.
+    (3) Decode time blows up on clipped takes: small.en `stop` (3 s audio) took
+    3.9182831999496557 s at 4 threads and 10.465256899944507 s at 12; `new-conversation`
+    6.3642752999439836 and 8.288749900006223 s; `jarvis-5` 13.495938700041734 s at 12. That
+    is Whisper's temperature fallback retrying garbled audio, and it is a latency risk for
+    P5.1 (settings to test there: `temperature=0` only, `condition_on_previous_text=False`).
+    (4) On speech, base.en RTF about 0.10, small.en about 0.30 at 4 threads.
+  - Plan change: step 10 gets a re-record amendment in `docs/plans/P5.0.md`, marked DRAFT
+    (live beep cue, longer takes, Karthik runs the recorder in his own window, `RETAKE`
+    check on clipped or silent takes). Not re-run by the reviewer: the transcriptions
+    themselves (the takes are being replaced). Next: Karthik answers the three questions
+    above and approves or changes the amendment; an implementer (Codex while Cursor is out,
+    or Claude Code if Karthik says so) edits the recorder; Karthik re-records; the four
+    transcribe runs are repeated; then the step 12 and 13 ask.
+
 - **2026-11-25: P5.0 steps 8 to 11 NOT STARTED; Cursor stopped at the preconditions, and
   stopped correctly** (Claude Code review of Cursor's report, HEAD `7b15d49`, tree clean).
   Both preconditions in the go record below are still open, and both are Karthik's hands.
@@ -2115,6 +2177,20 @@ Format: `YYYY-MM-DD — model — tool selection % — refusals — median laten
   and same scores as the reviewer's run of 2026-11-24.
 
 ## Session log
+
+### 2026-11-28 — Agent: Claude Code (P5.0 steps 8 to 11 reviewed from Cursor's logs)
+
+Cursor ran steps 8 to 11 on 2026-11-25 and hit its session limit before reporting. Read
+every file in `spike\logs`, the recorder script, and the loudness of each take in
+`spike\audio` (a stdlib script in the reviewer's scratchpad, run with `-I`; it reads the wav
+files and loads no model and opens no socket). Steps 8 and 11 accepted, step 9 accepted
+pending Karthik's beep answer, step 10 not accepted: the takes are clipped and mislabelled.
+Details and numbers are in Current state. Files changed: this file, `docs/plans/P5.0.md`
+(step 10 re-record amendment, DRAFT). No code, config or install; nothing in `spike\`
+changed. Tests: `uv run python -m pytest` from PowerShell: 789 passed, 4 skipped, 1 warning,
+437.01s (matches `e1fa21f`'s count). Next step: Karthik
+answers the beep question and the two step 11 questions and approves or changes the step 10
+amendment; then an implementer edits `spike\step10_record.py`.
 
 ### 2026-11-25 — Agent: Claude Code (P5.0 steps 8 to 11 held at the preconditions: reviewed)
 
